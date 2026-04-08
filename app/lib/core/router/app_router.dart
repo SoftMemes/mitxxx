@@ -1,8 +1,7 @@
+import 'package:emajtee/features/auth/screens/login_screen.dart';
+import 'package:emajtee/features/courses/screens/home_screen.dart';
+import 'package:emajtee/features/settings/screens/settings_screen.dart';
 import 'package:go_router/go_router.dart';
-
-import '../../features/auth/screens/login_screen.dart';
-import '../../features/courses/screens/home_screen.dart';
-import '../../features/settings/screens/settings_screen.dart';
 
 // Auth state is a simple placeholder until the auth feature is implemented.
 // The router redirect will send unauthenticated users to /login.
@@ -19,7 +18,7 @@ final appRouter = GoRouter(
   routes: [
     GoRoute(
       path: '/',
-      redirect: (_, __) => _isAuthenticated ? '/home' : '/login',
+      redirect: (context, state) => _isAuthenticated ? '/home' : '/login',
     ),
     GoRoute(
       path: '/login',

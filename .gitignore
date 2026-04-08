@@ -1,6 +1,17 @@
 captures
 .idea
 
+# Flutter
+**/android/.gradle/
+**/android/local.properties
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/build/
+**/*.g.dart
+**/*.freezed.dart
+**/.fvm/flutter_sdk
+
 # Python
 __pycache__/
 *.py[cod]
