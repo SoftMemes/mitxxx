@@ -1,3 +1,21 @@
 captures
 .idea
 
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Credentials / secrets
+*.env
+.env
+credentials.json
+cookies.json
+session.json
