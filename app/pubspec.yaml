@@ -35,7 +35,14 @@ dev_dependencies:
   freezed: ^2.5.8
   json_serializable: ^6.9.4
   riverpod_generator: ^2.6.3
+  rps: ^0.7.0
   very_good_analysis: ^8.0.0
+
+scripts:
+  codegen: dart run build_runner build --delete-conflicting-outputs
+  codegen:watch: dart run build_runner watch --delete-conflicting-outputs
+  icons: dart run flutter_launcher_icons
+  splash: dart run flutter_native_splash:create
 
 flutter_launcher_icons:
   android: true
