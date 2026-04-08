@@ -67,40 +67,61 @@ class MITxClient:
     # Authentication — 3-stage OAuth2
     # -------------------------------------------------------------------------
 
+    @staticmethod
+    def _extract_kc_login_action(html: str) -> str:
+        """
+        Keycloak renders a JS SPA — the form action URL is in the kcContext
+        JS object as url.loginAction, not in an HTML <form> tag.
+        """
+        m = re.search(r'"loginAction":\s*"(https://[^"]+)"', html)
+        if not m:
+            raise AuthError(
+                "Could not find Keycloak loginAction in page. "
+                "The login page HTML may have changed."
+            )
+        # Keycloak JSON-escapes forward slashes as \/
+        return m.group(1).replace("\\/", "/")
+
     def login(self, email: str, password: str):
         """
         Perform the full 3-stage auth flow:
-          1. mitxonline.mit.edu/login/ → Keycloak SSO redirect
-          2. POST credentials to Keycloak
+          1. mitxonline.mit.edu/login/ → Keycloak SSO redirect (JS SPA)
+          2a. POST username to Keycloak (step 1 of 2-step login)
+          2b. POST password to new action URL (step 2)
           3. LMS OAuth2 handshake
         """
-        # Stage 1: Start login on mitxonline, follow redirect to Keycloak
+        # Stage 1: Start login on mitxonline, follow redirect to Keycloak SPA
         r = self.session.get(
             f"{MITXONLINE_BASE}/login/",
             allow_redirects=True,
             timeout=15,
         )
-        # After following redirects we should be on the Keycloak login page.
-        # Find the form action URL for credential submission.
-        soup = BeautifulSoup(r.text, "html.parser")
-        form = soup.find("form", id="kc-form-login") or soup.find("form")
-        if not form:
-            raise AuthError("Could not find Keycloak login form in response")
-        action_url = form.get("action")
-        if not action_url:
-            raise AuthError("Keycloak form has no action URL")
+        # Keycloak renders a JS SPA — extract loginAction from kcContext JS object
+        action_url = self._extract_kc_login_action(r.text)
 
-        # Stage 2: POST credentials to Keycloak
+        # Stage 2a: POST username only (Keycloak 2-step: username → password)
         r2 = self.session.post(
             action_url,
-            data={"username": email, "password": password, "credentialId": ""},
+            data={"username": email},
             allow_redirects=True,
             timeout=15,
         )
-        # After success, Keycloak redirects back to mitxonline with ?code=...
-        # requests.Session follows the chain, landing on mitxonline dashboard.
-        if r2.status_code not in (200, 302):
-            raise AuthError(f"Keycloak login failed with status {r2.status_code}")
+        if r2.status_code != 200:
+            raise AuthError(f"Keycloak username step failed with status {r2.status_code}")
+
+        # Extract the new loginAction from the password page
+        action_url2 = self._extract_kc_login_action(r2.text)
+
+        # Stage 2b: POST password to the new action URL
+        r3 = self.session.post(
+            action_url2,
+            data={"password": password, "credentialId": ""},
+            allow_redirects=True,
+            timeout=15,
+        )
+        # Success: Keycloak 302s back through mitxonline; requests follows the chain
+        if r3.status_code not in (200, 302):
+            raise AuthError(f"Keycloak password step failed with status {r3.status_code}")
 
         # Verify mitxonline session is established
         r3 = self.session.get(f"{MITXONLINE_BASE}/api/v0/users/current_user/", timeout=10)
