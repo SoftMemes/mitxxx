@@ -13,18 +13,156 @@ import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 
 part 'app_database.g.dart';
 
-// Tables will be added here as features are built out.
-// Planned schema: courses, sections, blocks, video metadata, sync state.
+// JSON blob cache tables — one per API response type, keyed by natural ID.
+// Mirrors the web app's Dexie cache strategy.
 
-// Tables will be added here as features are built. Pending schema:
-// courses, sections, blocks, video metadata, sync state.
-@DriftDatabase()
+class CachedEnrollments extends Table {
+  TextColumn get key => text()();
+  TextColumn get data => text()();
+  DateTimeColumn get cachedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {key};
+}
+
+class CachedOutlines extends Table {
+  TextColumn get courseId => text()();
+  TextColumn get data => text()();
+  DateTimeColumn get cachedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {courseId};
+}
+
+class CachedSequences extends Table {
+  TextColumn get blockId => text()();
+  TextColumn get data => text()();
+  DateTimeColumn get cachedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {blockId};
+}
+
+class CachedXblocks extends Table {
+  TextColumn get blockId => text()();
+  TextColumn get data => text()();
+  DateTimeColumn get cachedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {blockId};
+}
+
+@DriftDatabase(
+  tables: [CachedEnrollments, CachedOutlines, CachedSequences, CachedXblocks],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  // ignore: override_on_non_overriding_member
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          // Cache-only DB: safe to drop and recreate on schema changes.
+          await m.recreateAllViews();
+          for (final table in allTables) {
+            await m.deleteTable(table.actualTableName);
+          }
+          await m.createAll();
+        },
+      );
+
+  // --- Enrollments (singleton row with key = 'enrollments') ---
+
+  Future<({String data, DateTime cachedAt})?> getEnrollments() async {
+    final row = await (select(cachedEnrollments)
+          ..where((t) => t.key.equals('enrollments')))
+        .getSingleOrNull();
+    if (row == null) return null;
+    return (data: row.data, cachedAt: row.cachedAt);
+  }
+
+  Future<void> putEnrollments(String json) => into(cachedEnrollments).insertOnConflictUpdate(
+        CachedEnrollmentsCompanion.insert(
+          key: 'enrollments',
+          data: json,
+          cachedAt: DateTime.now(),
+        ),
+      );
+
+  // --- Outlines (keyed by courseId) ---
+
+  Future<({String data, DateTime cachedAt})?> getOutline(
+    String courseId,
+  ) async {
+    final row = await (select(cachedOutlines)
+          ..where((t) => t.courseId.equals(courseId)))
+        .getSingleOrNull();
+    if (row == null) return null;
+    return (data: row.data, cachedAt: row.cachedAt);
+  }
+
+  Future<void> putOutline(String courseId, String json) =>
+      into(cachedOutlines).insertOnConflictUpdate(
+        CachedOutlinesCompanion.insert(
+          courseId: courseId,
+          data: json,
+          cachedAt: DateTime.now(),
+        ),
+      );
+
+  // --- Sequences (keyed by blockId) ---
+
+  Future<({String data, DateTime cachedAt})?> getSequence(
+    String blockId,
+  ) async {
+    final row = await (select(cachedSequences)
+          ..where((t) => t.blockId.equals(blockId)))
+        .getSingleOrNull();
+    if (row == null) return null;
+    return (data: row.data, cachedAt: row.cachedAt);
+  }
+
+  Future<void> putSequence(String blockId, String json) =>
+      into(cachedSequences).insertOnConflictUpdate(
+        CachedSequencesCompanion.insert(
+          blockId: blockId,
+          data: json,
+          cachedAt: DateTime.now(),
+        ),
+      );
+
+  // --- Xblocks (keyed by blockId) ---
+
+  Future<({String data, DateTime cachedAt})?> getXblock(
+    String blockId,
+  ) async {
+    final row = await (select(cachedXblocks)
+          ..where((t) => t.blockId.equals(blockId)))
+        .getSingleOrNull();
+    if (row == null) return null;
+    return (data: row.data, cachedAt: row.cachedAt);
+  }
+
+  Future<void> putXblock(String blockId, String json) =>
+      into(cachedXblocks).insertOnConflictUpdate(
+        CachedXblocksCompanion.insert(
+          blockId: blockId,
+          data: json,
+          cachedAt: DateTime.now(),
+        ),
+      );
+
+  // --- Clear all cached data (used on sign-out) ---
+
+  Future<void> clearAll() async {
+    await delete(cachedEnrollments).go();
+    await delete(cachedOutlines).go();
+    await delete(cachedSequences).go();
+    await delete(cachedXblocks).go();
+  }
 }
 
 LazyDatabase _openConnection() {

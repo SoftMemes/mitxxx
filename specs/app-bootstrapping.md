@@ -26,7 +26,7 @@ Set up the Flutter app in the `app/` directory as the foundation for an unoffici
 |---|---|
 | Package name / App ID | `com.softmemes.emajtee` |
 | Display name | `MITxxx` |
-| Minimum Android SDK | API 21 (Android 5.0) |
+| Minimum Android SDK | API 23 (Android 6.0) — Flutter 3.41+ minimum |
 | Flutter version | Pinned via FVM (Flutter Version Manager) — add `.fvm/fvm_config.json` |
 
 ---

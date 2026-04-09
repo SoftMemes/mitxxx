@@ -1,0 +1,143 @@
+import 'package:emajtee/features/courses/models/outline.dart';
+import 'package:emajtee/features/courses/providers/outline_provider.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+class CourseOutlineScreen extends ConsumerWidget {
+  const CourseOutlineScreen({super.key, required this.courseId});
+
+  final String courseId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final outlineAsync =
+        ref.watch(courseOutlineProvider(courseId: courseId));
+
+    return Scaffold(
+      appBar: AppBar(
+        title: outlineAsync.maybeWhen(
+          data: (o) => Text(
+            o.title,
+            overflow: TextOverflow.ellipsis,
+          ),
+          orElse: () => const Text('Course Outline'),
+        ),
+      ),
+      body: outlineAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, _) => Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+              const SizedBox(height: 16),
+              const Text('Could not load course outline'),
+              const SizedBox(height: 8),
+              FilledButton(
+                onPressed: () =>
+                    ref.invalidate(courseOutlineProvider(courseId: courseId)),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+        data: (outline) {
+          final items = _buildItems(outline.outline.sections);
+
+          return RefreshIndicator(
+            onRefresh: () async =>
+                ref.invalidate(courseOutlineProvider(courseId: courseId)),
+            child: CustomScrollView(
+              slivers: [
+                SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final item = items[index];
+                      if (item is _SectionHeader) {
+                        return _SectionHeaderTile(title: item.title);
+                      } else if (item is _SequenceEntry) {
+                        return _SequenceTile(
+                          title: item.title,
+                          onTap: () => context.push(
+                            '/course/$courseId/sequence/${item.sequenceId}',
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                    childCount: items.length,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  List<Object> _buildItems(List<Section> sections) {
+    final items = <Object>[];
+    for (final section in sections) {
+      items.add(_SectionHeader(title: section.title));
+      for (var i = 0; i < section.sequenceIds.length; i++) {
+        items.add(
+          _SequenceEntry(
+            sequenceId: section.sequenceIds[i],
+            title: 'Part ${i + 1}',
+          ),
+        );
+      }
+    }
+    return items;
+  }
+}
+
+class _SectionHeader {
+  const _SectionHeader({required this.title});
+  final String title;
+}
+
+class _SequenceEntry {
+  const _SequenceEntry({required this.sequenceId, required this.title});
+  final String sequenceId;
+  final String title;
+}
+
+class _SectionHeaderTile extends StatelessWidget {
+  const _SectionHeaderTile({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+      ),
+    );
+  }
+}
+
+class _SequenceTile extends StatelessWidget {
+  const _SequenceTile({required this.title, required this.onTap});
+
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.play_circle_outline),
+      title: Text(title),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
+    );
+  }
+}

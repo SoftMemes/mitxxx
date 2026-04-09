@@ -31,4 +31,35 @@ class DioClient {
     dio.interceptors.add(CookieManager(_cookieJar));
     return dio;
   }
+
+  /// Attach a 401 interceptor to the LMS Dio instance.
+  /// On 401: attempts silent LMS re-auth, retries original request.
+  /// If re-auth fails, calls [onAuthFailed].
+  void addAuthInterceptor({required void Function() onAuthFailed}) {
+    _lmsDio.interceptors.add(
+      InterceptorsWrapper(
+        onError: (err, handler) async {
+          if (err.response?.statusCode != 401) {
+            return handler.next(err);
+          }
+
+          // Attempt silent LMS re-auth.
+          try {
+            await _lmsDio.get(
+              '/auth/login/ol-oauth2/',
+              queryParameters: {'auth_entry': 'login'},
+              options: Options(followRedirects: true, maxRedirects: 10),
+            );
+            // Re-auth succeeded — retry original request.
+            final retryResponse = await _lmsDio.fetch(err.requestOptions);
+            return handler.resolve(retryResponse);
+          } catch (_) {
+            // Re-auth failed — notify caller to sign out.
+            onAuthFailed();
+            return handler.next(err);
+          }
+        },
+      ),
+    );
+  }
 }
