@@ -3,13 +3,9 @@
 //   dart run build_runner build
 // before analyzing or building. The generated file is gitignored.
 
-import 'dart:io';
-
 import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
+import 'package:emajtee/core/storage/connection/native.dart'
+    if (dart.library.html) 'package:emajtee/core/storage/connection/web.dart';
 
 part 'app_database.g.dart';
 
@@ -56,7 +52,7 @@ class CachedXblocks extends Table {
   tables: [CachedEnrollments, CachedOutlines, CachedSequences, CachedXblocks],
 )
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+  AppDatabase() : super(openDatabaseConnection());
 
   @override
   int get schemaVersion => 2;
@@ -163,14 +159,4 @@ class AppDatabase extends _$AppDatabase {
     await delete(cachedSequences).go();
     await delete(cachedXblocks).go();
   }
-}
-
-LazyDatabase _openConnection() {
-  return LazyDatabase(() async {
-    await applyWorkaroundToOpenSqlite3OnOldAndroidVersions();
-
-    final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dbFolder.path, 'emajtee.db'));
-    return NativeDatabase.createInBackground(file);
-  });
 }
