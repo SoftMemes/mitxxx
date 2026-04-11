@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cookie_jar/cookie_jar.dart';
 import 'package:emajtee/core/network/dio_client.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/features/auth/providers/auth_provider.dart';
@@ -72,25 +73,43 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _syncWebViewCookiesToDio() async {
-    final cookieManager = WebViewCookieManager();
+    // Extract non-httpOnly cookies from the WebView using JavaScript.
+    // httpOnly cookies (like the session cookie) are not accessible via JS
+    // but may still be needed — the programmatic LMS OAuth call in
+    // onLoginComplete() will establish the LMS-side JWT cookies via Dio.
     final client = ref.read(dioClientProvider);
 
-    for (final domain in ['mitxonline.mit.edu', 'courses.learn.mit.edu']) {
-      final cookies =
-          await cookieManager.getCookies('https://$domain');
-      if (cookies.isEmpty) continue;
+    try {
+      final rawCookies = await _webViewController!
+          .runJavaScriptReturningResult('document.cookie');
+      // rawCookies is a JSON string like '"name1=val1; name2=val2"'
+      final cookieStr = rawCookies.toString().replaceAll('"', '');
+      if (cookieStr.trim().isEmpty) return;
 
-      final dartCookies = cookies
-          .map(
-            (wc) => Cookie(wc.name, wc.value)..domain = wc.domain,
-          )
-          .toList();
-
-      await client.cookieJar.saveFromResponse(
-        Uri.parse('https://$domain'),
-        dartCookies,
-      );
+      final cookies = _parseCookieString(cookieStr, 'mitxonline.mit.edu');
+      if (cookies.isNotEmpty) {
+        await client.cookieJar.saveFromResponse(
+          Uri.parse('$kMitxOnlineBaseUrl/'),
+          cookies,
+        );
+      }
+    } on Object {
+      // JS extraction failure is non-fatal.
     }
+  }
+
+  List<Cookie> _parseCookieString(String cookieStr, String domain) {
+    return cookieStr
+        .split(';')
+        .map((part) => part.trim())
+        .where((part) => part.contains('='))
+        .map((part) {
+          final idx = part.indexOf('=');
+          final name = part.substring(0, idx).trim();
+          final value = part.substring(idx + 1).trim();
+          return Cookie(name, value)..domain = domain;
+        })
+        .toList();
   }
 
   @override

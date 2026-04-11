@@ -8,7 +8,7 @@ class SequenceItem with _$SequenceItem {
   const factory SequenceItem({
     required String id,
     required String type,
-    @JsonKey(name: 'page_title') required String pageTitle,
+    required String pageTitle,
     required bool complete,
     required bool bookmarked,
     required String path,

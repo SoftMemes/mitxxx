@@ -1,8 +1,8 @@
 # App Online Course Sync Specification
 
-> **Version**: 2.0 (April 2026)
-> **Status**: Ready for Implementation
-> **Last Updated**: 2026-04-08
+> **Version**: 2.1 (April 2026)
+> **Status**: Implemented
+> **Last Updated**: 2026-04-11
 
 ## Overview
 
@@ -261,3 +261,43 @@ The following were not explicitly answered during refinement but are resolved he
 3. **Cache invalidation on pull-to-refresh**: Current screen only, not the full tree.
 4. **WebView cookie sharing**: Inject Dio cookie jar cookies into platform WebView cookie manager after auth and after any silent re-auth.
 5. **Drift schema style**: JSON blob cache (one table per endpoint) rather than fully normalized tables. Matches the web version's approach and keeps v1 simple.
+
+## Implementation Notes
+
+**Implemented**: April 2026
+
+**Key Files Created**:
+- `lib/features/auth/models/user.dart` — User freezed model
+- `lib/features/courses/models/enrollment.dart` — Enrollment + CourseRun models
+- `lib/features/courses/models/outline.dart` — CourseOutline + Section models
+- `lib/features/courses/models/sequence.dart` — SequenceDetail + SequenceItem models
+- `lib/features/courses/models/xblock_content.dart` — XBlockContent + ParsedVideoBlock models
+- `lib/core/network/dio_client_provider.dart` — DioClient Riverpod provider
+- `lib/core/storage/database_provider.dart` — AppDatabase Riverpod provider
+- `lib/features/auth/providers/auth_provider.dart` — Auth state notifier (session check, sign-in, sign-out, 401 interceptor wiring)
+- `lib/features/courses/providers/enrollments_provider.dart` — Read-through cache for course list
+- `lib/features/courses/providers/outline_provider.dart` — Read-through cache for course outline
+- `lib/features/courses/providers/sequence_provider.dart` — Read-through cache for sequence detail
+- `lib/features/courses/providers/xblock_provider.dart` — Read-through cache + HTML parse for xblock content
+- `lib/features/courses/utils/xblock_parser.dart` — Port of xblock-parser.ts: regex + HTML decode + JSON parse
+- `lib/features/courses/screens/course_outline_screen.dart` — Outline screen with sticky section headers
+- `lib/features/courses/screens/content_screen.dart` — Content screen rendering video/HTML/problem blocks
+- `lib/features/courses/widgets/video_block.dart` — Inline video_player widget
+- `lib/features/courses/widgets/html_block.dart` — WebView HTML renderer with MathJax injection
+- `lib/features/courses/widgets/problem_block.dart` — Read-only problem stub card
+- `build.yaml` — Configures json_serializable to use snake_case field renaming globally
+
+**Key Files Modified**:
+- `pubspec.yaml` — Added webview_flutter, video_player, html_unescape
+- `lib/core/storage/app_database.dart` — 4 cache tables (enrollments, outlines, sequences, xblocks), schemaVersion 2
+- `lib/core/network/dio_client.dart` — Added addAuthInterceptor() for 401 silent re-auth
+- `lib/core/router/app_router.dart` — Converted to Riverpod provider, added course routes, auth-aware redirect
+- `lib/main.dart` — WidgetsFlutterBinding.ensureInitialized(), ConsumerWidget reading router provider
+- `lib/features/auth/screens/login_screen.dart` — WebView OAuth flow with JS cookie extraction
+- `lib/features/courses/screens/home_screen.dart` — Real course list with read-through cache
+- `lib/features/settings/screens/settings_screen.dart` — Sign out with confirmation dialog
+
+**Deviations from Spec**:
+- Cookie extraction from WebView uses JavaScript `document.cookie` rather than a platform-level cookie API (webview_flutter 4.x has no `getCookies` method). httpOnly cookies from Keycloak are not accessible via JS. The programmatic LMS OAuth step in `onLoginComplete()` establishes the JWT cookies via Dio directly, which covers the critical LMS auth path.
+- Auth interceptor is attached in `AuthProvider.build()` (not in `dioClientProvider`) to avoid a circular provider dependency.
+- The 401 interceptor guard (`_authInterceptorAttached`) prevents duplicate interceptors if the auth provider rebuilds.

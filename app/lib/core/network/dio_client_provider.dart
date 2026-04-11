@@ -6,19 +6,8 @@ part 'dio_client_provider.g.dart';
 
 @Riverpod(keepAlive: true)
 DioClient dioClient(DioClientRef ref) {
-  final client = DioClient();
-
-  client.addAuthInterceptor(
-    onAuthFailed: () {
-      // Invalidate auth state on unrecoverable 401 — router will redirect to login.
-      // We do this via a post-frame callback to avoid calling notifiers during a request.
-      Future<void>.delayed(Duration.zero, () {
-        // Auth provider is invalidated to reset to unauthenticated state.
-        // The router's refreshListenable will pick up the change.
-        ref.invalidateSelf();
-      });
-    },
-  );
-
-  return client;
+  // The auth interceptor callback is set by auth_provider after construction
+  // to avoid a circular dependency. The client starts without an interceptor;
+  // auth_provider calls client.addAuthInterceptor() during its build().
+  return DioClient();
 }

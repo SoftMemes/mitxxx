@@ -14,6 +14,7 @@ class DioClient {
   final CookieJar _cookieJar;
   late final Dio _mitxOnlineDio;
   late final Dio _lmsDio;
+  bool _authInterceptorAttached = false;
 
   Dio get mitxOnline => _mitxOnlineDio;
   Dio get lms => _lmsDio;
@@ -36,6 +37,8 @@ class DioClient {
   /// On 401: attempts silent LMS re-auth, retries original request.
   /// If re-auth fails, calls [onAuthFailed].
   void addAuthInterceptor({required void Function() onAuthFailed}) {
+    if (_authInterceptorAttached) return;
+    _authInterceptorAttached = true;
     _lmsDio.interceptors.add(
       InterceptorsWrapper(
         onError: (err, handler) async {
@@ -45,15 +48,15 @@ class DioClient {
 
           // Attempt silent LMS re-auth.
           try {
-            await _lmsDio.get(
+            await _lmsDio.get<dynamic>(
               '/auth/login/ol-oauth2/',
               queryParameters: {'auth_entry': 'login'},
               options: Options(followRedirects: true, maxRedirects: 10),
             );
             // Re-auth succeeded — retry original request.
-            final retryResponse = await _lmsDio.fetch(err.requestOptions);
+            final retryResponse = await _lmsDio.fetch<dynamic>(err.requestOptions);
             return handler.resolve(retryResponse);
-          } catch (_) {
+          } on Object {
             // Re-auth failed — notify caller to sign out.
             onAuthFailed();
             return handler.next(err);

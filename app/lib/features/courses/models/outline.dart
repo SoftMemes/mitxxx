@@ -8,9 +8,9 @@ class Section with _$Section {
   const factory Section({
     required String id,
     required String title,
-    @JsonKey(name: 'sequence_ids') required List<String> sequenceIds,
+    required List<String> sequenceIds,
     required String? start,
-    @JsonKey(name: 'effective_start') required String? effectiveStart,
+    required String? effectiveStart,
   }) = _Section;
 
   factory Section.fromJson(Map<String, dynamic> json) =>
@@ -30,10 +30,10 @@ class OutlineData with _$OutlineData {
 @freezed
 class CourseOutline with _$CourseOutline {
   const factory CourseOutline({
-    @JsonKey(name: 'course_key') required String courseKey,
+    required String courseKey,
     required String title,
-    @JsonKey(name: 'course_start') required String? courseStart,
-    @JsonKey(name: 'course_end') required String? courseEnd,
+    required String? courseStart,
+    required String? courseEnd,
     required OutlineData outline,
   }) = _CourseOutline;
 

@@ -1,5 +1,5 @@
 // ignore_for_file: uri_has_not_been_generated
-import 'package:emajtee/core/network/dio_client.dart';
+import 'package:dio/dio.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/auth/models/user.dart';
@@ -14,14 +14,21 @@ class Auth extends _$Auth {
 
   @override
   Future<User?> build() async {
+    final client = ref.read(dioClientProvider);
+
+    // Attach the 401 interceptor here (after auth_provider is created)
+    // to avoid a circular dependency in the provider graph.
+    client.addAuthInterceptor(
+      onAuthFailed: () => Future<void>.delayed(Duration.zero, signOut),
+    );
+
     // Try to resume an existing session on startup.
     try {
-      final client = ref.read(dioClientProvider);
-      final response =
-          await client.mitxOnline.get('/api/v0/users/current_user/');
-      final user = User.fromJson(response.data as Map<String, dynamic>);
+      final response = await client.mitxOnline
+          .get<Map<String, dynamic>>('/api/v0/users/current_user/');
+      final user = User.fromJson(response.data!);
       if (user.isAuthenticated) return user;
-    } catch (_) {
+    } on Object {
       // No valid session — unauthenticated.
     }
     return null;
@@ -35,16 +42,16 @@ class Auth extends _$Auth {
       final client = ref.read(dioClientProvider);
 
       // Trigger LMS OAuth handshake — follows redirect chain, sets JWT cookies.
-      await client.lms.get(
+      await client.lms.get<dynamic>(
         '/auth/login/ol-oauth2/',
         queryParameters: {'auth_entry': 'login'},
         options: Options(followRedirects: true, maxRedirects: 10),
       );
 
       // Verify and return the authenticated user.
-      final response =
-          await client.mitxOnline.get('/api/v0/users/current_user/');
-      final user = User.fromJson(response.data as Map<String, dynamic>);
+      final response = await client.mitxOnline
+          .get<Map<String, dynamic>>('/api/v0/users/current_user/');
+      final user = User.fromJson(response.data!);
       if (!user.isAuthenticated) throw Exception('Authentication failed');
       return user;
     });

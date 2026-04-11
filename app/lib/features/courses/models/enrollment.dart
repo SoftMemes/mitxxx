@@ -7,12 +7,12 @@ part 'enrollment.g.dart';
 class CourseRun with _$CourseRun {
   const factory CourseRun({
     required String title,
-    @JsonKey(name: 'courseware_id') required String coursewareId,
-    @JsonKey(name: 'courseware_url') required String coursewareUrl,
-    @JsonKey(name: 'start_date') required String? startDate,
-    @JsonKey(name: 'end_date') required String? endDate,
-    @JsonKey(name: 'run_tag') required String runTag,
-    @JsonKey(name: 'course_number') required String courseNumber,
+    required String coursewareId,
+    required String coursewareUrl,
+    required String? startDate,
+    required String? endDate,
+    required String runTag,
+    required String courseNumber,
   }) = _CourseRun;
 
   factory CourseRun.fromJson(Map<String, dynamic> json) =>
@@ -23,7 +23,7 @@ class CourseRun with _$CourseRun {
 class Enrollment with _$Enrollment {
   const factory Enrollment({
     required int id,
-    @JsonKey(name: 'enrollment_mode') required String enrollmentMode,
+    required String enrollmentMode,
     required CourseRun run,
   }) = _Enrollment;
 

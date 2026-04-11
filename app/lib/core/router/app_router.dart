@@ -16,7 +16,7 @@ GoRouter appRouter(AppRouterRef ref) {
   // A ValueNotifier used as GoRouter's refreshListenable.
   // Notifies GoRouter whenever auth state changes so redirects are re-evaluated.
   final notifier = ValueNotifier<int>(0);
-  ref.listen(authProvider, (_, __) => notifier.value++);
+  ref.listen<AsyncValue<dynamic>>(authProvider, (_, __) => notifier.value++);
   ref.onDispose(notifier.dispose);
 
   return GoRouter(
