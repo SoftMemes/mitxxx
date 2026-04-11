@@ -1,3 +1,4 @@
+import 'package:emajtee/core/logging.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/core/router/app_router.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  initLogging();
   final dioClient = await buildDioClient();
   runApp(
     ProviderScope(

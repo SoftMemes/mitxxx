@@ -8,6 +8,9 @@ import 'package:flutter/material.dart';
 // which cookie_jar's saveFromResponse expects.
 import 'package:flutter_inappwebview/flutter_inappwebview.dart' hide Cookie;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
+
+final _log = Logger('auth.login');
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -26,14 +29,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _onWebViewAuthComplete() async {
     if (_completingAuth) return;
+    _log.info('WebView auth complete — syncing cookies and finalising');
     setState(() => _completingAuth = true);
 
     try {
-      // Copy all cookies (including httpOnly session cookie) from the native
-      // WebView cookie store into Dio's PersistCookieJar.
       await _syncWebViewCookiesToDio();
-
-      // Trigger LMS OAuth handshake and verify session.
       await ref.read(authProvider.notifier).onLoginComplete();
 
       // onLoginComplete() uses AsyncValue.guard internally — exceptions are
@@ -41,7 +41,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       // the catch block below can reset the spinner and show the error.
       final authState = ref.read(authProvider);
       if (authState.hasError) throw Exception(authState.error);
-    } catch (e) {
+    } catch (e, st) {
+      _log.severe('_onWebViewAuthComplete failed', e, st);
       if (mounted) {
         setState(() {
           _showWebView = false;
@@ -62,6 +63,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final webCookies = await cookieManager.getCookies(
         url: WebUri(baseUrl),
       );
+      _log.info('cookies from native store for $baseUrl: ${webCookies.length} total');
+      for (final c in webCookies) {
+        _log.fine('  cookie: name=${c.name} domain=${c.domain} httpOnly=${c.isHttpOnly} secure=${c.isSecure}');
+      }
+
       if (webCookies.isEmpty) continue;
 
       // Convert flutter_inappwebview cookies to dart:io Cookies for cookie_jar.
@@ -72,6 +78,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }).toList();
 
       await client.cookieJar.saveFromResponse(Uri.parse(baseUrl), dartCookies);
+      _log.info('saved ${dartCookies.length} cookies to Dio jar for $baseUrl');
     }
   }
 
@@ -109,19 +116,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             useShouldOverrideUrlLoading: true,
           ),
           shouldOverrideUrlLoading: (controller, navigationAction) async {
-            final uri = navigationAction.request.url;
-            if (uri == null) return NavigationActionPolicy.ALLOW;
-
-            final isSsoPage = uri.host.contains('sso.ol.mit.edu');
-            final isLoginStart =
-                uri.host == 'mitxonline.mit.edu' && uri.path == '/login/';
-
-            if (!isSsoPage && !isLoginStart && uri.host == 'mitxonline.mit.edu') {
-              // Auth flow complete — allow navigation to finish so cookies are
-              // committed to the native store, then sync them into Dio.
-              Future.microtask(_onWebViewAuthComplete);
-            }
+            _log.fine('WebView navigating to: ${navigationAction.request.url}');
             return NavigationActionPolicy.ALLOW;
+          },
+          onLoadStop: (controller, uri) async {
+            _log.fine('WebView onLoadStop: $uri');
+            if (uri == null) return;
+
+            // We only care about pages fully loaded on mitxonline.mit.edu,
+            // OUTSIDE the /login/ flow. The sequence during OAuth is:
+            //   /login/ → Keycloak SSO → /login/.apisix/redirect?code=... →
+            //   (server exchanges code, sets authenticated session) → /dashboard/
+            // We must wait for the final hop so we capture the upgraded
+            // session cookie, not the anonymous pre-login one.
+            if (uri.host != 'mitxonline.mit.edu') return;
+            if (uri.path.startsWith('/login/') || uri.path == '/login') return;
+
+            _log.info('WebView landed on authenticated page ${uri.path} — completing sign-in');
+            await _onWebViewAuthComplete();
           },
         ),
       );

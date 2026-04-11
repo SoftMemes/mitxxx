@@ -1,9 +1,12 @@
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:logging/logging.dart';
 
 const String kMitxOnlineBaseUrl = 'https://mitxonline.mit.edu';
 const String kLmsBaseUrl = 'https://courses.learn.mit.edu';
+
+final _log = Logger('http');
 
 class DioClient {
   DioClient({CookieJar? cookieJar}) : _cookieJar = cookieJar ?? CookieJar() {
@@ -30,7 +33,38 @@ class DioClient {
       ),
     );
     dio.interceptors.add(CookieManager(_cookieJar));
+    dio.interceptors.add(_diagnosticsInterceptor());
     return dio;
+  }
+
+  /// Logs outgoing request cookies and response status. Dev-only diagnostic.
+  InterceptorsWrapper _diagnosticsInterceptor() {
+    return InterceptorsWrapper(
+      onRequest: (options, handler) async {
+        // Log cookies currently loaded into the jar for this request.
+        final jarCookies = await _cookieJar.loadForRequest(options.uri);
+        final cookieNames = jarCookies.map((c) => c.name).join(', ');
+        _log.fine(
+          '→ ${options.method} ${options.uri}  '
+          'cookies=[${cookieNames.isEmpty ? '(none)' : cookieNames}]',
+        );
+        handler.next(options);
+      },
+      onResponse: (response, handler) {
+        _log.fine(
+          '← ${response.statusCode} ${response.requestOptions.method} '
+          '${response.realUri}',
+        );
+        handler.next(response);
+      },
+      onError: (err, handler) {
+        _log.fine(
+          '✗ ${err.response?.statusCode} ${err.requestOptions.method} '
+          '${err.requestOptions.uri}',
+        );
+        handler.next(err);
+      },
+    );
   }
 
   /// Attach a 401 interceptor to the LMS Dio instance.
