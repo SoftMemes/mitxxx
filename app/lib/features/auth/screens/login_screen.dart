@@ -2,7 +2,6 @@ import 'package:cookie_jar/cookie_jar.dart';
 import 'package:emajtee/core/network/dio_client.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/features/auth/providers/auth_provider.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -164,30 +163,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 48),
-              if (kIsWeb) ...[
-                const Icon(Icons.phone_iphone, size: 48, color: Colors.grey),
-                const SizedBox(height: 16),
-                Text(
-                  'Sign-in requires the iOS or Android app.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey,
-                      ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                OutlinedButton(
-                  onPressed: () {
-                    // Opens mitxonline.mit.edu in a new browser tab.
-                    // ignore: deprecated_member_use
-                    WidgetsBinding.instance.platformDispatcher.defaultRouteName;
-                  },
-                  child: const Text('Open MITx Online'),
-                ),
-              ] else
-                FilledButton(
-                  onPressed: _startWebViewAuth,
-                  child: const Text('Sign in with MITx'),
-                ),
+              FilledButton(
+                onPressed: _startWebViewAuth,
+                child: const Text('Sign in with MITx'),
+              ),
             ],
           ),
         ),
