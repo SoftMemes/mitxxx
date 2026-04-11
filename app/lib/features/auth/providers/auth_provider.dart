@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/auth/models/user.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -62,13 +63,17 @@ class Auth extends _$Auth {
     final client = ref.read(dioClientProvider);
     final db = ref.read(appDatabaseProvider);
 
-    // Clear Dio cookie jar.
+    // Clear Dio cookie jar (PersistCookieJar — also wipes secure storage entries).
     await client.cookieJar.deleteAll();
+
+    // Clear the native WebView cookie store so re-opening login doesn't
+    // auto-reauthenticate via a persisted Keycloak SSO cookie.
+    await CookieManager.instance().deleteAllCookies();
 
     // Clear all cached course data from Drift.
     await db.clearAll();
 
-    // Clear any persisted secure storage.
+    // Clear any remaining persisted secure storage.
     await _storage.deleteAll();
 
     state = const AsyncData(null);

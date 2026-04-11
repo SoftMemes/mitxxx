@@ -1,10 +1,13 @@
-import 'package:cookie_jar/cookie_jar.dart';
+import 'dart:io' show Cookie;
+
 import 'package:emajtee/core/network/dio_client.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
+// Hide flutter_inappwebview's Cookie to avoid shadowing dart:io's Cookie,
+// which cookie_jar's saveFromResponse expects.
+import 'package:flutter_inappwebview/flutter_inappwebview.dart' hide Cookie;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -16,35 +19,9 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _showWebView = false;
   bool _completingAuth = false;
-  WebViewController? _webViewController;
 
-  Future<void> _startWebViewAuth() async {
-    final controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onNavigationRequest: (request) {
-            // Detect when the OAuth flow completes — URL returns to mitxonline,
-            // no longer on the Keycloak SSO domain.
-            final uri = Uri.parse(request.url);
-            final isSsoPage = uri.host.contains('sso.ol.mit.edu');
-            final isLoginStart =
-                uri.host == 'mitxonline.mit.edu' && uri.path == '/login/';
-
-            if (!isSsoPage && !isLoginStart && uri.host == 'mitxonline.mit.edu') {
-              // Auth flow complete — copy cookies and finalize.
-              _onWebViewAuthComplete();
-            }
-            return NavigationDecision.navigate;
-          },
-        ),
-      )
-      ..loadRequest(Uri.parse('$kMitxOnlineBaseUrl/login/'));
-
-    setState(() {
-      _webViewController = controller;
-      _showWebView = true;
-    });
+  void _startWebViewAuth() {
+    setState(() => _showWebView = true);
   }
 
   Future<void> _onWebViewAuthComplete() async {
@@ -52,11 +29,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _completingAuth = true);
 
     try {
-      // Copy cookies from WebView into Dio's CookieJar so API calls are authenticated.
+      // Copy all cookies (including httpOnly session cookie) from the native
+      // WebView cookie store into Dio's PersistCookieJar.
       await _syncWebViewCookiesToDio();
 
-      // Trigger LMS OAuth and verify session.
+      // Trigger LMS OAuth handshake and verify session.
       await ref.read(authProvider.notifier).onLoginComplete();
+
+      // onLoginComplete() uses AsyncValue.guard internally — exceptions are
+      // stored on the provider rather than re-thrown. Propagate failures so
+      // the catch block below can reset the spinner and show the error.
+      final authState = ref.read(authProvider);
+      if (authState.hasError) throw Exception(authState.error);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -71,43 +55,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _syncWebViewCookiesToDio() async {
-    // Extract non-httpOnly cookies from the WebView using JavaScript.
-    // httpOnly cookies (like the session cookie) are not accessible via JS
-    // but may still be needed — the programmatic LMS OAuth call in
-    // onLoginComplete() will establish the LMS-side JWT cookies via Dio.
     final client = ref.read(dioClientProvider);
+    final cookieManager = CookieManager.instance();
 
-    try {
-      final rawCookies = await _webViewController!
-          .runJavaScriptReturningResult('document.cookie');
-      // rawCookies is a JSON string like '"name1=val1; name2=val2"'
-      final cookieStr = rawCookies.toString().replaceAll('"', '');
-      if (cookieStr.trim().isEmpty) return;
+    for (final baseUrl in [kMitxOnlineBaseUrl, kLmsBaseUrl]) {
+      final webCookies = await cookieManager.getCookies(
+        url: WebUri(baseUrl),
+      );
+      if (webCookies.isEmpty) continue;
 
-      final cookies = _parseCookieString(cookieStr, 'mitxonline.mit.edu');
-      if (cookies.isNotEmpty) {
-        await client.cookieJar.saveFromResponse(
-          Uri.parse('$kMitxOnlineBaseUrl/'),
-          cookies,
-        );
-      }
-    } on Object {
-      // JS extraction failure is non-fatal.
+      // Convert flutter_inappwebview cookies to dart:io Cookies for cookie_jar.
+      final dartCookies = webCookies.map((c) {
+        return Cookie(c.name.toString(), c.value.toString())
+          ..domain = c.domain?.toString() ?? Uri.parse(baseUrl).host
+          ..path = c.path?.toString() ?? '/';
+      }).toList();
+
+      await client.cookieJar.saveFromResponse(Uri.parse(baseUrl), dartCookies);
     }
-  }
-
-  List<Cookie> _parseCookieString(String cookieStr, String domain) {
-    return cookieStr
-        .split(';')
-        .map((part) => part.trim())
-        .where((part) => part.contains('='))
-        .map((part) {
-          final idx = part.indexOf('=');
-          final name = part.substring(0, idx).trim();
-          final value = part.substring(idx + 1).trim();
-          return Cookie(name, value)..domain = domain;
-        })
-        .toList();
   }
 
   @override
@@ -127,7 +92,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       );
     }
 
-    if (_showWebView && _webViewController != null) {
+    if (_showWebView) {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Sign in with MITx'),
@@ -135,7 +100,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             onPressed: () => setState(() => _showWebView = false),
           ),
         ),
-        body: WebViewWidget(controller: _webViewController!),
+        body: InAppWebView(
+          initialUrlRequest: URLRequest(
+            url: WebUri('$kMitxOnlineBaseUrl/login/'),
+          ),
+          initialSettings: InAppWebViewSettings(
+            javaScriptEnabled: true,
+            useShouldOverrideUrlLoading: true,
+          ),
+          shouldOverrideUrlLoading: (controller, navigationAction) async {
+            final uri = navigationAction.request.url;
+            if (uri == null) return NavigationActionPolicy.ALLOW;
+
+            final isSsoPage = uri.host.contains('sso.ol.mit.edu');
+            final isLoginStart =
+                uri.host == 'mitxonline.mit.edu' && uri.path == '/login/';
+
+            if (!isSsoPage && !isLoginStart && uri.host == 'mitxonline.mit.edu') {
+              // Auth flow complete — allow navigation to finish so cookies are
+              // committed to the native store, then sync them into Dio.
+              Future.microtask(_onWebViewAuthComplete);
+            }
+            return NavigationActionPolicy.ALLOW;
+          },
+        ),
       );
     }
 

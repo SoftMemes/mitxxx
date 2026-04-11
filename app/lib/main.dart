@@ -1,10 +1,17 @@
+import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/core/router/app_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ProviderScope(child: EmajteeApp()));
+  final dioClient = await buildDioClient();
+  runApp(
+    ProviderScope(
+      overrides: [dioClientProvider.overrideWithValue(dioClient)],
+      child: const EmajteeApp(),
+    ),
+  );
 }
 
 class EmajteeApp extends ConsumerWidget {
