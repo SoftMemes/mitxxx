@@ -42,9 +42,7 @@ class HomeScreen extends ConsumerWidget {
           ),
         ),
         data: (enrollments) {
-          final active = _filterActive(enrollments);
-
-          if (active.isEmpty) {
+          if (enrollments.isEmpty) {
             return const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -52,7 +50,7 @@ class HomeScreen extends ConsumerWidget {
                   Icon(Icons.school_outlined, size: 64, color: Colors.grey),
                   SizedBox(height: 16),
                   Text(
-                    'No active courses',
+                    'No courses',
                     style: TextStyle(color: Colors.grey),
                   ),
                 ],
@@ -63,9 +61,9 @@ class HomeScreen extends ConsumerWidget {
           return RefreshIndicator(
             onRefresh: () async => ref.invalidate(enrollmentsProvider),
             child: ListView.builder(
-              itemCount: active.length,
+              itemCount: enrollments.length,
               itemBuilder: (context, index) =>
-                  _CourseCard(enrollment: active[index]),
+                  _CourseCard(enrollment: enrollments[index]),
             ),
           );
         },
@@ -73,18 +71,6 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  List<Enrollment> _filterActive(List<Enrollment> enrollments) {
-    final now = DateTime.now();
-    return enrollments.where((e) {
-      final endDate = e.run.endDate;
-      if (endDate == null) return true;
-      try {
-        return DateTime.parse(endDate).isAfter(now);
-      } catch (_) {
-        return true;
-      }
-    }).toList();
-  }
 }
 
 class _CourseCard extends StatelessWidget {
