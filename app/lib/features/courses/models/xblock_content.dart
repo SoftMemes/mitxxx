@@ -4,7 +4,7 @@ part 'xblock_content.freezed.dart';
 part 'xblock_content.g.dart';
 
 @freezed
-class ParsedVideoBlock with _$ParsedVideoBlock {
+abstract class ParsedVideoBlock with _$ParsedVideoBlock {
   const factory ParsedVideoBlock({
     required String? videoBlockId,
     required String? mp4Url,
@@ -19,7 +19,7 @@ class ParsedVideoBlock with _$ParsedVideoBlock {
 }
 
 @freezed
-class XBlockContent with _$XBlockContent {
+abstract class XBlockContent with _$XBlockContent {
   const factory XBlockContent({
     required List<ParsedVideoBlock> videos,
     required String htmlContent,

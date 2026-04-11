@@ -12,7 +12,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 part 'app_router.g.dart';
 
 @Riverpod(keepAlive: true)
-GoRouter appRouter(AppRouterRef ref) {
+GoRouter appRouter(Ref ref) {
   // A ValueNotifier used as GoRouter's refreshListenable.
   // Notifies GoRouter whenever auth state changes so redirects are re-evaluated.
   final notifier = ValueNotifier<int>(0);
@@ -25,7 +25,7 @@ GoRouter appRouter(AppRouterRef ref) {
     redirect: (context, state) {
       final authState = ref.read(authProvider);
       final isLoading = authState.isLoading;
-      final isAuthenticated = authState.valueOrNull != null;
+      final isAuthenticated = authState.value != null;
       final isLoginRoute = state.matchedLocation == '/login';
 
       // While checking auth on startup, stay put.
@@ -40,7 +40,7 @@ GoRouter appRouter(AppRouterRef ref) {
         path: '/',
         redirect: (context, state) {
           final isAuthenticated =
-              ref.read(authProvider).valueOrNull != null;
+              ref.read(authProvider).value != null;
           return isAuthenticated ? '/home' : '/login';
         },
       ),

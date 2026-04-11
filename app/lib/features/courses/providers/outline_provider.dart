@@ -10,7 +10,7 @@ part 'outline_provider.g.dart';
 
 @riverpod
 Future<CourseOutline> courseOutline(
-  CourseOutlineRef ref, {
+  Ref ref, {
   required String courseId,
 }) async {
   final client = ref.read(dioClientProvider);

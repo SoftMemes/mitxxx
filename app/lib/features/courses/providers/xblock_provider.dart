@@ -11,7 +11,7 @@ part 'xblock_provider.g.dart';
 
 @riverpod
 Future<XBlockContent> xblockContent(
-  XblockContentRef ref, {
+  Ref ref, {
   required String blockId,
 }) async {
   final client = ref.read(dioClientProvider);

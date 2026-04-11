@@ -4,7 +4,7 @@ part 'sequence.freezed.dart';
 part 'sequence.g.dart';
 
 @freezed
-class SequenceItem with _$SequenceItem {
+abstract class SequenceItem with _$SequenceItem {
   const factory SequenceItem({
     required String id,
     required String type,
@@ -19,7 +19,7 @@ class SequenceItem with _$SequenceItem {
 }
 
 @freezed
-class SequenceDetail with _$SequenceDetail {
+abstract class SequenceDetail with _$SequenceDetail {
   const factory SequenceDetail({
     required List<SequenceItem> items,
   }) = _SequenceDetail;

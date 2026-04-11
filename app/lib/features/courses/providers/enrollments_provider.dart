@@ -9,7 +9,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 part 'enrollments_provider.g.dart';
 
 @riverpod
-Future<List<Enrollment>> enrollments(EnrollmentsRef ref) async {
+Future<List<Enrollment>> enrollments(Ref ref) async {
   final client = ref.read(dioClientProvider);
   final db = ref.read(appDatabaseProvider);
 

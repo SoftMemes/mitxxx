@@ -4,7 +4,7 @@ part 'outline.freezed.dart';
 part 'outline.g.dart';
 
 @freezed
-class Section with _$Section {
+abstract class Section with _$Section {
   const factory Section({
     required String id,
     required String title,
@@ -18,7 +18,7 @@ class Section with _$Section {
 }
 
 @freezed
-class OutlineData with _$OutlineData {
+abstract class OutlineData with _$OutlineData {
   const factory OutlineData({
     required List<Section> sections,
   }) = _OutlineData;
@@ -28,7 +28,7 @@ class OutlineData with _$OutlineData {
 }
 
 @freezed
-class CourseOutline with _$CourseOutline {
+abstract class CourseOutline with _$CourseOutline {
   const factory CourseOutline({
     required String courseKey,
     required String title,

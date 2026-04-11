@@ -10,7 +10,7 @@ part 'sequence_provider.g.dart';
 
 @riverpod
 Future<SequenceDetail> sequenceDetail(
-  SequenceDetailRef ref, {
+  Ref ref, {
   required String blockId,
 }) async {
   final client = ref.read(dioClientProvider);

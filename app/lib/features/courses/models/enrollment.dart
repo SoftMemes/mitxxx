@@ -4,7 +4,7 @@ part 'enrollment.freezed.dart';
 part 'enrollment.g.dart';
 
 @freezed
-class CourseRun with _$CourseRun {
+abstract class CourseRun with _$CourseRun {
   const factory CourseRun({
     required String title,
     required String coursewareId,
@@ -20,7 +20,7 @@ class CourseRun with _$CourseRun {
 }
 
 @freezed
-class Enrollment with _$Enrollment {
+abstract class Enrollment with _$Enrollment {
   const factory Enrollment({
     required int id,
     required String enrollmentMode,
