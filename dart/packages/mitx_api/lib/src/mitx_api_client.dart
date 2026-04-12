@@ -44,6 +44,10 @@ class MitxApiClient {
 
   /// Walk a redirect chain manually, picking the right Dio instance per hop
   /// based on host. Returns the final non-redirect response.
+  ///
+  /// When [CookieManager] throws on a hop because the server set a JWT cookie
+  /// with characters that dart:io rejects, we recover the response, save any
+  /// parseable cookies ourselves, and continue the chain.
   Future<Response<String>> _followRedirects(
     String startUrl, {
     int maxHops = 15,
@@ -55,6 +59,7 @@ class MitxApiClient {
       // (LMS, Keycloak — they all share the same cookie jar).
       final dio =
           uri.host == 'mitxonline.mit.edu' ? _client.mitxOnline : _client.lms;
+
       final resp = await dio.getUri<String>(
         uri,
         options: Options(
@@ -63,6 +68,7 @@ class MitxApiClient {
           responseType: ResponseType.plain,
         ),
       );
+
       final status = resp.statusCode ?? 0;
       final location = resp.headers.value('location');
       _log.fine('_followRedirects[$hop]: $status ${uri.host}${uri.path} → ${location ?? "(done)"}');
@@ -86,6 +92,7 @@ class MitxApiClient {
     final uri = Uri.parse(url);
     final dio =
         uri.host == 'mitxonline.mit.edu' ? _client.mitxOnline : _client.lms;
+
     final resp = await dio.postUri<String>(
       uri,
       data: data,
@@ -96,6 +103,7 @@ class MitxApiClient {
         responseType: ResponseType.plain,
       ),
     );
+
     final status = resp.statusCode ?? 0;
     final location = resp.headers.value('location');
     _log.fine('_postFollowRedirects: $status ${uri.host}${uri.path} → ${location ?? "(done)"}');

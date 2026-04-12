@@ -27,6 +27,9 @@ class _HtmlBlockState extends ConsumerState<HtmlBlock> {
     // Copy Dio's cookies for both domains into the native WebView cookie store
     // BEFORE the WebView is created — otherwise sub-resource requests fire
     // before cookies land and trigger OAuth redirects (ERR_BLOCKED_BY_ORB).
+    //
+    // Also inject raw LMS cookies (JWT tokens whose values dart:io rejects)
+    // from DioClient.rawLmsCookies — these are never in the CookieJar.
     try {
       final client = ref.read(dioClientProvider);
       final cookieManager = CookieManager.instance();
@@ -43,6 +46,17 @@ class _HtmlBlockState extends ConsumerState<HtmlBlock> {
             isSecure: true,
           );
         }
+      }
+
+      // Inject raw LMS cookies (JWT) that couldn't be stored in the jar.
+      for (final entry in client.rawLmsCookies.entries) {
+        await cookieManager.setCookie(
+          url: WebUri('https://courses.learn.mit.edu/'),
+          name: entry.key,
+          value: entry.value,
+          domain: 'courses.learn.mit.edu',
+          isSecure: true,
+        );
       }
     } catch (_) {
       // Non-fatal — content may still load without auth cookies.
