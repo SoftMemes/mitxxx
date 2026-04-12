@@ -3,7 +3,8 @@ import 'package:emajtee/features/courses/models/xblock_content.dart';
 import 'package:emajtee/features/courses/providers/sequence_provider.dart';
 import 'package:emajtee/features/courses/providers/xblock_provider.dart';
 import 'package:emajtee/features/courses/screens/fullscreen_video_screen.dart';
-import 'package:emajtee/features/courses/utils/xblock_parser.dart';
+import 'package:emajtee/features/courses/utils/xblock_parser.dart'
+    show HtmlSegment, VideoSegment, splitXBlockIntoSegments;
 import 'package:emajtee/features/courses/widgets/html_block.dart';
 import 'package:emajtee/features/courses/widgets/video_block.dart';
 import 'package:flutter/material.dart';
@@ -342,29 +343,43 @@ class _PageContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final widgets = <Widget>[];
+    final segments = splitXBlockIntoSegments(content.htmlContent);
 
-    // Native video players — rendered first, one per extracted video block.
-    for (var i = 0; i < content.videos.length; i++) {
-      widgets.add(
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: VideoBlock(
-            key: videoKeyBuilder(verticalIndex, i),
-            video: content.videos[i],
-            onFullscreen: () => onFullscreen(i),
-          ),
-        ),
-      );
+    final widgets = <Widget>[];
+    for (final segment in segments) {
+      switch (segment) {
+        case VideoSegment(:final videoIndex):
+          if (videoIndex < content.videos.length) {
+            widgets.add(
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: VideoBlock(
+                  key: videoKeyBuilder(verticalIndex, videoIndex),
+                  video: content.videos[videoIndex],
+                  onFullscreen: () => onFullscreen(videoIndex),
+                ),
+              ),
+            );
+          }
+        case HtmlSegment(:final html):
+          widgets.add(HtmlBlock(html: html));
+      }
     }
 
-    // HTML content — strip video xblock containers so we don't double-render
-    // them, then show the remaining HTML (text, images, problems, etc.).
-    final strippedHtml = content.videos.isNotEmpty
-        ? stripVideoBlocks(content.htmlContent)
-        : content.htmlContent;
-    if (strippedHtml.trim().isNotEmpty) {
-      widgets.add(HtmlBlock(html: strippedHtml));
+    // Fallback: videos present but DOM matching found none — render top-down.
+    if (!segments.any((s) => s is VideoSegment) && content.videos.isNotEmpty) {
+      for (var i = 0; i < content.videos.length; i++) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: VideoBlock(
+              key: videoKeyBuilder(verticalIndex, i),
+              video: content.videos[i],
+              onFullscreen: () => onFullscreen(i),
+            ),
+          ),
+        );
+      }
     }
 
     if (widgets.isEmpty) {
