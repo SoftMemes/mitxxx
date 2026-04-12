@@ -204,87 +204,36 @@ After refinement is complete, inform the user:
 User: /refine-spec session-timeout
 Assistant: [Reads specs/session-timeout.md] → [Spawns opus agent]
 
-Opus Agent: I've analyzed the session timeout spec. Let me start with critical implementation questions:
+Opus Agent: "I've analyzed the session timeout spec. Let me start with critical
+            implementation questions."
+            → [Round 1: calls AskUserQuestion tool 3 times — Config scope,
+               Implementation location, Mid-sentence behavior]
 
-[Round 1 - Uses AskUserQuestion tool with structured options]
+User: [Clicks answers in the interactive UI]
 
-Question 1:
-- question: "How should session timeout be configured?"
-- header: "Config scope"
-- options:
-  - "System-wide (Recommended)" - Single timeout value for all users, simpler to manage
-  - "Per-user configurable" - Users can set their own timeout, more flexible but complex
-  - "Per-organization" - Organization admins set timeout for their users
-
-Question 2:
-- question: "Where should timeout enforcement be implemented?"
-- header: "Implementation"
-- options:
-  - "Backend service (Recommended)" - Centralized control, easier to audit
-  - "ML service" - Closer to conversation logic
-  - "Both services" - Redundant enforcement for reliability
-
-Question 3:
-- question: "What should happen if a session timeout occurs while the user is mid-sentence?"
-- header: "Mid-sentence"
-- options:
-  - "Wait for sentence completion (Recommended)" - Better UX, may delay timeout slightly
-  - "Immediate termination" - Strict timeout enforcement
-  - "Grace period" - Allow 30 seconds to complete thought
+Opus Agent: "Thanks — now let's look at error handling and network scenarios."
+            → [Round 2: calls AskUserQuestion tool 2 times — Network loss handling,
+               Countdown UI display]
 
 User: [Clicks answers]
 
-Opus Agent: Thank you. Now let me ask about error handling and network scenarios:
-
-[Round 2 - Uses AskUserQuestion tool]
-
-Question 1:
-- question: "How should we handle network loss during timeout countdown?"
-- header: "Network loss"
-- options:
-  - "Pause countdown (Recommended)" - Resume when connection restored
-  - "Continue countdown" - Session ends even if user reconnects
-  - "Reset countdown" - Restart full timeout period on reconnection
-
-Question 2:
-- question: "Should we show a countdown timer to the user?"
-- header: "UI Display"
-- options:
-  - "Yes, always visible (Recommended)" - Full transparency
-  - "Yes, only last 2 minutes" - Less intrusive
-  - "No, silent timeout" - Minimal UI clutter
+Opus Agent: "Almost there — deployment and monitoring:"
+            → [Round 3: calls AskUserQuestion tool 2 times — Rollout strategy,
+               Monitoring metrics (multiSelect)]
 
 User: [Clicks answers]
 
-Opus Agent: Let me verify deployment and monitoring:
+Opus Agent: "I've asked about configuration, implementation, edge cases, error handling,
+            UX, deployment, and monitoring. Do you feel the spec is now complete and
+            ready for implementation, or are there other areas we should explore?"
 
-[Round 3 - Uses AskUserQuestion tool]
-
-Question 1:
-- question: "Should this feature be behind a feature flag initially?"
-- header: "Rollout"
-- options:
-  - "Yes, gradual rollout (Recommended)" - Safer, can roll back easily
-  - "No, deploy to all users" - Simpler, faster to production
-
-Question 2:
-- question: "What metrics should we track for session timeouts?"
-- header: "Monitoring"
-- multiSelect: true
-- options:
-  - "Timeout occurrences" - Count of sessions that timed out
-  - "User reconnections" - Users who return after timeout
-  - "Session duration distribution" - Track typical session lengths
-  - "Timeout errors" - Failed timeout handling
-
-User: [Clicks multiple answers]
-
-Opus Agent: I've asked about configuration, implementation, edge cases, error handling, UX, deployment, and monitoring. Do you feel the spec is now complete and ready for implementation, or are there other areas we should explore?
-
-User: Looks complete to me!
+User: "Looks complete to me!"
 
 Opus Agent: [Updates spec with all refined details, changes status to "Ready for Implementation"]
 ```
+
+NOTE: The rounds above show *descriptive summaries only* — the actual questions are
+delivered exclusively through AskUserQuestion tool calls, never as printed text.
 
 ## Error Handling
 
