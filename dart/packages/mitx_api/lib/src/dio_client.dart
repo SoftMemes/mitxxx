@@ -1,54 +1,43 @@
-import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
-import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:logging/logging.dart';
 
 import 'constants.dart';
+import 'cookie_store.dart';
 
 export 'constants.dart';
+export 'cookie_store.dart';
 
 final _log = Logger('http');
 
 class DioClient {
-  DioClient({CookieJar? cookieJar}) : _cookieJar = cookieJar ?? CookieJar() {
+  DioClient._(this._store, Map<String, Map<String, String>> cookies)
+      : _cookies = cookies {
     _mitxOnlineDio = _buildDio(kMitxOnlineBaseUrl);
     _lmsDio = _buildDio(kLmsBaseUrl);
-    // Insert after CookieManager (index 0) so it runs second on requests,
-    // appending raw LMS cookies that dart:io's Cookie class can't represent.
-    _lmsDio.interceptors.insert(
-      1,
-      InterceptorsWrapper(
-        onRequest: (options, handler) {
-          if (_rawLmsCookies.isNotEmpty) {
-            final existing = options.headers['cookie'] as String? ?? '';
-            final rawPart = _rawLmsCookies.entries
-                .map((e) => '${e.key}=${e.value}')
-                .join('; ');
-            options.headers['cookie'] =
-                existing.isEmpty ? rawPart : '$existing; $rawPart';
-          }
-          handler.next(options);
-        },
-      ),
-    );
   }
 
-  final CookieJar _cookieJar;
+  /// Async factory — loads cookies from [store] before constructing.
+  static Future<DioClient> create(CookieStore store) async {
+    final cookies = await store.loadAll();
+    return DioClient._(store, cookies);
+  }
+
+  final CookieStore _store;
+
+  /// In-memory cookie store: host → {name → value}.
+  /// Updated by the response interceptor and persisted via [_store].
+  Map<String, Map<String, String>> _cookies;
+
   late final Dio _mitxOnlineDio;
   late final Dio _lmsDio;
   bool _authInterceptorAttached = false;
 
-  /// Raw name→value pairs for LMS cookies whose values dart:io's Cookie class
-  /// rejects (typically JWT tokens). Populated by [establishLmsSession],
-  /// appended to every LMS request via the raw-cookie interceptor above.
-  Map<String, String> _rawLmsCookies = {};
-
   Dio get mitxOnline => _mitxOnlineDio;
   Dio get lms => _lmsDio;
-  CookieJar get cookieJar => _cookieJar;
 
-  /// Expose raw LMS cookies so login_screen can inject them into WebViews.
-  Map<String, String> get rawLmsCookies => Map.unmodifiable(_rawLmsCookies);
+  /// Returns a copy of all stored cookies for [host], or an empty map.
+  Map<String, String> cookiesForHost(String host) =>
+      Map.unmodifiable(_cookies[host] ?? {});
 
   Dio _buildDio(String baseUrl) {
     final dio = Dio(
@@ -59,24 +48,60 @@ class DioClient {
         headers: {'Accept': 'application/json'},
       ),
     );
-    dio.interceptors.add(CookieManager(_cookieJar));
+    dio.interceptors.add(_cookieInterceptor());
     dio.interceptors.add(_diagnosticsInterceptor());
     return dio;
   }
 
+  /// Cookie interceptor: reads from / writes to [_cookies] as raw strings.
+  /// No dart:io Cookie parsing is used.
+  InterceptorsWrapper _cookieInterceptor() {
+    return InterceptorsWrapper(
+      onRequest: (options, handler) {
+        final hostCookies = _cookies[options.uri.host];
+        if (hostCookies != null && hostCookies.isNotEmpty) {
+          options.headers['cookie'] = hostCookies.entries
+              .map((e) => '${e.key}=${e.value}')
+              .join('; ');
+        }
+        handler.next(options);
+      },
+      onResponse: (response, handler) {
+        _processSetCookieHeaders(response.requestOptions.uri, response.headers);
+        handler.next(response);
+      },
+      onError: (err, handler) {
+        final resp = err.response;
+        if (resp != null) {
+          _processSetCookieHeaders(
+              err.requestOptions.uri, resp.headers);
+        }
+        handler.next(err);
+      },
+    );
+  }
+
+  void _processSetCookieHeaders(Uri requestUri, Headers headers) {
+    final setCookies = headers['set-cookie'];
+    if (setCookies == null || setCookies.isEmpty) return;
+    var changed = false;
+    for (final raw in setCookies) {
+      if (_parseSetCookieInto(requestUri, raw, _cookies)) {
+        changed = true;
+      }
+    }
+    if (changed) {
+      _store.saveAll(_cookies);
+    }
+  }
+
   InterceptorsWrapper _diagnosticsInterceptor() {
     return InterceptorsWrapper(
-      onRequest: (options, handler) async {
-        final jarCookies = await _cookieJar.loadForRequest(options.uri);
-        final names = [
-          ...jarCookies.map((c) => c.name),
-          if (_rawLmsCookies.isNotEmpty &&
-              options.uri.host.contains('learn.mit.edu'))
-            ..._rawLmsCookies.keys,
-        ].join(', ');
+      onRequest: (options, handler) {
+        final hostCookies = _cookies[options.uri.host];
+        final names = hostCookies?.keys.join(', ') ?? '(none)';
         _log.fine(
-          '→ ${options.method} ${options.uri}  '
-          'cookies=[${names.isEmpty ? "(none)" : names}]',
+          '→ ${options.method} ${options.uri}  cookies=[$names]',
         );
         handler.next(options);
       },
@@ -97,15 +122,11 @@ class DioClient {
     );
   }
 
-  /// Walks the LMS OAuth redirect chain using a bare Dio instance that has
-  /// no CookieManager, because dart:io's Cookie class rejects characters in
-  /// LMS JWT cookie values. Cookies are tracked as raw header strings,
-  /// bypassing dart:io validation entirely.
+  /// Walks the LMS OAuth redirect chain with a bare Dio instance.
+  /// Cookies are tracked entirely as raw header strings — no dart:io parsing.
   ///
-  /// After the chain completes:
-  /// - Cookies whose values dart:io accepts are saved to [_cookieJar].
-  /// - Cookies whose values dart:io rejects are stored in [_rawLmsCookies]
-  ///   and appended to every subsequent LMS request via interceptor.
+  /// Seeds from the current in-memory [_cookies], then writes results back
+  /// to both [_cookies] and [_store].
   Future<void> establishLmsSession() async {
     final bare = Dio(
       BaseOptions(
@@ -114,31 +135,16 @@ class DioClient {
       ),
     );
 
-    // Seed the raw cookie store from the existing Dio jar.
-    // For each (host, path) pair: load cookies and merge into store[host].
-    // We need to load from multiple paths because Keycloak cookies are stored
-    // at /realms/olapps/ rather than /. Some Keycloak cookies end up under
-    // mitxonline.mit.edu (due to redirect routing during login) and need to
-    // be forwarded to sso.ol.mit.edu.
+    // Seed the hop-store from the current in-memory cookie map.
+    // Deep-copy so we don't mutate _cookies mid-redirect.
     final store = <String, Map<String, String>>{};
-    final seedEntries = [
-      ('courses.learn.mit.edu', '/'),
-      ('mitxonline.mit.edu', '/'),
-      ('mitxonline.mit.edu', '/realms/olapps/'),
-      ('sso.ol.mit.edu', '/'),
-      ('sso.ol.mit.edu', '/realms/olapps/'),
-    ];
-    for (final (host, path) in seedEntries) {
-      final jarCookies =
-          await _cookieJar.loadForRequest(Uri.parse('https://$host$path'));
-      final existing = store.putIfAbsent(host, () => {});
-      for (final c in jarCookies) {
-        existing[c.name] = c.value;
-      }
+    for (final entry in _cookies.entries) {
+      store[entry.key] = Map<String, String>.from(entry.value);
     }
-    // Forward Keycloak persistent cookies to SSO if they ended up under
-    // mitxonline (happens because CookieManager routes the SSO redirect
-    // response through the mitxOnline Dio instance).
+
+    // Forward Keycloak cookies to SSO if they ended up under mitxonline
+    // (happens because the Dio cookie interceptor routes the SSO redirect
+    // response under the mitxonline host).
     final ssoStore = store.putIfAbsent('sso.ol.mit.edu', () => {});
     final mitxStore = store['mitxonline.mit.edu'] ?? {};
     for (final key in ['KEYCLOAK_IDENTITY', 'KEYCLOAK_SESSION']) {
@@ -146,17 +152,11 @@ class DioClient {
         ssoStore[key] = mitxStore[key]!;
       }
     }
-    // Also seed from previously stored raw LMS cookies.
-    if (_rawLmsCookies.isNotEmpty) {
-      store.putIfAbsent('courses.learn.mit.edu', () => {})
-          .addAll(_rawLmsCookies);
-    }
 
     var nextUrl = '$kLmsBaseUrl/auth/login/ol-oauth2/?auth_entry=login';
     for (var hop = 0; hop < 15; hop++) {
       final uri = Uri.parse(nextUrl);
 
-      // Build Cookie header from the raw store for this host.
       final hostCookies = store[uri.host] ?? {};
       final cookieHeader =
           hostCookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
@@ -172,7 +172,6 @@ class DioClient {
         ),
       );
 
-      // Parse Set-Cookie response headers into the raw store.
       for (final raw in resp.headers['set-cookie'] ?? <String>[]) {
         _parseSetCookieInto(uri, raw, store);
       }
@@ -195,65 +194,60 @@ class DioClient {
 
     bare.close();
 
-    // Persist cookies back: save parseable ones to the jar, store the rest
-    // in _rawLmsCookies so the interceptor can attach them to LMS requests.
-    final newRaw = <String, String>{};
-    for (final domainEntry in store.entries) {
-      final host = domainEntry.key;
-      final uri = Uri.parse('https://$host/');
-      for (final e in domainEntry.value.entries) {
-        try {
-          final c = Cookie(e.key, e.value)
-            ..domain = host
-            ..path = '/';
-          await _cookieJar.saveFromResponse(uri, [c]);
-        } on Object {
-          if (host == 'courses.learn.mit.edu') {
-            newRaw[e.key] = e.value;
-          }
-        }
-      }
+    // Merge hop-store results back into the in-memory cookie map.
+    for (final entry in store.entries) {
+      _cookies.putIfAbsent(entry.key, () => {}).addAll(entry.value);
     }
-    _rawLmsCookies = newRaw;
-
-    if (newRaw.isNotEmpty) {
-      _log.info(
-        'establishLmsSession: ${newRaw.length} raw LMS cookies '
-        '(dart:io parse failure): ${newRaw.keys.join(", ")}',
-      );
-    }
+    await _store.saveAll(_cookies);
     _log.info('establishLmsSession: complete');
   }
 
+  /// Save [cookies] for [host] to the in-memory store and persist.
+  /// Used by the Flutter login screen to inject WebView cookies.
+  Future<void> saveCookies(String host, Map<String, String> cookies) async {
+    _cookies.putIfAbsent(host, () => {}).addAll(cookies);
+    await _store.saveAll(_cookies);
+  }
+
+  /// Delete all in-memory and persisted cookies.
+  Future<void> clearCookies() async {
+    _cookies = {};
+    await _store.deleteAll();
+  }
+
   /// Parses a single Set-Cookie header string into [store].
-  /// Extracts name, value, and optional Domain attribute.
-  static void _parseSetCookieInto(
+  /// Returns true if any value was added/changed.
+  static bool _parseSetCookieInto(
     Uri requestUri,
     String raw,
     Map<String, Map<String, String>> store,
   ) {
     final parts = raw.split(';');
-    if (parts.isEmpty) return;
+    if (parts.isEmpty) return false;
     final nameValue = parts.first;
     final eq = nameValue.indexOf('=');
-    if (eq <= 0) return;
+    if (eq <= 0) return false;
     final name = nameValue.substring(0, eq).trim();
     final value = nameValue.substring(eq + 1);
 
     var host = requestUri.host;
     for (final attr in parts.skip(1)) {
-      final lower = attr.trim().toLowerCase();
-      if (lower.startsWith('domain=')) {
-        host = attr.trim().substring(7);
+      final trimmed = attr.trim();
+      if (trimmed.toLowerCase().startsWith('domain=')) {
+        host = trimmed.substring(7);
         if (host.startsWith('.')) host = host.substring(1);
         break;
       }
     }
 
-    store.putIfAbsent(host, () => {})[name] = value;
+    final existing = store.putIfAbsent(host, () => {});
+    if (existing[name] == value) return false;
+    existing[name] = value;
+    return true;
   }
 
-  /// Attach a 401 interceptor to the LMS Dio instance.
+  /// Attach a 401 interceptor to the LMS Dio instance that re-establishes
+  /// the LMS session and retries once.
   void addAuthInterceptor({required void Function() onAuthFailed}) {
     if (_authInterceptorAttached) return;
     _authInterceptorAttached = true;

@@ -7,7 +7,6 @@ import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/auth/models/user.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -17,8 +16,6 @@ final _log = Logger('auth');
 
 @Riverpod(keepAlive: true)
 class Auth extends _$Auth {
-  static const _storage = FlutterSecureStorage();
-
   @override
   Future<User?> build() async {
     final client = ref.read(dioClientProvider)
@@ -45,7 +42,7 @@ class Auth extends _$Auth {
       final user = User.fromJson(response.data!);
       _log.info('build: session resumed, user=${user.username}');
 
-      // Our PersistCookieJar keeps the mitxonline session across restarts,
+      // The cookie store keeps the mitxonline session across restarts,
       // but the LMS-side JWT cookies are short-lived. Proactively run the
       // LMS OAuth handshake so the LMS recognises us for subsequent API
       // calls. If it fails, the 401 interceptor will still retry later.
@@ -138,8 +135,8 @@ class Auth extends _$Auth {
     final client = ref.read(dioClientProvider);
     final db = ref.read(appDatabaseProvider);
 
-    // Clear Dio cookie jar (PersistCookieJar — also wipes secure storage entries).
-    await client.cookieJar.deleteAll();
+    // Clear Dio cookie store (also wipes the SecureCookieStore entry).
+    await client.clearCookies();
 
     // Clear the native WebView cookie store so re-opening login doesn't
     // auto-reauthenticate via a persisted Keycloak SSO cookie.
@@ -147,9 +144,6 @@ class Auth extends _$Auth {
 
     // Clear all cached course data from Drift.
     await db.clearAll();
-
-    // Clear any remaining persisted secure storage.
-    await _storage.deleteAll();
 
     state = const AsyncData(null);
   }

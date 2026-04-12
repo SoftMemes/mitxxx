@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:logging/logging.dart';
 
-import 'constants.dart';
 import 'dio_client.dart';
 
 final _log = Logger('mitx_api');

@@ -1,12 +1,8 @@
-import 'dart:io' show Cookie;
-
 import 'package:mitx_api/mitx_api.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
-// Hide flutter_inappwebview's Cookie to avoid shadowing dart:io's Cookie,
-// which cookie_jar's saveFromResponse expects.
-import 'package:flutter_inappwebview/flutter_inappwebview.dart' hide Cookie;
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
@@ -60,6 +56,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final cookieManager = CookieManager.instance();
 
     for (final baseUrl in [kMitxOnlineBaseUrl, kLmsBaseUrl]) {
+      final host = Uri.parse(baseUrl).host;
       final webCookies = await cookieManager.getCookies(
         url: WebUri(baseUrl),
       );
@@ -68,24 +65,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _log.fine('  cookie: name=${c.name} domain=${c.domain} httpOnly=${c.isHttpOnly} secure=${c.isSecure}');
       }
 
-      // Clear any stale cookies for this domain (e.g. the anonymous session
-      // cookie saved by Dio's CookieManager during the startup build() call).
-      // cookie_jar stores host-cookies and domain-cookies in separate maps;
-      // without this, both survive and two session cookies get sent together,
-      // causing the server to see the anonymous one and return is_authenticated=false.
-      await client.cookieJar.delete(Uri.parse(baseUrl), true);
-
       if (webCookies.isEmpty) continue;
 
-      // Convert flutter_inappwebview cookies to dart:io Cookies for cookie_jar.
-      final dartCookies = webCookies.map((c) {
-        return Cookie(c.name.toString(), c.value.toString())
-          ..domain = c.domain?.toString() ?? Uri.parse(baseUrl).host
-          ..path = c.path?.toString() ?? '/';
-      }).toList();
-
-      await client.cookieJar.saveFromResponse(Uri.parse(baseUrl), dartCookies);
-      _log.info('saved ${dartCookies.length} cookies to Dio jar for $baseUrl');
+      // Save raw name→value pairs directly — no dart:io Cookie parsing.
+      final raw = <String, String>{
+        for (final c in webCookies)
+          c.name.toString(): c.value.toString(),
+      };
+      await client.saveCookies(host, raw);
+      _log.info('saved ${raw.length} cookies for $host');
     }
   }
 
