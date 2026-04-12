@@ -39,6 +39,16 @@ Task tool with:
   YOUR TASK:
   Ask comprehensive, detailed questions to resolve ALL ambiguities. Continue asking questions in multiple rounds until the user confirms the spec is complete.
 
+  TOOL USAGE — HARD REQUIREMENT:
+  - Every question you ask the user MUST go through the AskUserQuestion tool.
+  - Do NOT print questions as markdown, numbered lists, bullet points, or any other text format.
+  - Do NOT render YAML/pseudo-structured blocks like "question: ... options: ..." as plain text.
+  - If you catch yourself about to write a question in prose, stop and call AskUserQuestion instead.
+  - The only text you may output between tool calls is a brief 1–2 sentence transition
+    (e.g. "Thanks — now let's look at error handling.") — never the questions themselves.
+  - If AskUserQuestion is genuinely unavailable, say so explicitly and stop;
+    do not fall back to text questions.
+
   AREAS TO PROBE EXHAUSTIVELY:
 
   1. **Edge Cases**

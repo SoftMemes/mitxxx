@@ -1,6 +1,7 @@
 // ignore_for_file: uri_has_not_been_generated
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/courses/models/enrollment.dart';
@@ -9,6 +10,7 @@ import 'package:emajtee/features/courses/providers/enrollments_provider.dart';
 import 'package:emajtee/features/courses/providers/outline_provider.dart';
 import 'package:emajtee/features/courses/providers/sequence_provider.dart';
 import 'package:emajtee/features/courses/providers/xblock_provider.dart';
+import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:emajtee/features/courses/utils/xblock_parser.dart';
 import 'package:emajtee/features/sync/models/course_sync_state.dart';
 import 'package:logging/logging.dart';
@@ -72,8 +74,17 @@ class SyncController extends _$SyncController {
       enrollments = list
           .map((e) => Enrollment.fromJson(e as Map<String, dynamic>))
           .toList();
-    } on Object catch (e, st) {
+    } on DioException catch (e, st) {
+      final status = e.response?.statusCode;
+      if (status == 401 || status == 403) {
+        _log.warning('syncAll: enrollment fetch returned $status — signing out', e, st);
+        await ref.read(authProvider.notifier).signOut();
+        return;
+      }
       _log.warning('syncAll: enrollment fetch failed', e, st);
+      return;
+    } on Object catch (e, st) {
+      _log.warning('syncAll: enrollment fetch failed (non-http)', e, st);
       return;
     }
 
