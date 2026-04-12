@@ -1,4 +1,4 @@
-import 'package:emajtee/core/network/dio_client.dart';
+import 'package:mitx_api/mitx_api.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';

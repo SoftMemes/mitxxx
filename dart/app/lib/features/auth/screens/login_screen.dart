@@ -1,6 +1,6 @@
 import 'dart:io' show Cookie;
 
-import 'package:emajtee/core/network/dio_client.dart';
+import 'package:mitx_api/mitx_api.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:flutter/material.dart';

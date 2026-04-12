@@ -2,7 +2,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:emajtee/core/network/dio_client.dart';
+import 'package:mitx_api/mitx_api.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/auth/models/user.dart';

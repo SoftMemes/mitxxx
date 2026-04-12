@@ -12,6 +12,8 @@ dependencies:
   cookie_jar: ^4.0.8
   dio: ^5.8.0
   dio_cookie_manager: ^3.1.1
+  mitx_api:
+    path: ../packages/mitx_api
   drift: ^2.23.1
   flutter:
     sdk: flutter
