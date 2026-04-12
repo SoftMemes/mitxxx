@@ -115,11 +115,36 @@ class DioClient {
     );
 
     // Seed the raw cookie store from the existing Dio jar.
+    // For each (host, path) pair: load cookies and merge into store[host].
+    // We need to load from multiple paths because Keycloak cookies are stored
+    // at /realms/olapps/ rather than /. Some Keycloak cookies end up under
+    // mitxonline.mit.edu (due to redirect routing during login) and need to
+    // be forwarded to sso.ol.mit.edu.
     final store = <String, Map<String, String>>{};
-    for (final host in ['courses.learn.mit.edu', 'mitxonline.mit.edu']) {
+    final seedEntries = [
+      ('courses.learn.mit.edu', '/'),
+      ('mitxonline.mit.edu', '/'),
+      ('mitxonline.mit.edu', '/realms/olapps/'),
+      ('sso.ol.mit.edu', '/'),
+      ('sso.ol.mit.edu', '/realms/olapps/'),
+    ];
+    for (final (host, path) in seedEntries) {
       final jarCookies =
-          await _cookieJar.loadForRequest(Uri.parse('https://$host'));
-      store[host] = {for (final c in jarCookies) c.name: c.value};
+          await _cookieJar.loadForRequest(Uri.parse('https://$host$path'));
+      final existing = store.putIfAbsent(host, () => {});
+      for (final c in jarCookies) {
+        existing[c.name] = c.value;
+      }
+    }
+    // Forward Keycloak persistent cookies to SSO if they ended up under
+    // mitxonline (happens because CookieManager routes the SSO redirect
+    // response through the mitxOnline Dio instance).
+    final ssoStore = store.putIfAbsent('sso.ol.mit.edu', () => {});
+    final mitxStore = store['mitxonline.mit.edu'] ?? {};
+    for (final key in ['KEYCLOAK_IDENTITY', 'KEYCLOAK_SESSION']) {
+      if (mitxStore.containsKey(key) && !ssoStore.containsKey(key)) {
+        ssoStore[key] = mitxStore[key]!;
+      }
     }
     // Also seed from previously stored raw LMS cookies.
     if (_rawLmsCookies.isNotEmpty) {
@@ -175,7 +200,7 @@ class DioClient {
     final newRaw = <String, String>{};
     for (final domainEntry in store.entries) {
       final host = domainEntry.key;
-      final uri = Uri.parse('https://$host');
+      final uri = Uri.parse('https://$host/');
       for (final e in domainEntry.value.entries) {
         try {
           final c = Cookie(e.key, e.value)

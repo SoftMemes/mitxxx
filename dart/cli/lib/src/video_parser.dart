@@ -1,29 +1,28 @@
 import 'dart:convert';
 
+import 'package:html_unescape/html_unescape.dart';
+
+final _unescape = HtmlUnescape();
+
 /// Extracts video metadata objects from xblock HTML.
 ///
-/// Looks for elements with a `data-metadata` attribute containing a JSON
-/// object with a `sources` key (list of video URLs).
-///
-/// Port of python-tools/mitx-client/client.py:extract_video_metadata().
+/// Finds all `data-metadata="..."` attribute values, HTML-unescapes them
+/// (using the full html_unescape table, same as the Flutter app), JSON-decodes
+/// them, and returns those containing a `sources` key.
 List<Map<String, dynamic>> extractVideoMetadata(String html) {
-  // Match data-metadata="..." attributes (handles both single and double quotes
-  // and HTML-encoded content).
   final pattern = RegExp(r'data-metadata="([^"]*)"');
   final results = <Map<String, dynamic>>[];
 
   for (final match in pattern.allMatches(html)) {
-    final raw = match.group(1)!
-        .replaceAll('&quot;', '"')
-        .replaceAll('&amp;', '&')
-        .replaceAll('&#x27;', "'")
-        .replaceAll('&#39;', "'");
+    final rawAttr = match.group(1);
+    if (rawAttr == null) continue;
     try {
-      final decoded = jsonDecode(raw);
-      if (decoded is Map<String, dynamic> && decoded.containsKey('sources')) {
-        results.add(decoded);
+      final decoded = _unescape.convert(rawAttr);
+      final meta = jsonDecode(decoded);
+      if (meta is Map<String, dynamic> && meta.containsKey('sources')) {
+        results.add(meta);
       }
-    } on FormatException {
+    } on Object {
       continue;
     }
   }

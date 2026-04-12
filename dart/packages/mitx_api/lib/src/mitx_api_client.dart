@@ -173,7 +173,7 @@ class MitxApiClient {
   }
 
   // ---------------------------------------------------------------------------
-  // Session check
+  // Session check / resume
   // ---------------------------------------------------------------------------
 
   Future<bool> isAuthenticated() async {
@@ -183,6 +183,15 @@ class MitxApiClient {
     } on Object {
       return false;
     }
+  }
+
+  /// Ensure the LMS session is valid. LMS JWT cookies are short-lived; if
+  /// only the mitxonline session survived (e.g. loaded from a persisted
+  /// cookie jar on a subsequent CLI invocation), re-establish the LMS session
+  /// via the OAuth redirect chain.
+  Future<void> ensureLmsSession() async {
+    _log.info('ensureLmsSession: refreshing LMS cookies');
+    await _client.establishLmsSession();
   }
 
   // ---------------------------------------------------------------------------

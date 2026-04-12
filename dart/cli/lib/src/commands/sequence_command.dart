@@ -31,7 +31,7 @@ class SequenceCommand extends Command<void> {
     final blockId = rest.first;
     final asJson = argResults?['json'] as bool? ?? false;
 
-    final client = await buildClient();
+    final client = await buildClient(lms: true);
     final authenticated = await client.isAuthenticated();
     if (!authenticated) {
       stderr.writeln('No active session. Run: dart run bin/mitx_client.dart login');
