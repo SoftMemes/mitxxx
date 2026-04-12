@@ -3,6 +3,7 @@ import 'package:emajtee/features/courses/models/xblock_content.dart';
 import 'package:emajtee/features/courses/providers/sequence_provider.dart';
 import 'package:emajtee/features/courses/providers/xblock_provider.dart';
 import 'package:emajtee/features/courses/screens/fullscreen_video_screen.dart';
+import 'package:emajtee/features/courses/utils/xblock_parser.dart';
 import 'package:emajtee/features/courses/widgets/html_block.dart';
 import 'package:emajtee/features/courses/widgets/video_block.dart';
 import 'package:flutter/material.dart';
@@ -343,6 +344,7 @@ class _PageContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final widgets = <Widget>[];
 
+    // Native video players — rendered first, one per extracted video block.
     for (var i = 0; i < content.videos.length; i++) {
       widgets.add(
         Padding(
@@ -356,8 +358,13 @@ class _PageContent extends StatelessWidget {
       );
     }
 
-    if (content.videos.isEmpty && content.htmlContent.trim().isNotEmpty) {
-      widgets.add(HtmlBlock(html: content.htmlContent));
+    // HTML content — strip video xblock containers so we don't double-render
+    // them, then show the remaining HTML (text, images, problems, etc.).
+    final strippedHtml = content.videos.isNotEmpty
+        ? stripVideoBlocks(content.htmlContent)
+        : content.htmlContent;
+    if (strippedHtml.trim().isNotEmpty) {
+      widgets.add(HtmlBlock(html: strippedHtml));
     }
 
     if (widgets.isEmpty) {

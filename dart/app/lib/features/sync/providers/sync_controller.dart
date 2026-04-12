@@ -74,6 +74,18 @@ class SyncController extends _$SyncController {
       enrollments = list
           .map((e) => Enrollment.fromJson(e as Map<String, dynamic>))
           .toList();
+      // Pre-seed sync states as 'syncing' so cards show spinners the moment
+      // the enrollment list appears.
+      final seeded = <String, CourseSyncState>{};
+      for (final e in list.cast<Map<String, dynamic>>()) {
+        final courseId = Enrollment.fromJson(e).run.coursewareId;
+        final existing = state[courseId];
+        seeded[courseId] = (existing ?? const CourseSyncState())
+            .copyWith(status: SyncStatus.syncing);
+      }
+      state = Map.unmodifiable(seeded);
+      // Show the course list immediately — before per-course syncs start.
+      ref.invalidate(enrollmentsProvider);
     } on DioException catch (e, st) {
       final status = e.response?.statusCode;
       if (status == 401 || status == 403) {
@@ -88,24 +100,11 @@ class SyncController extends _$SyncController {
       return;
     }
 
-    // Seed state map with all courses (preserve existing sync timestamps).
-    final newState = <String, CourseSyncState>{};
-    for (final enrollment in enrollments) {
-      final courseId = enrollment.run.coursewareId;
-      final existing = state[courseId];
-      newState[courseId] =
-          (existing ?? const CourseSyncState()).copyWith(status: SyncStatus.idle);
-    }
-    state = Map.unmodifiable(newState);
-
     // Sync all courses in parallel.
     await Future.wait(
       enrollments.map((e) => syncCourse(e.run.coursewareId)),
       eagerError: false,
     );
-
-    // Refresh the enrollments provider so the home screen picks up new data.
-    ref.invalidate(enrollmentsProvider);
   }
 
   /// Syncs a single course's metadata (outline + sequences + xblocks).

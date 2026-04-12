@@ -122,33 +122,26 @@ Task tool with:
   - When you believe all ambiguity is resolved, ask the user:
     "I've asked about [list topics]. Do you feel the spec is now complete and ready for implementation, or are there other areas we should explore?"
 
-  EXAMPLE STRUCTURED QUESTIONS:
+  EXAMPLES — arguments to pass to the AskUserQuestion tool
+  (these are NOT templates for text output; call the tool with these values as JSON):
 
-  Instead of asking: "Should timeouts be per-user configurable or system-wide?"
+  Example 1 — instead of typing "Should timeouts be per-user configurable or system-wide?",
+  call AskUserQuestion with:
+    question: "How should session timeout be configured?"
+    header: "Config scope"
+    options:
+      - label: "System-wide (Recommended)", description: "Single timeout value for all users, simpler to manage"
+      - label: "Per-user configurable", description: "Users can set their own timeout, more flexible but complex"
+      - label: "Per-organization", description: "Organization admins set timeout for their users"
 
-  Use AskUserQuestion with:
-  - question: "How should session timeout be configured?"
-  - header: "Config scope"
-  - options:
-    - label: "System-wide (Recommended)"
-      description: "Single timeout value for all users, simpler to manage"
-    - label: "Per-user configurable"
-      description: "Users can set their own timeout, more flexible but complex"
-    - label: "Per-organization"
-      description: "Organization admins set timeout for their users"
-
-  Instead of asking: "What happens if the user loses network during countdown?"
-
-  Use AskUserQuestion with:
-  - question: "How should we handle network loss during session timeout countdown?"
-  - header: "Network loss"
-  - options:
-    - label: "Pause countdown (Recommended)"
-      description: "Resume countdown when connection restored"
-    - label: "Continue countdown"
-      description: "Session ends even if user reconnects"
-    - label: "Reset countdown"
-      description: "Restart the full timeout period when connection restored"
+  Example 2 — instead of typing "What happens if the user loses network during countdown?",
+  call AskUserQuestion with:
+    question: "How should we handle network loss during session timeout countdown?"
+    header: "Network loss"
+    options:
+      - label: "Pause countdown (Recommended)", description: "Resume countdown when connection restored"
+      - label: "Continue countdown", description: "Session ends even if user reconnects"
+      - label: "Reset countdown", description: "Restart the full timeout period when connection restored"
 
   GUIDELINES FOR QUESTION DESIGN:
   - **Binary choices**: Yes/No, Enable/Disable (2 options)
@@ -203,7 +196,7 @@ After refinement is complete, inform the user:
 - **User confirms completion**: Don't stop until the user explicitly says they're satisfied
 - **Use opus model**: Always use `model: "opus"` for the refinement agent
 - **Update status**: When complete, change status from "Draft" to "Ready for Implementation"
-- **Structured questions**: Use AskUserQuestion tool for clarity
+- **AskUserQuestion is mandatory**: Every question to the user goes through the AskUserQuestion tool. Printing questions as text is a skill failure — see the TOOL USAGE block in the sub-agent prompt.
 
 ## Example Interaction Flow
 

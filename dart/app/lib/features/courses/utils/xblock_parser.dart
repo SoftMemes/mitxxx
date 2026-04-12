@@ -1,9 +1,42 @@
 import 'dart:convert';
 
 import 'package:emajtee/features/courses/models/xblock_content.dart';
+import 'package:html/dom.dart' as dom;
+import 'package:html/parser.dart' as html_parser;
 import 'package:html_unescape/html_unescape.dart';
 
 final _unescape = HtmlUnescape();
+
+/// Removes video xblock containers from the rendered vertical HTML so the
+/// remaining HTML (text, images, problems, etc.) can be rendered alongside
+/// our native Flutter video player. Matches Open edX wrappers with classes
+/// like `xblock-public_view-video` or `xblock-student_view-video`, or
+/// elements carrying `data-block-type="video"`.
+String stripVideoBlocks(String html) {
+  if (html.trim().isEmpty) return html;
+
+  final dom.Document doc = html_parser.parse(html);
+
+  final toRemove = <dom.Element>[];
+  for (final el in doc.querySelectorAll('.xblock')) {
+    final classes = el.className;
+    final isVideo = classes.contains('xblock-public_view-video') ||
+        classes.contains('xblock-student_view-video') ||
+        el.attributes['data-block-type'] == 'video';
+    if (isVideo) toRemove.add(el);
+  }
+  // Fallback: any element explicitly tagged as a video block.
+  for (final el in doc.querySelectorAll('[data-block-type="video"]')) {
+    if (!toRemove.contains(el)) toRemove.add(el);
+  }
+  for (final el in toRemove) {
+    el.remove();
+  }
+
+  // If a full document was parsed, prefer serialising from <html>; else body.
+  final root = doc.documentElement ?? doc.body;
+  return root?.outerHtml ?? html;
+}
 
 /// Extracts video metadata from raw xblock HTML.
 /// Port of web/src/lib/proxy/xblock-parser.ts
