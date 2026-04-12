@@ -35,9 +35,20 @@ class DioClient {
   Dio get mitxOnline => _mitxOnlineDio;
   Dio get lms => _lmsDio;
 
-  /// Returns a copy of all stored cookies for [host], or an empty map.
-  Map<String, String> cookiesForHost(String host) =>
-      Map.unmodifiable(_cookies[host] ?? {});
+  /// Returns merged cookies for [host], including parent-domain matches.
+  ///
+  /// A cookie stored under `learn.mit.edu` matches a request to
+  /// `courses.learn.mit.edu` (domain-suffix rule, RFC 6265 §5.1.3).
+  Map<String, String> cookiesForHost(String host) {
+    final result = <String, String>{};
+    for (final entry in _cookies.entries) {
+      final storedHost = entry.key;
+      if (host == storedHost || host.endsWith('.$storedHost')) {
+        result.addAll(entry.value);
+      }
+    }
+    return Map.unmodifiable(result);
+  }
 
   Dio _buildDio(String baseUrl) {
     final dio = Dio(
@@ -58,8 +69,8 @@ class DioClient {
   InterceptorsWrapper _cookieInterceptor() {
     return InterceptorsWrapper(
       onRequest: (options, handler) {
-        final hostCookies = _cookies[options.uri.host];
-        if (hostCookies != null && hostCookies.isNotEmpty) {
+        final hostCookies = cookiesForHost(options.uri.host);
+        if (hostCookies.isNotEmpty) {
           options.headers['cookie'] = hostCookies.entries
               .map((e) => '${e.key}=${e.value}')
               .join('; ');
@@ -98,8 +109,8 @@ class DioClient {
   InterceptorsWrapper _diagnosticsInterceptor() {
     return InterceptorsWrapper(
       onRequest: (options, handler) {
-        final hostCookies = _cookies[options.uri.host];
-        final names = hostCookies?.keys.join(', ') ?? '(none)';
+        final hostCookies = cookiesForHost(options.uri.host);
+        final names = hostCookies.isEmpty ? '(none)' : hostCookies.keys.join(', ');
         _log.fine(
           '→ ${options.method} ${options.uri}  cookies=[$names]',
         );
@@ -157,9 +168,16 @@ class DioClient {
     for (var hop = 0; hop < 15; hop++) {
       final uri = Uri.parse(nextUrl);
 
-      final hostCookies = store[uri.host] ?? {};
+      // Domain-suffix matching: include cookies stored under parent domains.
+      final host = uri.host;
+      final merged = <String, String>{};
+      for (final e in store.entries) {
+        if (host == e.key || host.endsWith('.${e.key}')) {
+          merged.addAll(e.value);
+        }
+      }
       final cookieHeader =
-          hostCookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
+          merged.entries.map((e) => '${e.key}=${e.value}').join('; ');
 
       final resp = await bare.getUri<dynamic>(
         uri,
