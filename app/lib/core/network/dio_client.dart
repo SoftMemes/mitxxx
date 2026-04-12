@@ -69,27 +69,63 @@ class DioClient {
 
   /// Walks the LMS OAuth redirect chain manually so that Dio attaches the
   /// correct session cookies at each cross-domain hop.
-  Future<void> _reestablishLmsSession() async {
-    String nextUrl = '$kLmsBaseUrl/auth/login/ol-oauth2/?auth_entry=login';
+  ///
+  /// When the LMS responds with Set-Cookie headers containing values that
+  /// dart:io's strict parser rejects (common with JWT cookies),
+  /// [CookieManager] throws. We catch that, extract the response, save any
+  /// parseable cookies ourselves, and keep following the chain.
+  Future<void> establishLmsSession() async {
+    var nextUrl = '$kLmsBaseUrl/auth/login/ol-oauth2/?auth_entry=login';
     for (var hop = 0; hop < 15; hop++) {
       final uri = Uri.parse(nextUrl);
       final dio =
           uri.host == 'mitxonline.mit.edu' ? _mitxOnlineDio : _lmsDio;
-      final resp = await dio.getUri<dynamic>(
-        uri,
-        options: Options(
-          followRedirects: false,
-          validateStatus: (s) => s != null && s < 400,
-        ),
-      );
+
+      // ignore: omit_local_variable_types
+      Response<dynamic>? resp;
+      try {
+        resp = await dio.getUri<dynamic>(
+          uri,
+          options: Options(
+            followRedirects: false,
+            validateStatus: (s) => s != null && s < 400,
+          ),
+        );
+      } on DioException catch (e) {
+        // CookieManager throws when Set-Cookie values contain characters
+        // that dart:io considers invalid (e.g. LMS JWT cookies).
+        resp = e.response;
+        if (resp == null) rethrow;
+        await _saveCookiesLeniently(uri, resp);
+      }
+
       final status = resp.statusCode ?? 0;
       final location = resp.headers.value('location');
+      _log.info(
+        'establishLmsSession[$hop]: $status ${uri.host}${uri.path}'
+        ' → ${location ?? "(done)"}',
+      );
+
       if (status >= 300 && status < 400 && location != null) {
         nextUrl = location.startsWith('http')
             ? location
             : uri.resolve(location).toString();
       } else {
         break;
+      }
+    }
+  }
+
+  /// Saves cookies from a response one-by-one, skipping any that dart:io
+  /// refuses to parse.
+  Future<void> _saveCookiesLeniently(Uri uri, Response<dynamic> resp) async {
+    final headers = resp.headers['set-cookie'] ?? <String>[];
+    for (final raw in headers) {
+      try {
+        final cookie = Cookie.fromSetCookieValue(raw);
+        await _cookieJar.saveFromResponse(uri, [cookie]);
+      } on Object {
+        // Skip unparseable cookie — usually a JWT value with special chars.
       }
     }
   }
@@ -112,7 +148,7 @@ class DioClient {
           // OAuth authorize endpoint (Dio's CookieManager only fires for
           // the initial request domain, not for cross-domain redirects).
           try {
-            await _reestablishLmsSession();
+            await establishLmsSession();
             // Re-auth succeeded — retry original request.
             final retryResponse = await _lmsDio.fetch<dynamic>(err.requestOptions);
             return handler.resolve(retryResponse);
