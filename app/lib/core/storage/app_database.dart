@@ -154,6 +154,15 @@ class AppDatabase extends _$AppDatabase {
         ),
       );
 
+  // --- Clear LMS-side caches (used after fresh LMS auth to discard any
+  //     content fetched while unauthenticated). Leaves enrollments intact. ---
+
+  Future<void> clearLmsCache() async {
+    await delete(cachedOutlines).go();
+    await delete(cachedSequences).go();
+    await delete(cachedXblocks).go();
+  }
+
   // --- Clear all cached data (used on sign-out) ---
 
   Future<void> clearAll() async {

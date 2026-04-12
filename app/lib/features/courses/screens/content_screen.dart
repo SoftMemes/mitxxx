@@ -3,7 +3,6 @@ import 'package:emajtee/features/courses/models/xblock_content.dart';
 import 'package:emajtee/features/courses/providers/sequence_provider.dart';
 import 'package:emajtee/features/courses/providers/xblock_provider.dart';
 import 'package:emajtee/features/courses/widgets/html_block.dart';
-import 'package:emajtee/features/courses/widgets/problem_block.dart';
 import 'package:emajtee/features/courses/widgets/video_block.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -118,12 +117,9 @@ class _BlockContent extends StatelessWidget {
     }
 
     // Render HTML content if present and no videos consumed it.
+    // Problem xblocks ARE HTML — render them in a WebView too.
     if (content.videos.isEmpty && content.htmlContent.trim().isNotEmpty) {
-      if (item.type == 'problem') {
-        widgets.add(const ProblemBlock());
-      } else {
-        widgets.add(HtmlBlock(html: content.htmlContent));
-      }
+      widgets.add(HtmlBlock(html: content.htmlContent));
     }
 
     if (widgets.isEmpty) {

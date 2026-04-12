@@ -104,6 +104,13 @@ class Auth extends _$Auth {
       // Trigger LMS OAuth handshake — sets session + JWT cookies on the LMS.
       await _establishLmsSession(client);
 
+      // Flush any LMS content cached while unauthenticated (outlines, sequences,
+      // xblocks). Enrollments (mitxonline) are untouched. This ensures the
+      // first content fetch after login sees authenticated LMS responses.
+      final db = ref.read(appDatabaseProvider);
+      await db.clearLmsCache();
+      _log.info('onLoginComplete: cleared LMS cache');
+
       // Verify and return the authenticated user.
       try {
         final response = await client.mitxOnline
