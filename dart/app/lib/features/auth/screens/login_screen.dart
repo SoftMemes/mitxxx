@@ -19,7 +19,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _showWebView = false;
   bool _completingAuth = false;
 
-  void _startWebViewAuth() {
+  Future<void> _startWebViewAuth() async {
+    // Clear any stale Keycloak session cookies from the native WebView store
+    // before starting a new OAuth flow. Stale AUTH_SESSION_ID / KC_RESTART
+    // cookies from a previous (possibly expired) login attempt cause Keycloak
+    // to return 500 rather than redirecting to a fresh login page.
+    await CookieManager.instance().deleteAllCookies();
     setState(() => _showWebView = true);
   }
 
@@ -159,7 +164,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
               const SizedBox(height: 48),
               FilledButton(
-                onPressed: _startWebViewAuth,
+                onPressed: () => _startWebViewAuth(),
                 child: const Text('Sign in with MITx'),
               ),
             ],
