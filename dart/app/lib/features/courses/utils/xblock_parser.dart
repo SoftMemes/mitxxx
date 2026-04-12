@@ -7,103 +7,53 @@ import 'package:html_unescape/html_unescape.dart';
 
 final _unescape = HtmlUnescape();
 
-/// A segment of a rendered vertical page in document order.
-/// Either an HTML chunk (to render in a WebView) or a reference to a native
-/// video block by its index into [XBlockContent.videos].
-sealed class PageSegment {}
-
-final class HtmlSegment extends PageSegment {
-  HtmlSegment(this.html);
-  final String html;
-}
-
-final class VideoSegment extends PageSegment {
-  VideoSegment(this.videoIndex);
-  final int videoIndex;
-}
-
-bool _isVideoXBlock(dom.Element el) {
-  final cls = el.className;
-  return cls.contains('xblock-public_view-video') ||
-      cls.contains('xblock-student_view-video') ||
-      el.attributes['data-block-type'] == 'video';
-}
-
-/// Splits the rendered xblock HTML into document-order segments so that video
-/// blocks can be rendered as native Flutter widgets in the correct position
-/// while the surrounding HTML (text, images, problems) is rendered in WebViews.
-List<PageSegment> splitXBlockIntoSegments(String html) {
-  if (html.trim().isEmpty) return [];
+/// Removes video xblock containers from the rendered vertical HTML so the
+/// remaining HTML (text, images, problems, etc.) can be rendered in a single
+/// WebView alongside our native Flutter video players rendered above it.
+/// Matches Open edX wrappers with classes like `xblock-public_view-video` or
+/// `xblock-student_view-video`, or elements carrying `data-block-type="video"`.
+String stripVideoBlocks(String html) {
+  if (html.trim().isEmpty) return html;
 
   final doc = html_parser.parse(html);
 
-  // Strip all <script> tags from the head so Open edX video-player JS doesn't
-  // run inside the segment WebViews (it would get stuck in a loading spinner).
-  // CSS <link>/<style> are kept so content styling is preserved.
-  // MathJax is re-injected by HtmlBlock._injectMathJax independently.
-  final head = doc.head;
-  if (head != null) {
-    for (final el in head.querySelectorAll('script').toList()) {
-      el.remove();
-    }
-  }
-  final headHtml = head?.outerHtml ?? '<head></head>';
-
-  // Replace each video xblock with a sentinel span, counting in DOM order.
-  int videoIdx = 0;
-  final seen = <dom.Element>{};
-
+  final toRemove = <dom.Element>{};
   for (final el in doc.querySelectorAll('.xblock')) {
-    if (!seen.contains(el) && _isVideoXBlock(el)) {
-      seen.add(el);
-      final span = dom.Element.tag('span')
-        ..attributes['data-fv'] = '${videoIdx++}';
-      el.replaceWith(span);
+    final cls = el.className;
+    if (cls.contains('xblock-public_view-video') ||
+        cls.contains('xblock-student_view-video') ||
+        el.attributes['data-block-type'] == 'video') {
+      toRemove.add(el);
     }
   }
-  // Fallback for elements tagged directly without the xblock class.
   for (final el in doc.querySelectorAll('[data-block-type="video"]')) {
-    if (!seen.contains(el)) {
-      final span = dom.Element.tag('span')
-        ..attributes['data-fv'] = '${videoIdx++}';
-      el.replaceWith(span);
-    }
+    toRemove.add(el);
   }
 
-  final bodyHtml = doc.body?.innerHtml ?? '';
-
-  // Split bodyHtml on sentinel spans and build the segment list.
-  final sentinelRe = RegExp(r'<span data-fv="(\d+)"></span>');
-  final segments = <PageSegment>[];
-  int lastEnd = 0;
-
-  for (final match in sentinelRe.allMatches(bodyHtml)) {
-    if (match.start > lastEnd) {
-      final chunk = bodyHtml.substring(lastEnd, match.start).trim();
-      if (chunk.isNotEmpty) {
-        segments.add(HtmlSegment('<html>$headHtml<body>$chunk</body></html>'));
-      }
+  for (final el in toRemove) {
+    // Walk up while the ancestor would become empty after removal — Open edX
+    // wraps each xblock in a `.vert` div that keeps its divider border even
+    // when the inner xblock is gone, causing stacked empty dividers.
+    dom.Element target = el;
+    while (true) {
+      final parent = target.parent;
+      if (parent is! dom.Element) break;
+      // Would the parent have any remaining rendered content after we remove
+      // `target`? (Ignore whitespace text nodes.)
+      final hasOtherContent = parent.nodes.any((n) {
+        if (identical(n, target)) return false;
+        if (n is dom.Text) return n.text.trim().isNotEmpty;
+        return true;
+      });
+      if (hasOtherContent) break;
+      // Only bubble up through the wrapper divs, not e.g. <body>.
+      if (parent.localName != 'div') break;
+      target = parent;
     }
-    segments.add(VideoSegment(int.parse(match.group(1)!)));
-    lastEnd = match.end;
-  }
-  if (lastEnd < bodyHtml.length) {
-    final chunk = bodyHtml.substring(lastEnd).trim();
-    if (chunk.isNotEmpty) {
-      segments.add(HtmlSegment('<html>$headHtml<body>$chunk</body></html>'));
-    }
-  }
-
-  // Fall back to rendering everything as HTML if no sentinels were inserted
-  // (i.e. the vertical has no video xblocks — or none we could identify).
-  if (segments.isEmpty || !segments.any((s) => s is VideoSegment)) {
-    if (videoIdx == 0) {
-      // No videos found in DOM; return a single HTML segment.
-      return [HtmlSegment(html)];
-    }
+    target.remove();
   }
 
-  return segments;
+  return doc.documentElement?.outerHtml ?? html;
 }
 
 /// Extracts video metadata from raw xblock HTML.

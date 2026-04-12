@@ -4,7 +4,7 @@ import 'package:emajtee/features/courses/providers/sequence_provider.dart';
 import 'package:emajtee/features/courses/providers/xblock_provider.dart';
 import 'package:emajtee/features/courses/screens/fullscreen_video_screen.dart';
 import 'package:emajtee/features/courses/utils/xblock_parser.dart'
-    show HtmlSegment, VideoSegment, splitXBlockIntoSegments;
+    show stripVideoBlocks;
 import 'package:emajtee/features/courses/widgets/html_block.dart';
 import 'package:emajtee/features/courses/widgets/video_block.dart';
 import 'package:flutter/material.dart';
@@ -166,12 +166,13 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
                 ),
               ),
 
-              // Prev / Next navigation bar.
+              // Prev / Next / Complete navigation bar.
               _NavBar(
                 canGoPrev: _currentIndex > 0,
                 canGoNext: _currentIndex < total - 1,
                 onPrev: () => _goTo(_currentIndex - 1),
                 onNext: () => _goTo(_currentIndex + 1),
+                onComplete: () => Navigator.of(context).pop(),
               ),
             ],
           );
@@ -189,12 +190,14 @@ class _NavBar extends StatelessWidget {
     required this.canGoNext,
     required this.onPrev,
     required this.onNext,
+    required this.onComplete,
   });
 
   final bool canGoPrev;
   final bool canGoNext;
   final VoidCallback onPrev;
   final VoidCallback onNext;
+  final VoidCallback onComplete;
 
   @override
   Widget build(BuildContext context) {
@@ -219,17 +222,29 @@ class _NavBar extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: FilledButton(
-                onPressed: canGoNext ? onNext : null,
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text('Next'),
-                    SizedBox(width: 4),
-                    Icon(Icons.arrow_forward, size: 18),
-                  ],
-                ),
-              ),
+              child: canGoNext
+                  ? FilledButton(
+                      onPressed: onNext,
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('Next'),
+                          SizedBox(width: 4),
+                          Icon(Icons.arrow_forward, size: 18),
+                        ],
+                      ),
+                    )
+                  : FilledButton(
+                      onPressed: onComplete,
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.check, size: 18),
+                          SizedBox(width: 4),
+                          Text('Complete'),
+                        ],
+                      ),
+                    ),
             ),
           ],
         ),
@@ -343,43 +358,28 @@ class _PageContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final segments = splitXBlockIntoSegments(content.htmlContent);
-
     final widgets = <Widget>[];
-    for (final segment in segments) {
-      switch (segment) {
-        case VideoSegment(:final videoIndex):
-          if (videoIndex < content.videos.length) {
-            widgets.add(
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: VideoBlock(
-                  key: videoKeyBuilder(verticalIndex, videoIndex),
-                  video: content.videos[videoIndex],
-                  onFullscreen: () => onFullscreen(videoIndex),
-                ),
-              ),
-            );
-          }
-        case HtmlSegment(:final html):
-          widgets.add(HtmlBlock(html: html));
-      }
+
+    // Native video players at the top.
+    for (var i = 0; i < content.videos.length; i++) {
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: VideoBlock(
+            key: videoKeyBuilder(verticalIndex, i),
+            video: content.videos[i],
+            onFullscreen: () => onFullscreen(i),
+          ),
+        ),
+      );
     }
 
-    // Fallback: videos present but DOM matching found none — render top-down.
-    if (!segments.any((s) => s is VideoSegment) && content.videos.isNotEmpty) {
-      for (var i = 0; i < content.videos.length; i++) {
-        widgets.add(
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: VideoBlock(
-              key: videoKeyBuilder(verticalIndex, i),
-              video: content.videos[i],
-              onFullscreen: () => onFullscreen(i),
-            ),
-          ),
-        );
-      }
+    // Remaining HTML (video xblock containers stripped) in a single WebView.
+    final strippedHtml = content.videos.isNotEmpty
+        ? stripVideoBlocks(content.htmlContent)
+        : content.htmlContent;
+    if (strippedHtml.trim().isNotEmpty) {
+      widgets.add(HtmlBlock(html: strippedHtml));
     }
 
     if (widgets.isEmpty) {
