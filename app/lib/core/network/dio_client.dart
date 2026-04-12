@@ -67,6 +67,33 @@ class DioClient {
     );
   }
 
+  /// Walks the LMS OAuth redirect chain manually so that Dio attaches the
+  /// correct session cookies at each cross-domain hop.
+  Future<void> _reestablishLmsSession() async {
+    String nextUrl = '$kLmsBaseUrl/auth/login/ol-oauth2/?auth_entry=login';
+    for (var hop = 0; hop < 15; hop++) {
+      final uri = Uri.parse(nextUrl);
+      final dio =
+          uri.host == 'mitxonline.mit.edu' ? _mitxOnlineDio : _lmsDio;
+      final resp = await dio.getUri<dynamic>(
+        uri,
+        options: Options(
+          followRedirects: false,
+          validateStatus: (s) => s != null && s < 400,
+        ),
+      );
+      final status = resp.statusCode ?? 0;
+      final location = resp.headers.value('location');
+      if (status >= 300 && status < 400 && location != null) {
+        nextUrl = location.startsWith('http')
+            ? location
+            : uri.resolve(location).toString();
+      } else {
+        break;
+      }
+    }
+  }
+
   /// Attach a 401 interceptor to the LMS Dio instance.
   /// On 401: attempts silent LMS re-auth, retries original request.
   /// If re-auth fails, calls [onAuthFailed].
@@ -80,13 +107,12 @@ class DioClient {
             return handler.next(err);
           }
 
-          // Attempt silent LMS re-auth.
+          // Attempt silent LMS re-auth — manually walk the cross-domain
+          // redirect chain so the mitxonline session cookie reaches the
+          // OAuth authorize endpoint (Dio's CookieManager only fires for
+          // the initial request domain, not for cross-domain redirects).
           try {
-            await _lmsDio.get<dynamic>(
-              '/auth/login/ol-oauth2/',
-              queryParameters: {'auth_entry': 'login'},
-              options: Options(followRedirects: true, maxRedirects: 10),
-            );
+            await _reestablishLmsSession();
             // Re-auth succeeded — retry original request.
             final retryResponse = await _lmsDio.fetch<dynamic>(err.requestOptions);
             return handler.resolve(retryResponse);

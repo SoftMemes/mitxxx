@@ -1,5 +1,8 @@
 // ignore_for_file: uri_has_not_been_generated
+import 'dart:async';
+
 import 'package:dio/dio.dart';
+import 'package:emajtee/core/network/dio_client.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/auth/models/user.dart';
@@ -41,11 +44,71 @@ class Auth extends _$Auth {
       }
       final user = User.fromJson(response.data!);
       _log.info('build: session resumed, user=${user.username}');
+
+      // Our PersistCookieJar keeps the mitxonline session across restarts,
+      // but the LMS-side JWT cookies are short-lived. Proactively run the
+      // LMS OAuth handshake so the LMS recognises us for subsequent API
+      // calls. If it fails, the 401 interceptor will still retry later.
+      unawaited(_establishLmsSession(client));
+
       return user;
     } on Object catch (e, st) {
       _log.warning('build: session check failed', e, st);
     }
     return null;
+  }
+
+  /// Hits the LMS OAuth login endpoint so courses.learn.mit.edu issues us
+  /// fresh session + JWT cookies. Safe to call on every startup.
+  ///
+  /// Dio's CookieManager only attaches cookies for the *initial* request's
+  /// domain — it doesn't re-run for cross-domain redirects. So we walk the
+  /// redirect chain manually, picking client.mitxOnline vs client.lms based
+  /// on each hop's host so the correct session cookies are sent at every step.
+  Future<void> _establishLmsSession(DioClient client) async {
+    try {
+      String nextUrl =
+          '$kLmsBaseUrl/auth/login/ol-oauth2/?auth_entry=login';
+      Response<dynamic>? lastResponse;
+
+      for (var hop = 0; hop < 15; hop++) {
+        final uri = Uri.parse(nextUrl);
+        final dio =
+            uri.host == 'mitxonline.mit.edu' ? client.mitxOnline : client.lms;
+
+        final resp = await dio.getUri<dynamic>(
+          uri,
+          options: Options(
+            followRedirects: false,
+            validateStatus: (s) => s != null && s < 400,
+          ),
+        );
+        lastResponse = resp;
+
+        final status = resp.statusCode ?? 0;
+        final location = resp.headers.value('location');
+        _log.info(
+          '_establishLmsSession[$hop]: $status ${uri.host}${uri.path}'
+          ' → ${location ?? "(done)"}',
+        );
+
+        if (status >= 300 && status < 400 && location != null) {
+          // Resolve relative redirects against the current URI.
+          nextUrl = location.startsWith('http')
+              ? location
+              : uri.resolve(location).toString();
+        } else {
+          break; // Non-redirect: success or error.
+        }
+      }
+
+      _log.info(
+        '_establishLmsSession: complete, '
+        'status=${lastResponse?.statusCode} url=${lastResponse?.realUri}',
+      );
+    } on Object catch (e, st) {
+      _log.warning('_establishLmsSession failed', e, st);
+    }
   }
 
   /// Called after the WebView OAuth flow completes and cookies are injected
@@ -81,18 +144,8 @@ class Auth extends _$Auth {
         rethrow;
       }
 
-      // Trigger LMS OAuth handshake — follows redirect chain, sets JWT cookies.
-      try {
-        final lmsResp = await client.lms.get<dynamic>(
-          '/auth/login/ol-oauth2/',
-          queryParameters: {'auth_entry': 'login'},
-          options: Options(followRedirects: true, maxRedirects: 10),
-        );
-        _log.fine('onLoginComplete: LMS OAuth status=${lmsResp.statusCode} url=${lmsResp.realUri}');
-      } on DioException catch (e, st) {
-        _log.severe('onLoginComplete: LMS OAuth failed status=${e.response?.statusCode}', e, st);
-        rethrow;
-      }
+      // Trigger LMS OAuth handshake — sets session + JWT cookies on the LMS.
+      await _establishLmsSession(client);
 
       // Verify and return the authenticated user.
       try {

@@ -68,6 +68,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _log.fine('  cookie: name=${c.name} domain=${c.domain} httpOnly=${c.isHttpOnly} secure=${c.isSecure}');
       }
 
+      // Clear any stale cookies for this domain (e.g. the anonymous session
+      // cookie saved by Dio's CookieManager during the startup build() call).
+      // cookie_jar stores host-cookies and domain-cookies in separate maps;
+      // without this, both survive and two session cookies get sent together,
+      // causing the server to see the anonymous one and return is_authenticated=false.
+      await client.cookieJar.delete(Uri.parse(baseUrl), true);
+
       if (webCookies.isEmpty) continue;
 
       // Convert flutter_inappwebview cookies to dart:io Cookies for cookie_jar.
