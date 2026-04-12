@@ -92,7 +92,7 @@ packages:
   mitx_api:
     dependency: "direct main"
     description:
-      path: "../../packages/mitx_api"
+      path: "../packages/mitx_api"
       relative: true
     source: path
     version: "0.0.0"

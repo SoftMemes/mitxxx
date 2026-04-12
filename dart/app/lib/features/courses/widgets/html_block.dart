@@ -15,15 +15,18 @@ class HtmlBlock extends ConsumerStatefulWidget {
 
 class _HtmlBlockState extends ConsumerState<HtmlBlock> {
   double _height = 400;
+  bool _cookiesReady = false;
 
   @override
   void initState() {
     super.initState();
+    _injectCookies();
   }
 
   Future<void> _injectCookies() async {
     // Copy Dio's cookies for both domains into the native WebView cookie store
-    // so authenticated content (images, CDN assets) loads correctly.
+    // BEFORE the WebView is created — otherwise sub-resource requests fire
+    // before cookies land and trigger OAuth redirects (ERR_BLOCKED_BY_ORB).
     try {
       final client = ref.read(dioClientProvider);
       final cookieManager = CookieManager.instance();
@@ -44,6 +47,7 @@ class _HtmlBlockState extends ConsumerState<HtmlBlock> {
     } catch (_) {
       // Non-fatal — content may still load without auth cookies.
     }
+    if (mounted) setState(() => _cookiesReady = true);
   }
 
   String _injectMathJax(String html) {
@@ -73,6 +77,15 @@ window.addEventListener('load', function() {
 
   @override
   Widget build(BuildContext context) {
+    if (!_cookiesReady) {
+      // Wait for cookies to land in the native store before mounting the
+      // WebView so all sub-resource requests are authenticated from the start.
+      return SizedBox(
+        height: _height,
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return SizedBox(
       height: _height,
       child: InAppWebView(
@@ -90,10 +103,6 @@ window.addEventListener('load', function() {
               }
             },
           );
-        },
-        onLoadStart: (controller, url) async {
-          // Inject Dio cookies into the native store before the page loads.
-          await _injectCookies();
         },
         initialData: InAppWebViewInitialData(
           data: _injectMathJax(widget.html),

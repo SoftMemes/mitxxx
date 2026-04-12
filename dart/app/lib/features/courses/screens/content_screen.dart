@@ -85,9 +85,39 @@ class _VerticalBlock extends ConsumerWidget {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Text(
-            'Content could not be displayed',
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.error_outline,
+                      color: Theme.of(context).colorScheme.error),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      item.pageTitle,
+                      style: Theme.of(context).textTheme.titleSmall,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Failed to load: $error',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () =>
+                    ref.invalidate(xblockContentProvider(blockId: item.id)),
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Retry'),
+              ),
+            ],
           ),
         ),
       ),
@@ -128,9 +158,17 @@ class _BlockContent extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Text(
-              'No content available (${item.type})',
-              style: const TextStyle(color: Colors.grey),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: Colors.grey),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${item.pageTitle} — no displayable content',
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

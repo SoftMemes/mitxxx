@@ -22,7 +22,7 @@ Cookies persist to `~/.mitx-dart-client/.cookies/` (via `PersistCookieJar` +
 ## Usage
 
 ```bash
-cd dart/cli/mitx-client
+cd dart/cli
 dart pub get
 
 # Login (saves session to ~/.mitx-dart-client/.cookies/)

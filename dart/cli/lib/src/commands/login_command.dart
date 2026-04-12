@@ -29,11 +29,19 @@ class LoginCommand extends Command<void> {
     }
     if (password == null || password.isEmpty) {
       stdout.write('Password: ');
-      // Disable echo for password entry
-      stdin.echoMode = false;
+      // Disable echo for password entry (may fail in non-TTY environments).
+      var echoDisabled = false;
+      try {
+        stdin.echoMode = false;
+        echoDisabled = true;
+      } on StdinException {
+        // Non-TTY environment — password will be visible.
+      }
       password = stdin.readLineSync()?.trim() ?? '';
-      stdin.echoMode = true;
-      stdout.writeln();
+      if (echoDisabled) {
+        stdin.echoMode = true;
+        stdout.writeln();
+      }
     }
 
     if (email.isEmpty || password.isEmpty) {
