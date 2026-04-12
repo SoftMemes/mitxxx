@@ -51,14 +51,25 @@ class CachedXblocks extends Table {
   Set<Column> get primaryKey => {blockId};
 }
 
+/// Persists the last-synced timestamp and last error per course.
+/// The in-memory sync status (idle/syncing) lives in [SyncController] only.
+class CachedCourseSync extends Table {
+  TextColumn get courseId => text()();
+  DateTimeColumn get lastSyncedAt => dateTime().nullable()();
+  TextColumn get lastError => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {courseId};
+}
+
 @DriftDatabase(
-  tables: [CachedEnrollments, CachedOutlines, CachedSequences, CachedXblocks],
+  tables: [CachedEnrollments, CachedOutlines, CachedSequences, CachedXblocks, CachedCourseSync],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -154,6 +165,37 @@ class AppDatabase extends _$AppDatabase {
         ),
       );
 
+  // --- Course sync state (keyed by courseId) ---
+
+  Future<({DateTime? lastSyncedAt, String? lastError})?> getSyncState(
+    String courseId,
+  ) async {
+    final row = await (select(cachedCourseSync)
+          ..where((t) => t.courseId.equals(courseId)))
+        .getSingleOrNull();
+    if (row == null) return null;
+    return (lastSyncedAt: row.lastSyncedAt, lastError: row.lastError);
+  }
+
+  /// Records a successful sync. Clears any previous error.
+  Future<void> putSyncSuccess(String courseId, DateTime lastSyncedAt) =>
+      into(cachedCourseSync).insertOnConflictUpdate(
+        CachedCourseSyncCompanion.insert(
+          courseId: courseId,
+          lastSyncedAt: Value(lastSyncedAt),
+          lastError: const Value(null),
+        ),
+      );
+
+  /// Records a sync error. Preserves lastSyncedAt from the previous success.
+  Future<void> putSyncError(String courseId, String error) =>
+      into(cachedCourseSync).insertOnConflictUpdate(
+        CachedCourseSyncCompanion(
+          courseId: Value(courseId),
+          lastError: Value(error),
+        ),
+      );
+
   // --- Clear LMS-side caches (used after fresh LMS auth to discard any
   //     content fetched while unauthenticated). Leaves enrollments intact. ---
 
@@ -170,6 +212,7 @@ class AppDatabase extends _$AppDatabase {
     await delete(cachedOutlines).go();
     await delete(cachedSequences).go();
     await delete(cachedXblocks).go();
+    await delete(cachedCourseSync).go();
   }
 }
 

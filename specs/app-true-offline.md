@@ -1,7 +1,7 @@
 # App True Offline Specification
 
-> **Version**: 1.1 (April 2026)
-> **Status**: Ready for Implementation
+> **Version**: 1.2 (April 2026)
+> **Status**: Implemented
 > **Last Updated**: 2026-04-12
 
 ## Overview
@@ -157,6 +157,32 @@ These are likely targets based on the Flutter app structure under `app/`:
 - `lib/features/player/` or `lib/features/video/` — auto-advance logic, scroll-to-block on close
 - `lib/data/app_database.dart` (or equivalent) — new tables/columns for outline, xblock HTML, sync state
 - `lib/services/` or `lib/repositories/` — replace read-through cache with offline-first SQLite reads + explicit sync
+
+---
+
+## Implementation Notes
+
+**Implemented**: April 2026
+
+**Key files created:**
+- `dart/app/lib/features/sync/models/course_sync_state.dart` — `CourseSyncState` freezed model + `SyncStatus` enum
+- `dart/app/lib/features/sync/providers/sync_controller.dart` — sync orchestrator (global + per-course)
+- `dart/app/lib/core/network/connectivity_provider.dart` — online/offline stream provider
+- `dart/app/lib/features/courses/screens/fullscreen_video_screen.dart` — landscape fullscreen player + auto-advance
+
+**Key files modified:**
+- `dart/packages/mitx_api/lib/src/dio_client.dart` — added `hasCookies` getter
+- `dart/app/lib/core/storage/app_database.dart` — added `CachedCourseSync` table, schema v3
+- `dart/app/lib/features/auth/providers/auth_provider.dart` — offline-first cold start (cookie check, no network)
+- `dart/app/lib/features/courses/providers/` — all 4 providers converted to pure cache reads
+- `dart/app/lib/features/courses/models/outline.dart` — added `SequenceInfo` + `sequences` map
+- `dart/app/lib/features/courses/screens/home_screen.dart` — global+per-course refresh, spinners, error badges, last-synced label, auto-sync on empty cache
+- `dart/app/lib/features/courses/screens/course_outline_screen.dart` — real sequence titles
+- `dart/app/lib/features/courses/screens/content_screen.dart` — `PageView` one-vertical-at-a-time, prev/next, progress bar, fullscreen open/return
+- `dart/app/lib/features/courses/widgets/video_block.dart` — offline check, fullscreen button
+
+**Deleted:**
+- `dart/app/lib/core/utils/cache_fetch.dart` — unused stale-while-revalidate helper
 
 ---
 

@@ -2,12 +2,13 @@ import 'package:emajtee/features/courses/models/sequence.dart';
 import 'package:emajtee/features/courses/models/xblock_content.dart';
 import 'package:emajtee/features/courses/providers/sequence_provider.dart';
 import 'package:emajtee/features/courses/providers/xblock_provider.dart';
+import 'package:emajtee/features/courses/screens/fullscreen_video_screen.dart';
 import 'package:emajtee/features/courses/widgets/html_block.dart';
 import 'package:emajtee/features/courses/widgets/video_block.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class ContentScreen extends ConsumerWidget {
+class ContentScreen extends ConsumerStatefulWidget {
   const ContentScreen({
     super.key,
     required this.courseId,
@@ -18,15 +19,89 @@ class ContentScreen extends ConsumerWidget {
   final String sequenceId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ContentScreen> createState() => _ContentScreenState();
+}
+
+class _ContentScreenState extends ConsumerState<ContentScreen> {
+  late final PageController _pageController;
+  int _currentIndex = 0;
+
+  // Keyed by '$verticalIndex:$videoIndex' — used to scroll to a video
+  // block after returning from full-screen playback.
+  final Map<String, GlobalKey> _videoKeys = {};
+
+  // If non-null, scroll to this key after the next frame renders.
+  GlobalKey? _pendingScrollKey;
+
+  GlobalKey _videoKey(int verticalIdx, int videoIdx) {
+    final k = '$verticalIdx:$videoIdx';
+    return _videoKeys.putIfAbsent(k, GlobalKey.new);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _goTo(int index) {
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  Future<void> _openFullscreen(
+    SequenceDetail sequence,
+    int verticalIndex,
+    int videoIndex,
+  ) async {
+    final result = await Navigator.of(context).push<FullscreenResult>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => FullscreenVideoScreen(
+          sequence: sequence,
+          initialVerticalIndex: verticalIndex,
+          initialVideoIndex: videoIndex,
+        ),
+      ),
+    );
+
+    if (!mounted || result == null) return;
+
+    // Navigate to the vertical the user ended up on.
+    if (result.verticalIndex != _currentIndex) {
+      setState(() => _currentIndex = result.verticalIndex);
+      _pageController.jumpToPage(result.verticalIndex);
+    }
+
+    // If the user closed the player early, scroll to that video block.
+    if (result.closedEarly && result.videoIndex != null) {
+      final key = _videoKey(result.verticalIndex, result.videoIndex!);
+      setState(() => _pendingScrollKey = key);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final sequenceAsync =
-        ref.watch(sequenceDetailProvider(blockId: sequenceId));
+        ref.watch(sequenceDetailProvider(blockId: widget.sequenceId));
 
     return Scaffold(
       appBar: AppBar(
         title: sequenceAsync.maybeWhen(
           data: (s) => s.items.isNotEmpty
-              ? Text(s.items.first.pageTitle, overflow: TextOverflow.ellipsis)
+              ? Text(
+                  s.items[_currentIndex].pageTitle,
+                  overflow: TextOverflow.ellipsis,
+                )
               : const Text('Content'),
           orElse: () => const Text('Content'),
         ),
@@ -43,111 +118,244 @@ class ContentScreen extends ConsumerWidget {
               const SizedBox(height: 8),
               FilledButton(
                 onPressed: () => ref.invalidate(
-                  sequenceDetailProvider(blockId: sequenceId),
+                  sequenceDetailProvider(blockId: widget.sequenceId),
                 ),
                 child: const Text('Retry'),
               ),
             ],
           ),
         ),
-        data: (sequence) => RefreshIndicator(
-          onRefresh: () async => ref.invalidate(
-            sequenceDetailProvider(blockId: sequenceId),
-          ),
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: sequence.items.length,
-            itemBuilder: (context, index) => _VerticalBlock(
-              item: sequence.items[index],
+        data: (sequence) {
+          if (sequence.items.isEmpty) {
+            return const Center(child: Text('No content'));
+          }
+
+          final total = sequence.items.length;
+
+          return Column(
+            children: [
+              // Progress bar.
+              LinearProgressIndicator(
+                value: ((_currentIndex + 1) / total).clamp(0.0, 1.0),
+                minHeight: 4,
+              ),
+
+              // Content pages.
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  itemCount: total,
+                  onPageChanged: (index) =>
+                      setState(() => _currentIndex = index),
+                  itemBuilder: (context, index) {
+                    final item = sequence.items[index];
+                    return _VerticalPage(
+                      item: item,
+                      verticalIndex: index,
+                      videoKeyBuilder: _videoKey,
+                      pendingScrollKey:
+                          index == _currentIndex ? _pendingScrollKey : null,
+                      onPendingScrollDone: () =>
+                          setState(() => _pendingScrollKey = null),
+                      onFullscreen: (videoIndex) =>
+                          _openFullscreen(sequence, index, videoIndex),
+                    );
+                  },
+                ),
+              ),
+
+              // Prev / Next navigation bar.
+              _NavBar(
+                canGoPrev: _currentIndex > 0,
+                canGoNext: _currentIndex < total - 1,
+                onPrev: () => _goTo(_currentIndex - 1),
+                onNext: () => _goTo(_currentIndex + 1),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+class _NavBar extends StatelessWidget {
+  const _NavBar({
+    required this.canGoPrev,
+    required this.canGoNext,
+    required this.onPrev,
+    required this.onNext,
+  });
+
+  final bool canGoPrev;
+  final bool canGoNext;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: FilledButton.tonal(
+                onPressed: canGoPrev ? onPrev : null,
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.arrow_back, size: 18),
+                    SizedBox(width: 4),
+                    Text('Previous'),
+                  ],
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton(
+                onPressed: canGoNext ? onNext : null,
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('Next'),
+                    SizedBox(width: 4),
+                    Icon(Icons.arrow_forward, size: 18),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _VerticalBlock extends ConsumerWidget {
-  const _VerticalBlock({required this.item});
+// ---------------------------------------------------------------------------
+
+class _VerticalPage extends ConsumerStatefulWidget {
+  const _VerticalPage({
+    required this.item,
+    required this.verticalIndex,
+    required this.videoKeyBuilder,
+    required this.pendingScrollKey,
+    required this.onPendingScrollDone,
+    required this.onFullscreen,
+  });
 
   final SequenceItem item;
+  final int verticalIndex;
+  final GlobalKey Function(int verticalIdx, int videoIdx) videoKeyBuilder;
+  final GlobalKey? pendingScrollKey;
+  final VoidCallback onPendingScrollDone;
+  final void Function(int videoIndex) onFullscreen;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final xblockAsync = ref.watch(xblockContentProvider(blockId: item.id));
+  ConsumerState<_VerticalPage> createState() => _VerticalPageState();
+}
+
+class _VerticalPageState extends ConsumerState<_VerticalPage> {
+  @override
+  void didUpdateWidget(_VerticalPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.pendingScrollKey != null &&
+        widget.pendingScrollKey != oldWidget.pendingScrollKey) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = widget.pendingScrollKey?.currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(
+            ctx,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+        }
+        widget.onPendingScrollDone();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final xblockAsync =
+        ref.watch(xblockContentProvider(blockId: widget.item.id));
 
     return xblockAsync.when(
-      loading: () => const Padding(
-        padding: EdgeInsets.all(16),
-        child: Center(child: CircularProgressIndicator()),
-      ),
-      error: (error, _) => Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => Center(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(32),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Row(
-                children: [
-                  Icon(Icons.error_outline,
-                      color: Theme.of(context).colorScheme.error),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      item.pageTitle,
-                      style: Theme.of(context).textTheme.titleSmall,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
+              Icon(Icons.error_outline,
+                  color: Theme.of(context).colorScheme.error),
+              const SizedBox(height: 8),
+              Text(
+                'Could not load: ${widget.item.pageTitle}',
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
-                'Failed to load: $error',
+                error.toString(),
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.error,
                   fontSize: 12,
                 ),
               ),
-              const SizedBox(height: 8),
-              TextButton.icon(
-                onPressed: () =>
-                    ref.invalidate(xblockContentProvider(blockId: item.id)),
-                icon: const Icon(Icons.refresh, size: 16),
-                label: const Text('Retry'),
-              ),
             ],
           ),
         ),
       ),
-      data: (content) => _BlockContent(content: content, item: item),
+      data: (content) => _PageContent(
+        content: content,
+        item: widget.item,
+        verticalIndex: widget.verticalIndex,
+        videoKeyBuilder: widget.videoKeyBuilder,
+        onFullscreen: widget.onFullscreen,
+      ),
     );
   }
 }
 
-class _BlockContent extends StatelessWidget {
-  const _BlockContent({required this.content, required this.item});
+// ---------------------------------------------------------------------------
+
+class _PageContent extends StatelessWidget {
+  const _PageContent({
+    required this.content,
+    required this.item,
+    required this.verticalIndex,
+    required this.videoKeyBuilder,
+    required this.onFullscreen,
+  });
 
   final XBlockContent content;
   final SequenceItem item;
+  final int verticalIndex;
+  final GlobalKey Function(int verticalIdx, int videoIdx) videoKeyBuilder;
+  final void Function(int videoIndex) onFullscreen;
 
   @override
   Widget build(BuildContext context) {
     final widgets = <Widget>[];
 
-    // Render video blocks.
-    for (final video in content.videos) {
+    for (var i = 0; i < content.videos.length; i++) {
       widgets.add(
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
-          child: VideoBlock(video: video),
+          child: VideoBlock(
+            key: videoKeyBuilder(verticalIndex, i),
+            video: content.videos[i],
+            onFullscreen: () => onFullscreen(i),
+          ),
         ),
       );
     }
 
-    // Render HTML content if present and no videos consumed it.
-    // Problem xblocks ARE HTML — render them in a WebView too.
     if (content.videos.isEmpty && content.htmlContent.trim().isNotEmpty) {
       widgets.add(HtmlBlock(html: content.htmlContent));
     }
@@ -175,9 +383,12 @@ class _BlockContent extends StatelessWidget {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: widgets,
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: widgets,
+      ),
     );
   }
 }

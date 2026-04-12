@@ -35,6 +35,9 @@ class DioClient {
   Dio get mitxOnline => _mitxOnlineDio;
   Dio get lms => _lmsDio;
 
+  /// Returns true if any cookies are stored (i.e. the user has logged in before).
+  bool get hasCookies => _cookies.isNotEmpty;
+
   /// Returns merged cookies for [host], including parent-domain matches.
   ///
   /// A cookie stored under `learn.mit.edu` matches a request to

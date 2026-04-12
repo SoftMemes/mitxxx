@@ -43,7 +43,7 @@ class CourseOutlineScreen extends ConsumerWidget {
           ),
         ),
         data: (outline) {
-          final items = _buildItems(outline.outline.sections);
+          final items = _buildItems(outline.outline.sections, outline);
 
           return RefreshIndicator(
             onRefresh: () async =>
@@ -77,15 +77,17 @@ class CourseOutlineScreen extends ConsumerWidget {
     );
   }
 
-  List<Object> _buildItems(List<Section> sections) {
+  List<Object> _buildItems(List<Section> sections, CourseOutline outline) {
     final items = <Object>[];
     for (final section in sections) {
       items.add(_SectionHeader(title: section.title));
       for (var i = 0; i < section.sequenceIds.length; i++) {
+        final seqId = section.sequenceIds[i];
+        final seqTitle = outline.outline.sequences[seqId]?.title;
         items.add(
           _SequenceEntry(
-            sequenceId: section.sequenceIds[i],
-            title: 'Part ${i + 1}',
+            sequenceId: seqId,
+            title: seqTitle ?? 'Part ${i + 1}',
           ),
         );
       }

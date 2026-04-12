@@ -1,17 +1,26 @@
+import 'package:emajtee/core/network/connectivity_provider.dart';
 import 'package:emajtee/features/courses/models/xblock_content.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 
-class VideoBlock extends StatefulWidget {
-  const VideoBlock({super.key, required this.video});
+class VideoBlock extends ConsumerStatefulWidget {
+  const VideoBlock({
+    super.key,
+    required this.video,
+    required this.onFullscreen,
+  });
 
   final ParsedVideoBlock video;
 
+  /// Called when the user taps the fullscreen button.
+  final VoidCallback onFullscreen;
+
   @override
-  State<VideoBlock> createState() => _VideoBlockState();
+  ConsumerState<VideoBlock> createState() => _VideoBlockState();
 }
 
-class _VideoBlockState extends State<VideoBlock> {
+class _VideoBlockState extends ConsumerState<VideoBlock> {
   VideoPlayerController? _controller;
   bool _initialized = false;
   bool _hasError = false;
@@ -30,8 +39,7 @@ class _VideoBlockState extends State<VideoBlock> {
     }
 
     try {
-      final controller =
-          VideoPlayerController.networkUrl(Uri.parse(url));
+      final controller = VideoPlayerController.networkUrl(Uri.parse(url));
       await controller.initialize();
       if (mounted) {
         setState(() {
@@ -54,6 +62,33 @@ class _VideoBlockState extends State<VideoBlock> {
 
   @override
   Widget build(BuildContext context) {
+    // Offline check — default to online if the stream hasn't emitted yet.
+    final isOnline = ref.watch(isOnlineProvider).when(
+      data: (v) => v,
+      loading: () => true,
+      error: (_, __) => true,
+    );
+
+    if (!isOnline) {
+      return Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              const Icon(Icons.wifi_off, color: Colors.grey),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Video unavailable offline — connect to internet to stream',
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     if (_hasError) {
       return Card(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -96,7 +131,10 @@ class _VideoBlockState extends State<VideoBlock> {
             alignment: Alignment.bottomCenter,
             children: [
               VideoPlayer(_controller!),
-              _VideoControls(controller: _controller!),
+              _VideoControls(
+                controller: _controller!,
+                onFullscreen: widget.onFullscreen,
+              ),
             ],
           ),
         ),
@@ -111,9 +149,13 @@ class _VideoBlockState extends State<VideoBlock> {
 }
 
 class _VideoControls extends StatefulWidget {
-  const _VideoControls({required this.controller});
+  const _VideoControls({
+    required this.controller,
+    required this.onFullscreen,
+  });
 
   final VideoPlayerController controller;
+  final VoidCallback onFullscreen;
 
   @override
   State<_VideoControls> createState() => _VideoControlsState();
@@ -139,19 +181,34 @@ class _VideoControlsState extends State<_VideoControls> {
   @override
   Widget build(BuildContext context) {
     final isPlaying = widget.controller.value.isPlaying;
-    return GestureDetector(
-      onTap: isPlaying
-          ? () => widget.controller.pause()
-          : () => widget.controller.play(),
-      child: Container(
-        color: Colors.transparent,
-        child: Center(
-          child: Icon(
-            isPlaying ? Icons.pause_circle : Icons.play_circle,
-            size: 64,
-            color: Colors.white.withValues(alpha: 0.85),
+    return Container(
+      color: Colors.transparent,
+      child: Stack(
+        children: [
+          // Centre play/pause.
+          Center(
+            child: GestureDetector(
+              onTap: isPlaying
+                  ? () => widget.controller.pause()
+                  : () => widget.controller.play(),
+              child: Icon(
+                isPlaying ? Icons.pause_circle : Icons.play_circle,
+                size: 64,
+                color: Colors.white.withValues(alpha: 0.85),
+              ),
+            ),
           ),
-        ),
+          // Fullscreen button in bottom-right.
+          Positioned(
+            bottom: 4,
+            right: 4,
+            child: IconButton(
+              icon: const Icon(Icons.fullscreen, color: Colors.white),
+              tooltip: 'Full screen',
+              onPressed: widget.onFullscreen,
+            ),
+          ),
+        ],
       ),
     );
   }

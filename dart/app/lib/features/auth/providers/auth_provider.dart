@@ -14,44 +14,42 @@ part 'auth_provider.g.dart';
 
 final _log = Logger('auth');
 
+// Placeholder user returned on cold start when cookies exist.
+// The real user profile is only needed for display purposes, which is
+// not used anywhere in the current UI.
+const _kCachedUser = User(
+  id: 0,
+  username: '',
+  name: '',
+  email: '',
+  isAuthenticated: true,
+  isAnonymous: false,
+);
+
 @Riverpod(keepAlive: true)
 class Auth extends _$Auth {
   @override
   Future<User?> build() async {
     final client = ref.read(dioClientProvider)
+      // Attach the 401 interceptor here (after auth_provider is created)
+      // to avoid a circular dependency in the provider graph.
+      ..addAuthInterceptor(
+        onAuthFailed: () => Future<void>.delayed(Duration.zero, signOut),
+      );
 
-    // Attach the 401 interceptor here (after auth_provider is created)
-    // to avoid a circular dependency in the provider graph.
-    ..addAuthInterceptor(
-      onAuthFailed: () => Future<void>.delayed(Duration.zero, signOut),
-    );
-
-    // Try to resume an existing session on startup.
-    _log.info('build: checking for existing session');
-    try {
-      final response = await client.mitxOnline
-          .get<Map<String, dynamic>>('/api/v0/users/current_user/');
-      _log.fine('build: current_user status=${response.statusCode} data=${response.data}');
-      // The API returns a skeleton object with all fields null when
-      // unauthenticated. Only parse into the User model once we know the
-      // caller is authenticated, to avoid Freezed's non-null casts exploding.
-      if (response.data?['is_authenticated'] != true) {
-        _log.info('build: no active session (is_authenticated=false)');
-        return null;
-      }
-      final user = User.fromJson(response.data!);
-      _log.info('build: session resumed, user=${user.username}');
-
-      // The cookie store keeps the mitxonline session across restarts,
-      // but the LMS-side JWT cookies are short-lived. Proactively run the
-      // LMS OAuth handshake so the LMS recognises us for subsequent API
-      // calls. If it fails, the 401 interceptor will still retry later.
+    // Offline-first: if we have persisted cookies, treat the user as
+    // authenticated without hitting the network. The LMS session will be
+    // re-established when the user triggers a sync. If we have no cookies,
+    // redirect to login.
+    if (client.hasCookies) {
+      _log.info('build: cookies found — resuming session offline-first');
+      // Best-effort LMS session refresh in background so that the first
+      // sync is more likely to succeed immediately.
       unawaited(_establishLmsSession(client));
-
-      return user;
-    } on Object catch (e, st) {
-      _log.warning('build: session check failed', e, st);
+      return _kCachedUser;
     }
+
+    _log.info('build: no cookies — user must log in');
     return null;
   }
 
@@ -66,7 +64,8 @@ class Auth extends _$Auth {
   }
 
   /// Called after the WebView OAuth flow completes and cookies are injected
-  /// into the Dio CookieJar. Triggers LMS OAuth then verifies the session.
+  /// into the Dio CookieJar. Triggers LMS OAuth then marks the user as
+  /// authenticated.
   Future<void> onLoginComplete() async {
     _log.info('onLoginComplete: verifying mitxonline session before LMS OAuth');
     state = const AsyncLoading();
@@ -74,9 +73,6 @@ class Auth extends _$Auth {
       final client = ref.read(dioClientProvider);
 
       // Sanity-check: hit current_user on mitxonline BEFORE the LMS OAuth.
-      // If our captured session cookie works, this must return
-      // is_authenticated=true. If not, the cookie transfer is broken and
-      // the LMS OAuth handshake can't possibly succeed.
       try {
         final pre = await client.mitxOnline
             .get<Map<String, dynamic>>('/api/v0/users/current_user/');
@@ -101,28 +97,13 @@ class Auth extends _$Auth {
       // Trigger LMS OAuth handshake — sets session + JWT cookies on the LMS.
       await _establishLmsSession(client);
 
-      // Flush any LMS content cached while unauthenticated (outlines, sequences,
-      // xblocks). Enrollments (mitxonline) are untouched. This ensures the
-      // first content fetch after login sees authenticated LMS responses.
+      // Flush any LMS content cached while unauthenticated.
       final db = ref.read(appDatabaseProvider);
       await db.clearLmsCache();
       _log.info('onLoginComplete: cleared LMS cache');
 
-      // Verify and return the authenticated user.
-      try {
-        final response = await client.mitxOnline
-            .get<Map<String, dynamic>>('/api/v0/users/current_user/');
-        _log.fine('onLoginComplete: current_user status=${response.statusCode} data=${response.data}');
-        if (response.data?['is_authenticated'] != true) {
-          throw Exception('current_user returned is_authenticated=false');
-        }
-        final user = User.fromJson(response.data!);
-        _log.info('onLoginComplete: signed in as ${user.username}');
-        return user;
-      } on DioException catch (e, st) {
-        _log.severe('onLoginComplete: current_user failed status=${e.response?.statusCode}', e, st);
-        rethrow;
-      }
+      // Return placeholder user — home screen will trigger an initial sync.
+      return _kCachedUser;
     });
     if (state.hasError) {
       _log.severe('onLoginComplete: guard caught error', state.error, state.stackTrace);
