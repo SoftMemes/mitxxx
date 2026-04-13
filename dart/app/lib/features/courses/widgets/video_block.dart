@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:chewie/chewie.dart';
 import 'package:emajtee/core/network/connectivity_provider.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/courses/models/xblock_content.dart';
@@ -8,26 +9,34 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 
+/// Inline video player built on top of `chewie`.
+///
+/// Chewie provides a polished control bar with playback-speed menu, seek
+/// scrubber, and a native fullscreen mode, so we don't need a custom
+/// fullscreen screen any more.
 class VideoBlock extends ConsumerStatefulWidget {
   const VideoBlock({
     required this.video,
-    required this.onFullscreen,
     super.key,
+    this.onCompleted,
   });
 
   final ParsedVideoBlock video;
 
-  /// Called when the user taps the fullscreen button.
-  final VoidCallback onFullscreen;
+  /// Fires once when the video reaches (or is within ~300ms of) its end.
+  /// Used by the parent to implement auto-advance.
+  final VoidCallback? onCompleted;
 
   @override
   ConsumerState<VideoBlock> createState() => _VideoBlockState();
 }
 
 class _VideoBlockState extends ConsumerState<VideoBlock> {
-  VideoPlayerController? _controller;
+  VideoPlayerController? _videoController;
+  ChewieController? _chewieController;
   bool _initialized = false;
   bool _hasError = false;
+  bool _completedFired = false;
 
   @override
   void initState() {
@@ -61,23 +70,55 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
 
     try {
       await controller.initialize();
-      if (mounted) {
-        setState(() {
-          _controller = controller;
-          _initialized = true;
-        });
-      } else {
+      if (!mounted) {
         await controller.dispose();
+        return;
       }
+
+      final chewie = ChewieController(
+        videoPlayerController: controller,
+        aspectRatio: controller.value.aspectRatio,
+        autoInitialize: true,
+        playbackSpeeds: const [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0],
+        materialProgressColors: ChewieProgressColors(
+          playedColor: Theme.of(context).colorScheme.primary,
+          handleColor: Theme.of(context).colorScheme.primary,
+          backgroundColor: Colors.black26,
+          bufferedColor: Colors.white30,
+        ),
+      );
+
+      controller.addListener(_onControllerUpdate);
+
+      setState(() {
+        _videoController = controller;
+        _chewieController = chewie;
+        _initialized = true;
+      });
     } on Object catch (_) {
       await controller.dispose();
       if (mounted) setState(() => _hasError = true);
     }
   }
 
+  void _onControllerUpdate() {
+    final c = _videoController;
+    if (c == null || !c.value.isInitialized) return;
+    if (_completedFired) return;
+    if (c.value.duration == Duration.zero) return;
+
+    final remaining = c.value.duration - c.value.position;
+    if (remaining <= const Duration(milliseconds: 300) && !c.value.isPlaying) {
+      _completedFired = true;
+      widget.onCompleted?.call();
+    }
+  }
+
   @override
   void dispose() {
-    _controller?.dispose();
+    _videoController?.removeListener(_onControllerUpdate);
+    _chewieController?.dispose();
+    _videoController?.dispose();
     super.dispose();
   }
 
@@ -85,10 +126,10 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
   Widget build(BuildContext context) {
     // Offline check — default to online if the stream hasn't emitted yet.
     final isOnline = ref.watch(isOnlineProvider).when(
-      data: (v) => v,
-      loading: () => true,
-      error: (_, _) => true,
-    );
+          data: (v) => v,
+          loading: () => true,
+          error: (_, _) => true,
+        );
 
     // Show offline-not-downloaded card only when offline AND no local file.
     if (!isOnline && !_initialized) {
@@ -126,6 +167,7 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
                   setState(() {
                     _hasError = false;
                     _initialized = false;
+                    _completedFired = false;
                   });
                   _initController();
                 },
@@ -137,7 +179,7 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
       );
     }
 
-    if (!_initialized || _controller == null) {
+    if (!_initialized || _chewieController == null) {
       return const AspectRatio(
         aspectRatio: 16 / 9,
         child: ColoredBox(
@@ -147,94 +189,9 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        AspectRatio(
-          aspectRatio: _controller!.value.aspectRatio,
-          child: Stack(
-            alignment: Alignment.bottomCenter,
-            children: [
-              VideoPlayer(_controller!),
-              _VideoControls(
-                controller: _controller!,
-                onFullscreen: widget.onFullscreen,
-              ),
-            ],
-          ),
-        ),
-        VideoProgressIndicator(
-          _controller!,
-          allowScrubbing: true,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        ),
-      ],
-    );
-  }
-}
-
-class _VideoControls extends StatefulWidget {
-  const _VideoControls({
-    required this.controller,
-    required this.onFullscreen,
-  });
-
-  final VideoPlayerController controller;
-  final VoidCallback onFullscreen;
-
-  @override
-  State<_VideoControls> createState() => _VideoControlsState();
-}
-
-class _VideoControlsState extends State<_VideoControls> {
-  @override
-  void initState() {
-    super.initState();
-    widget.controller.addListener(_onControllerUpdate);
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_onControllerUpdate);
-    super.dispose();
-  }
-
-  void _onControllerUpdate() {
-    if (mounted) setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isPlaying = widget.controller.value.isPlaying;
-    return ColoredBox(
-      color: Colors.transparent,
-      child: Stack(
-        children: [
-          // Centre play/pause.
-          Center(
-            child: GestureDetector(
-              onTap: isPlaying
-                  ? () => widget.controller.pause()
-                  : () => widget.controller.play(),
-              child: Icon(
-                isPlaying ? Icons.pause_circle : Icons.play_circle,
-                size: 64,
-                color: Colors.white.withValues(alpha: 0.85),
-              ),
-            ),
-          ),
-          // Fullscreen button in bottom-right.
-          Positioned(
-            bottom: 4,
-            right: 4,
-            child: IconButton(
-              icon: const Icon(Icons.fullscreen, color: Colors.white),
-              tooltip: 'Full screen',
-              onPressed: widget.onFullscreen,
-            ),
-          ),
-        ],
-      ),
+    return AspectRatio(
+      aspectRatio: _videoController!.value.aspectRatio,
+      child: Chewie(controller: _chewieController!),
     );
   }
 }
