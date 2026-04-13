@@ -18,10 +18,14 @@ class VideoBlock extends ConsumerStatefulWidget {
   const VideoBlock({
     required this.video,
     super.key,
+    this.autoPlay = false,
     this.onCompleted,
   });
 
   final ParsedVideoBlock video;
+
+  /// If true the video starts playing as soon as it is initialized.
+  final bool autoPlay;
 
   /// Fires once when the video reaches (or is within ~300ms of) its end.
   /// Used by the parent to implement auto-advance.
@@ -95,6 +99,10 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
         _chewieController = chewie;
         _initialized = true;
       });
+
+      if (widget.autoPlay) {
+        await controller.play();
+      }
     } on Object catch (_) {
       await controller.dispose();
       if (mounted) setState(() => _hasError = true);

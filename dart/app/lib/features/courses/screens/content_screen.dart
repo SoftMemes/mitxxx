@@ -28,6 +28,9 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
   late final PageController _pageController;
   int _currentIndex = 0;
   bool _autoAdvance = false;
+  // Index of the vertical that should auto-play when it becomes visible.
+  // -1 means no pending auto-play.
+  int _autoPlayIndex = -1;
 
   @override
   void initState() {
@@ -50,15 +53,14 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
   }
 
   /// Called when any video on [verticalIndex] completes.
-  /// If auto-advance is on, navigates to the next vertical that has content.
+  /// If auto-advance is on, pages to the next vertical and marks it for
+  /// auto-play. Does nothing if already on the last vertical.
   void _onVideoCompleted(int verticalIndex, SequenceDetail sequence) {
     if (!_autoAdvance) return;
-    final total = sequence.items.length;
-    // Find the next vertical (any type — even if no video, still advance).
     final next = verticalIndex + 1;
-    if (next < total) {
-      _goTo(next);
-    }
+    if (next >= sequence.items.length) return; // end of sequence — stop
+    setState(() => _autoPlayIndex = next);
+    _goTo(next);
   }
 
   @override
@@ -130,12 +132,18 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
                 child: PageView.builder(
                   controller: _pageController,
                   itemCount: total,
-                  onPageChanged: (index) =>
-                      setState(() => _currentIndex = index),
+                  onPageChanged: (index) {
+                    setState(() {
+                      _currentIndex = index;
+                      // Clear auto-play if the user navigated manually.
+                      if (index != _autoPlayIndex) _autoPlayIndex = -1;
+                    });
+                  },
                   itemBuilder: (context, index) {
                     final item = sequence.items[index];
                     return _VerticalPage(
                       item: item,
+                      autoPlay: index == _autoPlayIndex,
                       onVideoCompleted: () =>
                           _onVideoCompleted(index, sequence),
                     );
@@ -265,9 +273,11 @@ class _VerticalPage extends ConsumerWidget {
   const _VerticalPage({
     required this.item,
     required this.onVideoCompleted,
+    this.autoPlay = false,
   });
 
   final SequenceItem item;
+  final bool autoPlay;
   final VoidCallback onVideoCompleted;
 
   @override
@@ -304,6 +314,7 @@ class _VerticalPage extends ConsumerWidget {
       data: (content) => _PageContent(
         content: content,
         item: item,
+        autoPlay: autoPlay,
         onVideoCompleted: onVideoCompleted,
       ),
     );
@@ -317,10 +328,12 @@ class _PageContent extends StatelessWidget {
     required this.content,
     required this.item,
     required this.onVideoCompleted,
+    this.autoPlay = false,
   });
 
   final XBlockContent content;
   final SequenceItem item;
+  final bool autoPlay;
   final VoidCallback onVideoCompleted;
 
   @override
@@ -333,6 +346,7 @@ class _PageContent extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: VideoBlock(
             video: video,
+            autoPlay: autoPlay,
             onCompleted: onVideoCompleted,
           ),
         ),
