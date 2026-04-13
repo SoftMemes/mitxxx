@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
+import 'package:emajtee/core/storage/app_database.dart';
+import 'package:mitx_api/mitx_api.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/courses/models/enrollment.dart';
 import 'package:emajtee/features/courses/models/xblock_content.dart';
@@ -177,8 +179,8 @@ class SyncController extends _$SyncController {
   }
 
   Future<void> _fetchAndCacheXblock(
-    dynamic client,
-    dynamic db,
+    DioClient client,
+    AppDatabase db,
     String verticalId, {
     required String courseId,
     bool retry = false,
@@ -213,7 +215,7 @@ class SyncController extends _$SyncController {
   /// Any old URL that is no longer present and has a downloaded row is
   /// marked stale — the user will see an update-available indicator.
   Future<void> _detectStaleDownloads(
-    dynamic db,
+    AppDatabase db,
     String verticalId,
     List<ParsedVideoBlock> newVideos,
   ) async {
@@ -251,7 +253,7 @@ class SyncController extends _$SyncController {
   /// Removes download rows (and their files) for any URL that belongs to
   /// [courseId] but is no longer present in any of [currentVerticalIds].
   Future<void> _cleanupRemovedVideos(
-    dynamic db,
+    AppDatabase db,
     String courseId,
     List<String> currentVerticalIds,
   ) async {
