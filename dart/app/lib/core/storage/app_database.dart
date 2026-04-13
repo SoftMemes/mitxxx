@@ -3,6 +3,7 @@
 //   dart run build_runner build
 // before analyzing or building. The generated file is gitignored.
 
+import 'dart:convert';
 import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
@@ -62,24 +63,64 @@ class CachedCourseSync extends Table {
   Set<Column> get primaryKey => {courseId};
 }
 
-@DriftDatabase(
-  tables: [CachedEnrollments, CachedOutlines, CachedSequences, CachedXblocks, CachedCourseSync],
-)
+/// Tracks downloaded video files on disk. Primary key is the video URL —
+/// deduplication is URL-keyed so a video shared across courses is only
+/// downloaded once. [courseIds] is a JSON-encoded List<String>.
+class DownloadedVideos extends Table {
+  TextColumn get url => text()();
+  TextColumn get localFilePath => text()();
+  TextColumn get courseIds => text()(); // JSON List<String>
+  TextColumn get status => text()(); // DownloadStatus.name
+  RealColumn get progress =>
+      real().withDefault(const Constant(0.0))();
+  IntColumn get bytesDownloaded =>
+      integer().withDefault(const Constant(0))();
+  IntColumn get totalBytes =>
+      integer().withDefault(const Constant(0))();
+  // background_downloader task ID (SHA1 of URL) — used for cancel
+  TextColumn get taskId => text().nullable()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {url};
+}
+
+// Cache table names used in migration (must match actual table names).
+const _cacheTables = [
+  'cached_enrollments',
+  'cached_outlines',
+  'cached_sequences',
+  'cached_xblocks',
+  'cached_course_sync',
+];
+
+@DriftDatabase(tables: [
+  CachedEnrollments,
+  CachedOutlines,
+  CachedSequences,
+  CachedXblocks,
+  CachedCourseSync,
+  DownloadedVideos,
+])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
         onUpgrade: (m, from, to) async {
-          // Cache-only DB: safe to drop and recreate on schema changes.
+          // Drop and recreate only the cache tables (they are rebuildable from
+          // the server). NEVER drop downloaded_videos — it references files on
+          // disk and is user data.
           await m.recreateAllViews();
-          for (final table in allTables) {
-            await m.deleteTable(table.actualTableName);
+          for (final tableName in _cacheTables) {
+            await m.deleteTable(tableName);
           }
+          // Create any tables that don't yet exist (including downloaded_videos
+          // on first upgrade to schema v4).
           await m.createAll();
         },
       );
@@ -196,8 +237,103 @@ class AppDatabase extends _$AppDatabase {
         ),
       );
 
+  // --- Downloaded Videos ---
+
+  Future<DownloadedVideo?> getDownloadedVideo(String url) =>
+      (select(downloadedVideos)..where((t) => t.url.equals(url)))
+          .getSingleOrNull();
+
+  Stream<DownloadedVideo?> watchDownloadedVideo(String url) =>
+      (select(downloadedVideos)..where((t) => t.url.equals(url)))
+          .watchSingleOrNull();
+
+  Stream<List<DownloadedVideo>> watchDownloadsForUrls(List<String> urls) {
+    if (urls.isEmpty) return Stream.value([]);
+    return (select(downloadedVideos)..where((t) => t.url.isIn(urls))).watch();
+  }
+
+  Future<List<DownloadedVideo>> getAllDownloadedVideos() =>
+      select(downloadedVideos).get();
+
+  Future<List<DownloadedVideo>> getDownloadsForCourse(String courseId) =>
+      (select(downloadedVideos)
+            ..where((t) => t.courseIds.contains(courseId)))
+          .get();
+
+  Future<void> upsertDownloadedVideo(DownloadedVideosCompanion companion) =>
+      into(downloadedVideos).insertOnConflictUpdate(companion);
+
+  Future<void> updateDownloadProgress(
+    String url, {
+    required double progress,
+    required int bytesDownloaded,
+    required int totalBytes,
+  }) =>
+      (update(downloadedVideos)..where((t) => t.url.equals(url))).write(
+        DownloadedVideosCompanion(
+          status: const Value('downloading'),
+          progress: Value(progress),
+          bytesDownloaded: Value(bytesDownloaded),
+          totalBytes: Value(totalBytes),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+
+  Future<void> markDownloadComplete(String url, String localFilePath) =>
+      (update(downloadedVideos)..where((t) => t.url.equals(url))).write(
+        DownloadedVideosCompanion(
+          localFilePath: Value(localFilePath),
+          status: const Value('downloaded'),
+          progress: const Value(1.0),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+
+  Future<void> markDownloadFailed(String url) =>
+      (update(downloadedVideos)..where((t) => t.url.equals(url))).write(
+        DownloadedVideosCompanion(
+          status: const Value('failed'),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+
+  Future<void> markDownloadStale(String url) =>
+      (update(downloadedVideos)..where((t) => t.url.equals(url))).write(
+        DownloadedVideosCompanion(
+          status: const Value('stale'),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+
+  Future<void> deleteDownloadedVideo(String url) =>
+      (delete(downloadedVideos)..where((t) => t.url.equals(url))).go();
+
+  /// Removes [courseId] from the row's courseIds list. If no courses remain,
+  /// deletes the row entirely and returns the localFilePath for the caller
+  /// to delete from disk.
+  Future<String?> removeCourseFromDownload(String url, String courseId) async {
+    final row = await getDownloadedVideo(url);
+    if (row == null) return null;
+
+    final ids = (jsonDecode(row.courseIds) as List<dynamic>)
+        .cast<String>()
+        .where((id) => id != courseId)
+        .toList();
+
+    if (ids.isEmpty) {
+      await deleteDownloadedVideo(url);
+      return row.localFilePath;
+    }
+
+    await (update(downloadedVideos)..where((t) => t.url.equals(url))).write(
+      DownloadedVideosCompanion(courseIds: Value(jsonEncode(ids))),
+    );
+    return null;
+  }
+
   // --- Clear LMS-side caches (used after fresh LMS auth to discard any
-  //     content fetched while unauthenticated). Leaves enrollments intact. ---
+  //     content fetched while unauthenticated). Leaves enrollments and
+  //     downloaded videos intact. ---
 
   Future<void> clearLmsCache() async {
     await delete(cachedOutlines).go();
@@ -205,14 +341,27 @@ class AppDatabase extends _$AppDatabase {
     await delete(cachedXblocks).go();
   }
 
-  // --- Clear all cached data (used on sign-out) ---
+  // --- Clear all cached data (used on sign-out).
+  //     Caller must also delete files for the rows returned here. ---
 
-  Future<void> clearAll() async {
+  Future<List<String>> clearAllAndGetDownloadPaths() async {
+    final rows = await getAllDownloadedVideos();
+    final paths = rows
+        .where((r) => r.localFilePath.isNotEmpty)
+        .map((r) => r.localFilePath)
+        .toList();
+    await delete(downloadedVideos).go();
     await delete(cachedEnrollments).go();
     await delete(cachedOutlines).go();
     await delete(cachedSequences).go();
     await delete(cachedXblocks).go();
     await delete(cachedCourseSync).go();
+    return paths;
+  }
+
+  // Keep the old clearAll for any callers that don't need the paths.
+  Future<void> clearAll() async {
+    await clearAllAndGetDownloadPaths();
   }
 }
 

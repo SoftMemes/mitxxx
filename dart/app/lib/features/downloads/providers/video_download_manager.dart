@@ -1,0 +1,298 @@
+// ignore_for_file: uri_has_not_been_generated
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:background_downloader/background_downloader.dart';
+import 'package:drift/drift.dart' show Value;
+import 'package:emajtee/core/storage/app_database.dart';
+import 'package:emajtee/core/storage/database_provider.dart';
+import 'package:emajtee/features/courses/models/outline.dart';
+import 'package:emajtee/features/courses/models/sequence.dart';
+import 'package:emajtee/features/courses/models/xblock_content.dart';
+import 'package:emajtee/features/downloads/models/download_status.dart';
+import 'package:emajtee/features/downloads/utils/download_paths.dart';
+import 'package:logging/logging.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'video_download_manager.g.dart';
+
+final _log = Logger('downloads');
+
+const _kGroup = 'videos';
+const _kConcurrency = 3;
+
+@Riverpod(keepAlive: true)
+VideoDownloadManager videoDownloadManager(Ref ref) {
+  final db = ref.read(appDatabaseProvider);
+  final manager = VideoDownloadManager._(db);
+  ref.onDispose(manager._dispose);
+  return manager;
+}
+
+/// Service that manages video downloads using background_downloader.
+///
+/// All persistent state lives in [AppDatabase.downloadedVideos]. This class
+/// orchestrates the download engine and keeps the DB in sync with task events.
+class VideoDownloadManager {
+  VideoDownloadManager._(this._db) {
+    _init();
+  }
+
+  final AppDatabase _db;
+
+  Future<void> _init() async {
+    await FileDownloader().configure(globalConfig: [
+      (Config.holdingQueue, (_kConcurrency, null, null)),
+    ]);
+
+    FileDownloader().updates.listen(_handleUpdate);
+
+    // Re-queue any rows left in 'queued' state from a previous session
+    // (app was killed before background_downloader could pick them up).
+    final all = await _db.getAllDownloadedVideos();
+    for (final row in all) {
+      if (row.status == DownloadStatus.queued.name) {
+        await _enqueueTask(row.url);
+      }
+    }
+  }
+
+  void _dispose() {
+    FileDownloader().destroy();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
+
+  /// Enqueues downloads for all videos in the given scope.
+  /// Already-downloaded URLs are skipped (dedup by URL).
+  Future<void> enqueueScope({
+    required String courseId,
+    String? sequenceId,
+    String? verticalId,
+  }) async {
+    final urls = await _collectUrls(
+      courseId: courseId,
+      sequenceId: sequenceId,
+      verticalId: verticalId,
+    );
+
+    for (final url in urls) {
+      final existing = await _db.getDownloadedVideo(url);
+      if (existing != null &&
+          (existing.status == DownloadStatus.downloaded.name ||
+              existing.status == DownloadStatus.downloading.name ||
+              existing.status == DownloadStatus.queued.name)) {
+        // Already downloaded or in-flight — skip.
+        continue;
+      }
+
+      // If stale or failed, re-download.
+      final localPath = await localPathForUrl(url);
+      final courseIds = await _mergedCourseIds(url, courseId);
+
+      await _db.upsertDownloadedVideo(DownloadedVideosCompanion.insert(
+        url: url,
+        localFilePath: localPath,
+        courseIds: jsonEncode(courseIds),
+        status: DownloadStatus.queued.name,
+        taskId: Value(urlToSha1(url)),
+        updatedAt: DateTime.now(),
+      ));
+
+      await _enqueueTask(url);
+    }
+  }
+
+  /// Cancels an active download for [url] and removes it from the DB.
+  Future<void> cancel(String url) async {
+    final taskId = urlToSha1(url);
+    await FileDownloader().cancelTasksWithIds([taskId]);
+    await _db.deleteDownloadedVideo(url);
+  }
+
+  /// Deletes downloaded video(s) for the given scope.
+  /// Removes the [courseId] reference from each URL; deletes the file + row if
+  /// no other course references it.
+  Future<void> deleteScope({
+    required String courseId,
+    String? sequenceId,
+    String? verticalId,
+  }) async {
+    final urls = await _collectUrls(
+      courseId: courseId,
+      sequenceId: sequenceId,
+      verticalId: verticalId,
+    );
+
+    for (final url in urls) {
+      final localFilePath = await _db.removeCourseFromDownload(url, courseId);
+      if (localFilePath != null && localFilePath.isNotEmpty) {
+        try {
+          File(localFilePath).deleteSync();
+        } catch (e) {
+          _log.warning('Could not delete file $localFilePath: $e');
+        }
+      }
+    }
+  }
+
+  /// Deletes all downloaded files and their DB rows.
+  /// Called during sign-out (the auth provider calls db.clearAll separately).
+  Future<void> deleteAllFiles() async {
+    final all = await _db.getAllDownloadedVideos();
+    final taskIds = all.map((r) => r.taskId).whereType<String>().toList();
+    if (taskIds.isNotEmpty) {
+      await FileDownloader().cancelTasksWithIds(taskIds);
+    }
+    for (final row in all) {
+      if (row.localFilePath.isNotEmpty) {
+        try {
+          File(row.localFilePath).deleteSync();
+        } catch (_) {}
+      }
+    }
+    // DB rows are cleared by db.clearAll() in the auth provider.
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internal
+  // ---------------------------------------------------------------------------
+
+  Future<void> _enqueueTask(String url) async {
+    final sha1hex = urlToSha1(url);
+    final task = DownloadTask(
+      taskId: sha1hex,
+      url: url,
+      filename: '$sha1hex.mp4',
+      directory: 'downloads',
+      baseDirectory: BaseDirectory.applicationSupport,
+      group: _kGroup,
+      retries: 3,
+      allowPause: true,
+      metaData: url, // store original URL so we can look up the DB row
+    );
+    await FileDownloader().enqueue(task);
+    _log.fine('Enqueued download for $url');
+  }
+
+  void _handleUpdate(TaskUpdate update) {
+    switch (update) {
+      case TaskStatusUpdate(:final task, :final status):
+        _handleStatus(task, status);
+      case TaskProgressUpdate(:final task, :final progress, :final expectedFileSize):
+        _handleProgress(task, progress, expectedFileSize);
+    }
+  }
+
+  Future<void> _handleStatus(Task task, TaskStatus status) async {
+    final url = task.metaData;
+    if (url.isEmpty) return;
+
+    switch (status) {
+      case TaskStatus.complete:
+        final localPath = await localPathForUrl(url);
+        await _db.markDownloadComplete(url, localPath);
+        _log.fine('Download complete: $url → $localPath');
+
+        // If the old URL was stale, clean up matching stale rows for the same
+        // task (shouldn't happen, but guard).
+        break;
+
+      case TaskStatus.failed:
+        await _db.markDownloadFailed(url);
+        _log.warning('Download failed: $url');
+
+      case TaskStatus.canceled:
+        // cancel() already removes the row; nothing to do here.
+        break;
+
+      case TaskStatus.running:
+        // Progress callbacks will flip status to 'downloading' via
+        // updateDownloadProgress; nothing extra needed here.
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  Future<void> _handleProgress(
+    Task task,
+    double progress,
+    int expectedFileSize,
+  ) async {
+    final url = task.metaData;
+    if (url.isEmpty || progress < 0) return; // -1 = indeterminate
+
+    final bytesDownloaded =
+        expectedFileSize > 0 ? (progress * expectedFileSize).round() : 0;
+
+    await _db.updateDownloadProgress(
+      url,
+      progress: progress,
+      bytesDownloaded: bytesDownloaded,
+      totalBytes: expectedFileSize,
+    );
+  }
+
+  Future<List<String>> _collectUrls({
+    required String courseId,
+    String? sequenceId,
+    String? verticalId,
+  }) async {
+    final urls = <String>{};
+
+    if (verticalId != null) {
+      await _addUrlsForVertical(verticalId, urls);
+    } else if (sequenceId != null) {
+      await _addUrlsForSequence(sequenceId, urls);
+    } else {
+      await _addUrlsForCourse(courseId, urls);
+    }
+
+    return urls.toList();
+  }
+
+  Future<void> _addUrlsForVertical(String verticalId, Set<String> out) async {
+    final row = await _db.getXblock(verticalId);
+    if (row == null) return;
+    final content =
+        XBlockContent.fromJson(jsonDecode(row.data) as Map<String, dynamic>);
+    for (final v in content.videos) {
+      if (v.mp4Url != null) out.add(v.mp4Url!);
+    }
+  }
+
+  Future<void> _addUrlsForSequence(String sequenceId, Set<String> out) async {
+    final row = await _db.getSequence(sequenceId);
+    if (row == null) return;
+    final seq =
+        SequenceDetail.fromJson(jsonDecode(row.data) as Map<String, dynamic>);
+    for (final item in seq.items) {
+      await _addUrlsForVertical(item.id, out);
+    }
+  }
+
+  Future<void> _addUrlsForCourse(String courseId, Set<String> out) async {
+    final row = await _db.getOutline(courseId);
+    if (row == null) return;
+    final outline =
+        CourseOutline.fromJson(jsonDecode(row.data) as Map<String, dynamic>);
+    for (final section in outline.outline.sections) {
+      for (final seqId in section.sequenceIds) {
+        await _addUrlsForSequence(seqId, out);
+      }
+    }
+  }
+
+  /// Returns the merged courseIds list for [url], including [courseId].
+  Future<List<String>> _mergedCourseIds(String url, String courseId) async {
+    final existing = await _db.getDownloadedVideo(url);
+    final current = existing != null
+        ? (jsonDecode(existing.courseIds) as List<dynamic>).cast<String>()
+        : <String>[];
+    return ({...current, courseId}).toList();
+  }
+}

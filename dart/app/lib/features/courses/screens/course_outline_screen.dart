@@ -1,5 +1,7 @@
 import 'package:emajtee/features/courses/models/outline.dart';
 import 'package:emajtee/features/courses/providers/outline_provider.dart';
+import 'package:emajtee/features/downloads/widgets/download_button.dart';
+import 'package:emajtee/features/downloads/widgets/download_progress_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,6 +25,11 @@ class CourseOutlineScreen extends ConsumerWidget {
           ),
           orElse: () => const Text('Course Outline'),
         ),
+        actions: [
+          // Course-level download button.
+          DownloadButton(courseId: courseId),
+          const SizedBox(width: 8),
+        ],
       ),
       body: outlineAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -50,6 +57,11 @@ class CourseOutlineScreen extends ConsumerWidget {
                 ref.invalidate(courseOutlineProvider(courseId: courseId)),
             child: CustomScrollView(
               slivers: [
+                // Course-level progress bar (shown below AppBar when partially
+                // or fully downloaded).
+                SliverToBoxAdapter(
+                  child: DownloadProgressBar(courseId: courseId),
+                ),
                 SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
@@ -58,6 +70,8 @@ class CourseOutlineScreen extends ConsumerWidget {
                         return _SectionHeaderTile(title: item.title);
                       } else if (item is _SequenceEntry) {
                         return _SequenceTile(
+                          courseId: courseId,
+                          sequenceId: item.sequenceId,
                           title: item.title,
                           onTap: () => context.push(
                             '/course/$courseId/sequence/${item.sequenceId}',
@@ -128,8 +142,15 @@ class _SectionHeaderTile extends StatelessWidget {
 }
 
 class _SequenceTile extends StatelessWidget {
-  const _SequenceTile({required this.title, required this.onTap});
+  const _SequenceTile({
+    required this.courseId,
+    required this.sequenceId,
+    required this.title,
+    required this.onTap,
+  });
 
+  final String courseId;
+  final String sequenceId;
   final String title;
   final VoidCallback onTap;
 
@@ -138,7 +159,13 @@ class _SequenceTile extends StatelessWidget {
     return ListTile(
       leading: const Icon(Icons.play_circle_outline),
       title: Text(title),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DownloadButton(courseId: courseId, sequenceId: sequenceId),
+          const Icon(Icons.chevron_right),
+        ],
+      ),
       onTap: onTap,
     );
   }

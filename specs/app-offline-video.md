@@ -1,7 +1,7 @@
 # App Offline Video Specification
 
-> **Version**: 2.0 (April 2026)
-> **Status**: Ready for Implementation
+> **Version**: 2.1 (April 2026)
+> **Status**: Implemented
 > **Last Updated**: 2026-04-12
 
 ## Description
@@ -248,3 +248,31 @@ When a course is removed from the app:
 | `features/downloads/widgets/download_button.dart` | Reusable download button widget (all states) |
 | `features/downloads/widgets/download_progress_bar.dart` | Fraction + bar progress widget |
 | `features/downloads/models/download_status.dart` | `DownloadStatus` enum |
+
+---
+
+## Implementation Notes
+
+**Implemented**: April 2026
+
+**Key files created**:
+- `lib/features/downloads/models/download_status.dart`
+- `lib/features/downloads/utils/download_paths.dart`
+- `lib/features/downloads/providers/video_download_manager.dart`
+- `lib/features/downloads/providers/scope_download_provider.dart`
+- `lib/features/downloads/widgets/download_button.dart`
+- `lib/features/downloads/widgets/download_progress_bar.dart`
+
+**Key files modified**:
+- `lib/core/storage/app_database.dart` — `DownloadedVideos` table, schema v4, non-destructive migration
+- `lib/features/sync/providers/sync_controller.dart` — stale detection + orphan cleanup
+- `lib/features/auth/providers/auth_provider.dart` — `deleteAllFiles()` on sign-out
+- `lib/features/courses/widgets/video_block.dart` — local-file-first playback
+- `lib/features/courses/screens/fullscreen_video_screen.dart` — local-file-first playback
+- `lib/features/courses/screens/course_outline_screen.dart` — course + sequence buttons
+- `lib/features/courses/screens/content_screen.dart` — vertical button in AppBar
+- `dart/app/pubspec.yaml` — `background_downloader ^8.0.0`, `crypto ^3.0.6`
+- `dart/app/ios/Runner/Info.plist` — `UIBackgroundModes`
+- `dart/app/android/app/src/main/AndroidManifest.xml` — background permissions
+
+**Before shipping**: Run `dart run build_runner build --delete-conflicting-outputs` to regenerate `.g.dart` files.

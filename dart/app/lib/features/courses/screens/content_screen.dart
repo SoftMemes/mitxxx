@@ -7,6 +7,7 @@ import 'package:emajtee/features/courses/utils/xblock_parser.dart'
     show stripVideoBlocks;
 import 'package:emajtee/features/courses/widgets/html_block.dart';
 import 'package:emajtee/features/courses/widgets/video_block.dart';
+import 'package:emajtee/features/downloads/widgets/download_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -96,6 +97,11 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
     final sequenceAsync =
         ref.watch(sequenceDetailProvider(blockId: widget.sequenceId));
 
+    // Current vertical ID for the download button (null while loading).
+    final currentVerticalId = sequenceAsync.asData?.value.items
+        .elementAtOrNull(_currentIndex)
+        ?.id;
+
     return Scaffold(
       appBar: AppBar(
         title: sequenceAsync.maybeWhen(
@@ -107,6 +113,15 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
               : const Text('Content'),
           orElse: () => const Text('Content'),
         ),
+        actions: [
+          if (currentVerticalId != null)
+            DownloadButton(
+              courseId: widget.courseId,
+              sequenceId: widget.sequenceId,
+              verticalId: currentVerticalId,
+            ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: sequenceAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

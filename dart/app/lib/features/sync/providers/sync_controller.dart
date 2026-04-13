@@ -1,5 +1,6 @@
 // ignore_for_file: uri_has_not_been_generated
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
@@ -12,6 +13,7 @@ import 'package:emajtee/features/courses/providers/sequence_provider.dart';
 import 'package:emajtee/features/courses/providers/xblock_provider.dart';
 import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:emajtee/features/courses/utils/xblock_parser.dart';
+import 'package:emajtee/features/downloads/models/download_status.dart';
 import 'package:emajtee/features/sync/models/course_sync_state.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -147,11 +149,15 @@ class SyncController extends _$SyncController {
       });
 
       // 4. Fetch all vertical xblocks (with one retry per failure).
+      //    Also detects URL changes and marks stale downloads.
       await _parallelBounded(allVerticalIds, 4, (verticalId) async {
-        await _fetchAndCacheXblock(client, db, verticalId, retry: true);
+        await _fetchAndCacheXblock(client, db, verticalId, courseId: courseId, retry: true);
       });
 
-      // 5. Record success; invalidate cached providers for this course.
+      // 5. Cleanup: remove downloads for video blocks that no longer exist.
+      await _cleanupRemovedVideos(db, courseId, allVerticalIds);
+
+      // 6. Record success; invalidate cached providers for this course.
       final now = DateTime.now();
       await db.putSyncSuccess(courseId, now);
       _updateCourseState(courseId, SyncStatus.idle, lastSyncedAt: now);
@@ -174,6 +180,7 @@ class SyncController extends _$SyncController {
     dynamic client,
     dynamic db,
     String verticalId, {
+    required String courseId,
     bool retry = false,
   }) async {
     try {
@@ -186,14 +193,96 @@ class SyncController extends _$SyncController {
         htmlContent: html,
         hasContent: html.trim().isNotEmpty,
       );
+
+      // Detect URL changes: compare old xblock URLs against new ones.
+      await _detectStaleDownloads(db, verticalId, videos);
+
       await db.putXblock(verticalId, jsonEncode(content.toJson()));
     } on Object catch (e, st) {
       if (retry) {
         _log.warning('xblock $verticalId failed, retrying', e, st);
-        await _fetchAndCacheXblock(client, db, verticalId, retry: false);
+        await _fetchAndCacheXblock(client, db, verticalId, courseId: courseId, retry: false);
       } else {
         _log.warning('xblock $verticalId failed after retry', e, st);
         // Don't rethrow — a single bad vertical shouldn't fail the whole course.
+      }
+    }
+  }
+
+  /// Compares the old cached xblock's video URLs against [newVideos].
+  /// Any old URL that is no longer present and has a downloaded row is
+  /// marked stale — the user will see an update-available indicator.
+  Future<void> _detectStaleDownloads(
+    dynamic db,
+    String verticalId,
+    List<ParsedVideoBlock> newVideos,
+  ) async {
+    final oldRow = await db.getXblock(verticalId);
+    if (oldRow == null) return;
+
+    XBlockContent oldContent;
+    try {
+      oldContent = XBlockContent.fromJson(
+          jsonDecode(oldRow.data) as Map<String, dynamic>);
+    } catch (_) {
+      return;
+    }
+
+    final newUrls = newVideos
+        .where((v) => v.mp4Url != null)
+        .map((v) => v.mp4Url!)
+        .toSet();
+
+    for (final oldVideo in oldContent.videos) {
+      final oldUrl = oldVideo.mp4Url;
+      if (oldUrl == null) continue;
+      if (newUrls.contains(oldUrl)) continue;
+
+      // Old URL is gone — if it was downloaded, mark stale.
+      final downloaded = await db.getDownloadedVideo(oldUrl);
+      if (downloaded != null &&
+          downloaded.status == DownloadStatus.downloaded.name) {
+        await db.markDownloadStale(oldUrl);
+        _log.info('Marked stale: $oldUrl (vertical $verticalId)');
+      }
+    }
+  }
+
+  /// Removes download rows (and their files) for any URL that belongs to
+  /// [courseId] but is no longer present in any of [currentVerticalIds].
+  Future<void> _cleanupRemovedVideos(
+    dynamic db,
+    String courseId,
+    List<String> currentVerticalIds,
+  ) async {
+    // Collect all current mp4Urls across the course's xblocks.
+    final currentUrls = <String>{};
+    for (final vertId in currentVerticalIds) {
+      final row = await db.getXblock(vertId);
+      if (row == null) continue;
+      try {
+        final content = XBlockContent.fromJson(
+            jsonDecode(row.data) as Map<String, dynamic>);
+        for (final v in content.videos) {
+          if (v.mp4Url != null) currentUrls.add(v.mp4Url!);
+        }
+      } catch (_) {}
+    }
+
+    // Find downloads for this course that are no longer in the URL set.
+    final courseDownloads = await db.getDownloadsForCourse(courseId);
+    for (final row in courseDownloads) {
+      if (currentUrls.contains(row.url)) continue;
+      // This URL is no longer in the course — remove the course reference.
+      final orphanedPath =
+          await db.removeCourseFromDownload(row.url, courseId);
+      if (orphanedPath != null && orphanedPath.isNotEmpty) {
+        try {
+          File(orphanedPath).deleteSync();
+          _log.info('Deleted orphaned download: $orphanedPath');
+        } catch (e) {
+          _log.warning('Could not delete orphaned file $orphanedPath: $e');
+        }
       }
     }
   }

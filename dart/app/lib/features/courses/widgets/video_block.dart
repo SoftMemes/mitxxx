@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:emajtee/core/network/connectivity_provider.dart';
+import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/courses/models/xblock_content.dart';
+import 'package:emajtee/features/downloads/models/download_status.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
@@ -38,8 +42,24 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
       return;
     }
 
+    // Prefer locally downloaded file over streaming.
+    VideoPlayerController? controller;
+    if (widget.video.mp4Url != null) {
+      final db = ref.read(appDatabaseProvider);
+      final downloaded = await db.getDownloadedVideo(widget.video.mp4Url!);
+      if (downloaded != null &&
+          downloaded.status == DownloadStatus.downloaded.name &&
+          downloaded.localFilePath.isNotEmpty &&
+          File(downloaded.localFilePath).existsSync()) {
+        controller = VideoPlayerController.file(
+          File(downloaded.localFilePath),
+        );
+      }
+    }
+
+    controller ??= VideoPlayerController.networkUrl(Uri.parse(url));
+
     try {
-      final controller = VideoPlayerController.networkUrl(Uri.parse(url));
       await controller.initialize();
       if (mounted) {
         setState(() {
@@ -50,6 +70,7 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
         await controller.dispose();
       }
     } catch (_) {
+      await controller.dispose();
       if (mounted) setState(() => _hasError = true);
     }
   }
@@ -69,7 +90,8 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
       error: (_, __) => true,
     );
 
-    if (!isOnline) {
+    // Show offline-not-downloaded card only when offline AND no local file.
+    if (!isOnline && !_initialized) {
       return Card(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Padding(
@@ -80,7 +102,7 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
-                  'Video unavailable offline — connect to internet to stream',
+                  'Video not available offline — download it first',
                 ),
               ),
             ],
@@ -101,7 +123,10 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
               const Expanded(child: Text('Video could not be loaded')),
               TextButton(
                 onPressed: () {
-                  setState(() => _hasError = false);
+                  setState(() {
+                    _hasError = false;
+                    _initialized = false;
+                  });
                   _initController();
                 },
                 child: const Text('Retry'),

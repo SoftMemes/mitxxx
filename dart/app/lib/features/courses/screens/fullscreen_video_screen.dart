@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/courses/models/sequence.dart';
 import 'package:emajtee/features/courses/models/xblock_content.dart';
 import 'package:emajtee/features/courses/providers/xblock_provider.dart';
+import 'package:emajtee/features/downloads/models/download_status.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -93,7 +96,25 @@ class _FullscreenVideoScreenState
     }
 
     final prev = _controller;
-    final newController = VideoPlayerController.networkUrl(Uri.parse(url));
+
+    // Prefer locally downloaded file over streaming.
+    VideoPlayerController newController;
+    if (video.mp4Url != null) {
+      final db = ref.read(appDatabaseProvider);
+      final downloaded = await db.getDownloadedVideo(video.mp4Url!);
+      if (downloaded != null &&
+          downloaded.status == DownloadStatus.downloaded.name &&
+          downloaded.localFilePath.isNotEmpty &&
+          File(downloaded.localFilePath).existsSync()) {
+        newController = VideoPlayerController.file(
+          File(downloaded.localFilePath),
+        );
+      } else {
+        newController = VideoPlayerController.networkUrl(Uri.parse(url));
+      }
+    } else {
+      newController = VideoPlayerController.networkUrl(Uri.parse(url));
+    }
     try {
       await newController.initialize();
       if (!mounted) {

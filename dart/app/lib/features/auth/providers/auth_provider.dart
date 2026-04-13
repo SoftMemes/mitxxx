@@ -6,6 +6,7 @@ import 'package:mitx_api/mitx_api.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/auth/models/user.dart';
+import 'package:emajtee/features/downloads/providers/video_download_manager.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -123,7 +124,10 @@ class Auth extends _$Auth {
     // auto-reauthenticate via a persisted Keycloak SSO cookie.
     await CookieManager.instance().deleteAllCookies();
 
-    // Clear all cached course data from Drift.
+    // Delete any downloaded video files from disk.
+    await ref.read(videoDownloadManagerProvider).deleteAllFiles();
+
+    // Clear all cached course data (and the now-empty download rows) from Drift.
     await db.clearAll();
 
     state = const AsyncData(null);

@@ -4,6 +4,17 @@ part 'enrollment.freezed.dart';
 part 'enrollment.g.dart';
 
 @freezed
+abstract class CourseMeta with _$CourseMeta {
+  const factory CourseMeta({
+    @JsonKey(name: 'feature_image_src') String? featureImageSrc,
+    String? description,
+  }) = _CourseMeta;
+
+  factory CourseMeta.fromJson(Map<String, dynamic> json) =>
+      _$CourseMetaFromJson(json);
+}
+
+@freezed
 abstract class CourseRun with _$CourseRun {
   const factory CourseRun({
     required String title,
@@ -13,6 +24,7 @@ abstract class CourseRun with _$CourseRun {
     required String? endDate,
     required String runTag,
     required String courseNumber,
+    CourseMeta? course,
   }) = _CourseRun;
 
   factory CourseRun.fromJson(Map<String, dynamic> json) =>
