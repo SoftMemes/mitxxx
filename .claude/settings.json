@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'root=$(git rev-parse --show-toplevel) && exec \"$root/.claude/hooks/flutter-analyze.sh\"'"
+          }
+        ]
+      }
+    ]
+  }
+}
