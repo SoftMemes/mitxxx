@@ -74,18 +74,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             );
           }
 
-          return ListView.builder(
+          return ListView.separated(
             itemCount: enrollments.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (context, index) {
               final enrollment = enrollments[index];
               final courseId = enrollment.run.coursewareId;
               final courseSyncState = syncState[courseId];
-              return _CourseCard(
+              return _CourseTile(
                 enrollment: enrollment,
                 syncState: courseSyncState,
-                onRefresh: () => ref
-                    .read(syncControllerProvider.notifier)
-                    .syncCourse(courseId),
+                onTap: courseSyncState?.status == SyncStatus.syncing
+                    ? null
+                    : () => context.push('/course/$courseId'),
               );
             },
           );
@@ -129,19 +130,19 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _CourseCard extends ConsumerWidget {
-  const _CourseCard({
+class _CourseTile extends StatelessWidget {
+  const _CourseTile({
     required this.enrollment,
     required this.syncState,
-    required this.onRefresh,
+    required this.onTap,
   });
 
   final Enrollment enrollment;
   final CourseSyncState? syncState;
-  final VoidCallback onRefresh;
+  final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final run = enrollment.run;
     final status = syncState?.status ?? SyncStatus.idle;
     final isSyncing = status == SyncStatus.syncing;
@@ -169,87 +170,102 @@ class _CourseCard extends ConsumerWidget {
                 ? 'Synced ${_relativeTime(lastSynced)}'
                 : 'Not synced';
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: isSyncing
-            ? null
-            : () => context.push('/course/${run.coursewareId}'),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      run.title,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(run.courseNumber),
-                    if (dateRange != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        dateRange,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        if (hasError)
-                          const Icon(Icons.error_outline,
-                              size: 14, color: Colors.red)
-                        else if (isSyncing)
-                          const SizedBox(
-                            width: 12,
-                            height: 12,
-                            child: CircularProgressIndicator(strokeWidth: 1.5),
-                          )
-                        else
-                          Icon(Icons.check_circle_outline,
-                              size: 14,
-                              color: lastSynced != null
-                                  ? Colors.green
-                                  : Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(
-                          syncLabel,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(
-                                color: hasError ? Colors.red : Colors.grey,
-                              ),
+    final imageUrl = run.course?.featureImageSrc;
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Course artwork.
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: imageUrl != null && imageUrl.isNotEmpty
+                  ? Image.network(
+                      imageUrl,
+                      width: 72,
+                      height: 72,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (_, child, progress) => progress == null
+                          ? child
+                          : _ArtworkPlaceholder(),
+                      errorBuilder: (_, __, ___) => _ArtworkPlaceholder(),
+                    )
+                  : _ArtworkPlaceholder(),
+            ),
+            const SizedBox(width: 12),
+
+            // Course info.
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    run.title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    run.courseNumber,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(0.6),
                         ),
-                      ],
+                  ),
+                  if (dateRange != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      dateRange,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withOpacity(0.5),
+                          ),
                     ),
                   ],
-                ),
-              ),
-              // Per-course refresh button.
-              IconButton(
-                icon: isSyncing
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(
-                        Icons.sync,
-                        color: hasError
-                            ? Theme.of(context).colorScheme.error
-                            : null,
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      if (hasError)
+                        const Icon(Icons.error_outline,
+                            size: 14, color: Colors.red)
+                      else if (isSyncing)
+                        const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child:
+                              CircularProgressIndicator(strokeWidth: 1.5),
+                        )
+                      else
+                        Icon(Icons.check_circle_outline,
+                            size: 14,
+                            color: lastSynced != null
+                                ? Colors.green
+                                : Colors.grey),
+                      const SizedBox(width: 4),
+                      Text(
+                        syncLabel,
+                        style:
+                            Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color:
+                                      hasError ? Colors.red : Colors.grey,
+                                ),
                       ),
-                tooltip: 'Refresh this course',
-                onPressed: isSyncing ? null : onRefresh,
+                    ],
+                  ),
+                ],
               ),
-              const Icon(Icons.chevron_right),
-            ],
-          ),
+            ),
+
+            const Icon(Icons.chevron_right, color: Colors.grey),
+          ],
         ),
       ),
     );
@@ -271,5 +287,17 @@ class _CourseCard extends ConsumerWidget {
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
+  }
+}
+
+class _ArtworkPlaceholder extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 72,
+      height: 72,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: const Icon(Icons.school_outlined, color: Colors.grey),
+    );
   }
 }

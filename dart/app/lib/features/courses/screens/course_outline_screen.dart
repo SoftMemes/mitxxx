@@ -2,6 +2,8 @@ import 'package:emajtee/features/courses/models/outline.dart';
 import 'package:emajtee/features/courses/providers/outline_provider.dart';
 import 'package:emajtee/features/downloads/widgets/download_button.dart';
 import 'package:emajtee/features/downloads/widgets/download_progress_bar.dart';
+import 'package:emajtee/features/sync/models/course_sync_state.dart';
+import 'package:emajtee/features/sync/providers/sync_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -26,6 +28,36 @@ class CourseOutlineScreen extends ConsumerWidget {
           orElse: () => const Text('Course Outline'),
         ),
         actions: [
+          // Per-course refresh button.
+          Builder(builder: (context) {
+            final syncStatus = ref
+                .watch(syncControllerProvider
+                    .select((s) => s[courseId]?.status ?? SyncStatus.idle));
+            final isSyncing = syncStatus == SyncStatus.syncing;
+            final hasError = syncStatus == SyncStatus.error;
+            if (isSyncing) {
+              return const Padding(
+                padding: EdgeInsets.all(14),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              );
+            }
+            return IconButton(
+              icon: Icon(
+                Icons.sync,
+                color: hasError
+                    ? Theme.of(context).colorScheme.error
+                    : null,
+              ),
+              tooltip: 'Refresh course',
+              onPressed: () => ref
+                  .read(syncControllerProvider.notifier)
+                  .syncCourse(courseId),
+            );
+          }),
           // Course-level download button.
           DownloadButton(courseId: courseId),
           const SizedBox(width: 8),
