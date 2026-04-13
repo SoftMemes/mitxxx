@@ -10,9 +10,9 @@ import 'package:video_player/video_player.dart';
 
 class VideoBlock extends ConsumerStatefulWidget {
   const VideoBlock({
-    super.key,
     required this.video,
     required this.onFullscreen,
+    super.key,
   });
 
   final ParsedVideoBlock video;
@@ -69,7 +69,7 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
       } else {
         await controller.dispose();
       }
-    } catch (_) {
+    } on Object catch (_) {
       await controller.dispose();
       if (mounted) setState(() => _hasError = true);
     }
@@ -87,20 +87,20 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
     final isOnline = ref.watch(isOnlineProvider).when(
       data: (v) => v,
       loading: () => true,
-      error: (_, __) => true,
+      error: (_, _) => true,
     );
 
     // Show offline-not-downloaded card only when offline AND no local file.
     if (!isOnline && !_initialized) {
-      return Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      return const Card(
+        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(16),
           child: Row(
             children: [
-              const Icon(Icons.wifi_off, color: Colors.grey),
-              const SizedBox(width: 8),
-              const Expanded(
+              Icon(Icons.wifi_off, color: Colors.grey),
+              SizedBox(width: 8),
+              Expanded(
                 child: Text(
                   'Video not available offline — download it first',
                 ),
@@ -138,11 +138,11 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
     }
 
     if (!_initialized || _controller == null) {
-      return AspectRatio(
+      return const AspectRatio(
         aspectRatio: 16 / 9,
-        child: Container(
+        child: ColoredBox(
           color: Colors.black,
-          child: const Center(child: CircularProgressIndicator()),
+          child: Center(child: CircularProgressIndicator()),
         ),
       );
     }
@@ -206,7 +206,7 @@ class _VideoControlsState extends State<_VideoControls> {
   @override
   Widget build(BuildContext context) {
     final isPlaying = widget.controller.value.isPlaying;
-    return Container(
+    return ColoredBox(
       color: Colors.transparent,
       child: Stack(
         children: [

@@ -53,7 +53,7 @@ class CachedXblocks extends Table {
 }
 
 /// Persists the last-synced timestamp and last error per course.
-/// The in-memory sync status (idle/syncing) lives in [SyncController] only.
+/// The in-memory sync status (idle/syncing) lives in `SyncController` only.
 class CachedCourseSync extends Table {
   TextColumn get courseId => text()();
   DateTimeColumn get lastSyncedAt => dateTime().nullable()();
@@ -65,14 +65,14 @@ class CachedCourseSync extends Table {
 
 /// Tracks downloaded video files on disk. Primary key is the video URL —
 /// deduplication is URL-keyed so a video shared across courses is only
-/// downloaded once. [courseIds] is a JSON-encoded List<String>.
+/// downloaded once. [courseIds] is a JSON-encoded `List<String>`.
 class DownloadedVideos extends Table {
   TextColumn get url => text()();
   TextColumn get localFilePath => text()();
   TextColumn get courseIds => text()(); // JSON List<String>
   TextColumn get status => text()(); // DownloadStatus.name
   RealColumn get progress =>
-      real().withDefault(const Constant(0.0))();
+      real().withDefault(const Constant<double>(0))();
   IntColumn get bytesDownloaded =>
       integer().withDefault(const Constant(0))();
   IntColumn get totalBytes =>
@@ -284,7 +284,7 @@ class AppDatabase extends _$AppDatabase {
         DownloadedVideosCompanion(
           localFilePath: Value(localFilePath),
           status: const Value('downloaded'),
-          progress: const Value(1.0),
+          progress: const Value<double>(1),
           updatedAt: Value(DateTime.now()),
         ),
       );

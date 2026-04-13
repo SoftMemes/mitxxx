@@ -13,9 +13,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class ContentScreen extends ConsumerStatefulWidget {
   const ContentScreen({
-    super.key,
     required this.courseId,
     required this.sequenceId,
+    super.key,
   });
 
   final String courseId;

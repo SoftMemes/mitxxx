@@ -62,7 +62,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       body: enrollmentsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, __) => _EmptyState(
+        error: (_, _) => _EmptyState(
           onSync: () => ref.read(syncControllerProvider.notifier).syncAll(),
         ),
         data: (enrollments) {
@@ -76,7 +76,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
           return ListView.separated(
             itemCount: enrollments.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
+            separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, index) {
               final enrollment = enrollments[index];
               final courseId = enrollment.run.coursewareId;
@@ -98,8 +98,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState({
-    this.message = 'No courses cached yet.\nConnect to sync.',
     required this.onSync,
+    this.message = 'No courses cached yet.\nConnect to sync.',
   });
 
   final String message;
@@ -177,7 +177,6 @@ class _CourseTile extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Course artwork.
             ClipRRect(
@@ -191,7 +190,7 @@ class _CourseTile extends StatelessWidget {
                       loadingBuilder: (_, child, progress) => progress == null
                           ? child
                           : _ArtworkPlaceholder(),
-                      errorBuilder: (_, __, ___) => _ArtworkPlaceholder(),
+                      errorBuilder: (_, _, _) => _ArtworkPlaceholder(),
                     )
                   : _ArtworkPlaceholder(),
             ),
@@ -215,7 +214,7 @@ class _CourseTile extends StatelessWidget {
                           color: Theme.of(context)
                               .colorScheme
                               .onSurface
-                              .withOpacity(0.6),
+                              .withValues(alpha: 0.6),
                         ),
                   ),
                   if (dateRange != null) ...[
@@ -226,7 +225,7 @@ class _CourseTile extends StatelessWidget {
                             color: Theme.of(context)
                                 .colorScheme
                                 .onSurface
-                                .withOpacity(0.5),
+                                .withValues(alpha: 0.5),
                           ),
                     ),
                   ],
@@ -276,7 +275,7 @@ class _CourseTile extends StatelessWidget {
     try {
       final dt = DateTime.parse(dateStr);
       return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-    } catch (_) {
+    } on Object catch (_) {
       return null;
     }
   }

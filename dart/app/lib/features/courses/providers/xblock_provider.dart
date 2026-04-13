@@ -8,7 +8,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 part 'xblock_provider.g.dart';
 
 /// Returns the cached xblock content. Throws if no cache exists yet.
-/// Network fetching is handled exclusively by [SyncController].
+/// Network fetching is handled exclusively by `SyncController`.
 @riverpod
 Future<XBlockContent> xblockContent(
   Ref ref, {

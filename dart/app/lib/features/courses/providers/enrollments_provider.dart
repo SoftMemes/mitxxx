@@ -8,7 +8,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 part 'enrollments_provider.g.dart';
 
 /// Returns the cached enrollment list. Throws if no cache exists yet.
-/// Network fetching is handled exclusively by [SyncController].
+/// Network fetching is handled exclusively by `SyncController`.
 @riverpod
 Future<List<Enrollment>> enrollments(Ref ref) async {
   final db = ref.read(appDatabaseProvider);

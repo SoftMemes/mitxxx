@@ -8,7 +8,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 part 'sequence_provider.g.dart';
 
 /// Returns the cached sequence detail. Throws if no cache exists yet.
-/// Network fetching is handled exclusively by [SyncController].
+/// Network fetching is handled exclusively by `SyncController`.
 @riverpod
 Future<SequenceDetail> sequenceDetail(
   Ref ref, {

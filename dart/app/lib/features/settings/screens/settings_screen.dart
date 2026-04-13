@@ -44,7 +44,7 @@ class SettingsScreen extends ConsumerWidget {
                   ],
                 ),
               );
-              if (confirmed == true) {
+              if (confirmed ?? false) {
                 await ref.read(authProvider.notifier).signOut();
               }
             },

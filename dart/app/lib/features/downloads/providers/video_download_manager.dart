@@ -131,7 +131,7 @@ class VideoDownloadManager {
       if (localFilePath != null && localFilePath.isNotEmpty) {
         try {
           File(localFilePath).deleteSync();
-        } catch (e) {
+        } on Object catch (e) {
           _log.warning('Could not delete file $localFilePath: $e');
         }
       }
@@ -150,7 +150,7 @@ class VideoDownloadManager {
       if (row.localFilePath.isNotEmpty) {
         try {
           File(row.localFilePath).deleteSync();
-        } catch (_) {}
+        } on Object catch (_) {}
       }
     }
     // DB rows are cleared by db.clearAll() in the auth provider.
@@ -196,25 +196,21 @@ class VideoDownloadManager {
         await _db.markDownloadComplete(url, localPath);
         _log.fine('Download complete: $url → $localPath');
 
-        // If the old URL was stale, clean up matching stale rows for the same
-        // task (shouldn't happen, but guard).
-        break;
-
       case TaskStatus.failed:
         await _db.markDownloadFailed(url);
         _log.warning('Download failed: $url');
 
       case TaskStatus.canceled:
         // cancel() already removes the row; nothing to do here.
-        break;
 
       case TaskStatus.running:
         // Progress callbacks will flip status to 'downloading' via
         // updateDownloadProgress; nothing extra needed here.
-        break;
 
-      default:
-        break;
+      case TaskStatus.enqueued:
+      case TaskStatus.waitingToRetry:
+      case TaskStatus.paused:
+      case TaskStatus.notFound:
     }
   }
 
@@ -293,6 +289,6 @@ class VideoDownloadManager {
     final current = existing != null
         ? (jsonDecode(existing.courseIds) as List<dynamic>).cast<String>()
         : <String>[];
-    return ({...current, courseId}).toList();
+    return {...current, courseId}.toList();
   }
 }

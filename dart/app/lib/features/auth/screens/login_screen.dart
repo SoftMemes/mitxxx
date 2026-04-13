@@ -1,10 +1,10 @@
-import 'package:mitx_api/mitx_api.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:mitx_api/mitx_api.dart';
 
 final _log = Logger('auth.login');
 
@@ -42,7 +42,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       // the catch block below can reset the spinner and show the error.
       final authState = ref.read(authProvider);
       if (authState.hasError) throw Exception(authState.error);
-    } catch (e, st) {
+    } on Object catch (e, st) {
       _log.severe('_onWebViewAuthComplete failed', e, st);
       if (mounted) {
         setState(() {
@@ -75,7 +75,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       // Save raw name→value pairs directly — no dart:io Cookie parsing.
       final raw = <String, String>{
         for (final c in webCookies)
-          c.name.toString(): c.value.toString(),
+          c.name: c.value as String,
       };
       await client.saveCookies(host, raw);
       _log.info('saved ${raw.length} cookies for $host');
@@ -112,7 +112,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             url: WebUri('$kMitxOnlineBaseUrl/login/'),
           ),
           initialSettings: InAppWebViewSettings(
-            javaScriptEnabled: true,
             useShouldOverrideUrlLoading: true,
           ),
           shouldOverrideUrlLoading: (controller, navigationAction) async {
@@ -164,7 +163,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
               const SizedBox(height: 48),
               FilledButton(
-                onPressed: () => _startWebViewAuth(),
+                onPressed: _startWebViewAuth,
                 child: const Text('Sign in with MITx'),
               ),
             ],

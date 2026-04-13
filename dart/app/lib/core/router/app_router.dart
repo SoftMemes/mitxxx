@@ -1,8 +1,8 @@
 // ignore_for_file: uri_has_not_been_generated
 import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:emajtee/features/auth/screens/login_screen.dart';
-import 'package:emajtee/features/courses/screens/course_outline_screen.dart';
 import 'package:emajtee/features/courses/screens/content_screen.dart';
+import 'package:emajtee/features/courses/screens/course_outline_screen.dart';
 import 'package:emajtee/features/courses/screens/home_screen.dart';
 import 'package:emajtee/features/settings/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
@@ -16,8 +16,9 @@ GoRouter appRouter(Ref ref) {
   // A ValueNotifier used as GoRouter's refreshListenable.
   // Notifies GoRouter whenever auth state changes so redirects are re-evaluated.
   final notifier = ValueNotifier<int>(0);
-  ref.listen<AsyncValue<dynamic>>(authProvider, (_, __) => notifier.value++);
-  ref.onDispose(notifier.dispose);
+  ref
+    ..listen<AsyncValue<dynamic>>(authProvider, (_, _) => notifier.value++)
+    ..onDispose(notifier.dispose);
 
   return GoRouter(
     initialLocation: '/',

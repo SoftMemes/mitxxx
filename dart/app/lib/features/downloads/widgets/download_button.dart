@@ -11,8 +11,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// vertical. Omit both for course-level scope.
 class DownloadButton extends ConsumerWidget {
   const DownloadButton({
-    super.key,
     required this.courseId,
+    super.key,
     this.sequenceId,
     this.verticalId,
     this.iconSize = 24.0,
@@ -37,7 +37,7 @@ class DownloadButton extends ConsumerWidget {
         height: iconSize,
         child: const CircularProgressIndicator(strokeWidth: 2),
       ),
-      error: (_, __) => Icon(Icons.error_outline, size: iconSize),
+      error: (_, _) => Icon(Icons.error_outline, size: iconSize),
       data: (state) {
         if (state.isEmpty) return const SizedBox.shrink();
         return _ButtonForState(
@@ -62,7 +62,7 @@ class DownloadButton extends ConsumerWidget {
     final label = verticalId != null
         ? 'this video'
         : sequenceId != null
-            ? 'this sequence\'s videos'
+            ? "this sequence's videos"
             : 'all downloaded videos for this course';
 
     final confirmed = await showDialog<bool>(
@@ -83,7 +83,7 @@ class DownloadButton extends ConsumerWidget {
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed ?? false) {
       await ref.read(videoDownloadManagerProvider).deleteScope(
             courseId: courseId,
             sequenceId: sequenceId,

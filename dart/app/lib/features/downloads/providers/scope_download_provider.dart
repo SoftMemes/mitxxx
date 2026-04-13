@@ -44,7 +44,10 @@ Stream<ScopeDownloadState> scopeDownloadState(
   }
 
   yield* db.watchDownloadsForUrls(urls).map((rows) {
-    var downloaded = 0, downloading = 0, failed = 0, stale = 0;
+    var downloaded = 0;
+    var downloading = 0;
+    var failed = 0;
+    var stale = 0;
     for (final row in rows) {
       final s = DownloadStatus.fromName(row.status);
       switch (s) {
@@ -57,8 +60,7 @@ Stream<ScopeDownloadState> scopeDownloadState(
           failed++;
         case DownloadStatus.stale:
           stale++;
-        default:
-          break;
+        case DownloadStatus.notDownloaded:
       }
     }
     return ScopeDownloadState(

@@ -7,8 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// Hidden when there are no videos in scope or when none are downloaded.
 class DownloadProgressBar extends ConsumerWidget {
   const DownloadProgressBar({
-    super.key,
     required this.courseId,
+    super.key,
     this.sequenceId,
     this.verticalId,
   });
@@ -27,9 +27,9 @@ class DownloadProgressBar extends ConsumerWidget {
 
     return stateAsync.when(
       loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
       data: (state) {
-        if (state.isEmpty || state.downloaded == 0 && !state.isDownloading) {
+        if (state.isEmpty || (state.downloaded == 0 && !state.isDownloading)) {
           return const SizedBox.shrink();
         }
         return _ProgressBar(state: state);

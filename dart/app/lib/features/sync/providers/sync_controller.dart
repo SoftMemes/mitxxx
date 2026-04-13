@@ -5,19 +5,19 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/core/storage/app_database.dart';
-import 'package:mitx_api/mitx_api.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
+import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:emajtee/features/courses/models/enrollment.dart';
 import 'package:emajtee/features/courses/models/xblock_content.dart';
 import 'package:emajtee/features/courses/providers/enrollments_provider.dart';
 import 'package:emajtee/features/courses/providers/outline_provider.dart';
 import 'package:emajtee/features/courses/providers/sequence_provider.dart';
 import 'package:emajtee/features/courses/providers/xblock_provider.dart';
-import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:emajtee/features/courses/utils/xblock_parser.dart';
 import 'package:emajtee/features/downloads/models/download_status.dart';
 import 'package:emajtee/features/sync/models/course_sync_state.dart';
 import 'package:logging/logging.dart';
+import 'package:mitx_api/mitx_api.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'sync_controller.g.dart';
@@ -107,7 +107,6 @@ class SyncController extends _$SyncController {
     // Sync all courses in parallel.
     await Future.wait(
       enrollments.map((e) => syncCourse(e.run.coursewareId)),
-      eagerError: false,
     );
   }
 
@@ -124,13 +123,14 @@ class SyncController extends _$SyncController {
         '/api/learning_sequences/v1/course_outline/$courseId',
       );
       final outlineData = outlineResp.data as Map<String, dynamic>;
-      if ((outlineData['outline']?['sections'] as List? ?? []).isNotEmpty) {
+      final outlineSection = outlineData['outline'] as Map<String, dynamic>?;
+      if ((outlineSection?['sections'] as List? ?? []).isNotEmpty) {
         await db.putOutline(courseId, jsonEncode(outlineData));
       }
 
       // 2. Collect all sequence IDs from the outline.
       final sections =
-          (outlineData['outline']?['sections'] as List? ?? []).cast<dynamic>();
+          (outlineSection?['sections'] as List? ?? []).cast<dynamic>();
       final sequenceIds = sections
           .expand<String>((s) =>
               ((s as Map<String, dynamic>)['sequence_ids'] as List? ?? [])
@@ -203,13 +203,14 @@ class SyncController extends _$SyncController {
     } on Object catch (e, st) {
       if (retry) {
         _log.warning('xblock $verticalId failed, retrying', e, st);
-        await _fetchAndCacheXblock(client, db, verticalId, courseId: courseId, retry: false);
+        await _fetchAndCacheXblock(client, db, verticalId, courseId: courseId);
       } else {
         _log.warning('xblock $verticalId failed after retry', e, st);
         // Don't rethrow — a single bad vertical shouldn't fail the whole course.
       }
     }
   }
+
 
   /// Compares the old cached xblock's video URLs against [newVideos].
   /// Any old URL that is no longer present and has a downloaded row is
@@ -226,7 +227,7 @@ class SyncController extends _$SyncController {
     try {
       oldContent = XBlockContent.fromJson(
           jsonDecode(oldRow.data) as Map<String, dynamic>);
-    } catch (_) {
+    } on Object catch (_) {
       return;
     }
 
@@ -268,7 +269,7 @@ class SyncController extends _$SyncController {
         for (final v in content.videos) {
           if (v.mp4Url != null) currentUrls.add(v.mp4Url!);
         }
-      } catch (_) {}
+      } on Object catch (_) {}
     }
 
     // Find downloads for this course that are no longer in the URL set.
@@ -282,7 +283,7 @@ class SyncController extends _$SyncController {
         try {
           File(orphanedPath).deleteSync();
           _log.info('Deleted orphaned download: $orphanedPath');
-        } catch (e) {
+        } on Object catch (e) {
           _log.warning('Could not delete orphaned file $orphanedPath: $e');
         }
       }
@@ -314,10 +315,7 @@ class SyncController extends _$SyncController {
   ) async {
     for (var i = 0; i < items.length; i += concurrency) {
       final end = (i + concurrency).clamp(0, items.length);
-      await Future.wait(
-        items.sublist(i, end).map(fn),
-        eagerError: false,
-      );
+      await Future.wait(items.sublist(i, end).map(fn));
     }
   }
 }

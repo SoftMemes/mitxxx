@@ -31,10 +31,10 @@ class FullscreenResult {
 
 class FullscreenVideoScreen extends ConsumerStatefulWidget {
   const FullscreenVideoScreen({
-    super.key,
     required this.sequence,
     required this.initialVerticalIndex,
     required this.initialVideoIndex,
+    super.key,
   });
 
   final SequenceDetail sequence;
@@ -131,7 +131,7 @@ class _FullscreenVideoScreenState
       });
       await newController.play();
       _scheduleHideControls();
-    } catch (_) {
+    } on Object catch (_) {
       await newController.dispose();
       if (mounted) setState(() => _hasError = true);
     }

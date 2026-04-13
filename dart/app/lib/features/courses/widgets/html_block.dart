@@ -1,11 +1,11 @@
-import 'package:mitx_api/mitx_api.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mitx_api/mitx_api.dart';
 
 class HtmlBlock extends ConsumerStatefulWidget {
-  const HtmlBlock({super.key, required this.html});
+  const HtmlBlock({required this.html, super.key});
 
   final String html;
 
@@ -43,17 +43,17 @@ class _HtmlBlockState extends ConsumerState<HtmlBlock> {
           );
         }
       }
-    } catch (_) {
+    } on Object catch (_) {
       // Non-fatal — content may still load without auth cookies.
     }
     if (mounted) setState(() => _cookiesReady = true);
   }
 
   String _injectMathJax(String html) {
-    const mathjax = '''
+    const mathjax = r'''
 <script>
 MathJax = {
-  tex: { inlineMath: [['\\\\(', '\\\\)'], ['\$', '\$']], displayMath: [['\\\\[', '\\\\]'], ['\$\$', '\$\$']] },
+  tex: { inlineMath: [['\\(', '\\)'], ['$', '$']], displayMath: [['\\[', '\\]'], ['$$', '$$']] },
   startup: { ready() { MathJax.startup.defaultReady(); window.flutter_inappwebview.callHandler('FlutterHeight', document.body.scrollHeight.toString()); } }
 };
 </script>
@@ -89,7 +89,6 @@ window.addEventListener('load', function() {
       height: _height,
       child: InAppWebView(
         initialSettings: InAppWebViewSettings(
-          javaScriptEnabled: true,
           useShouldOverrideUrlLoading: true,
         ),
         onWebViewCreated: (controller) {

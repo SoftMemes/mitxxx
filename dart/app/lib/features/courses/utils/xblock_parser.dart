@@ -34,7 +34,7 @@ String stripVideoBlocks(String html) {
     // Walk up while the ancestor would become empty after removal — Open edX
     // wraps each xblock in a `.vert` div that keeps its divider border even
     // when the inner xblock is gone, causing stacked empty dividers.
-    dom.Element target = el;
+    var target = el;
     while (true) {
       final parent = target.parent;
       if (parent is! dom.Element) break;
@@ -60,7 +60,7 @@ String stripVideoBlocks(String html) {
 /// Port of web/src/lib/proxy/xblock-parser.ts
 List<ParsedVideoBlock> extractVideoMetadata(String html) {
   // Find all data-metadata="..." attribute values.
-  final pattern = RegExp(r'data-metadata="([^"]*)"');
+  final pattern = RegExp('data-metadata="([^"]*)"');
   final results = <ParsedVideoBlock>[];
 
   for (final match in pattern.allMatches(html)) {
@@ -92,7 +92,7 @@ List<ParsedVideoBlock> extractVideoMetadata(String html) {
       final publishUrl = meta['publishCompletionUrl']?.toString();
       if (publishUrl != null) {
         final blockMatch =
-            RegExp(r'/xblock/([^/]+)/handler').firstMatch(publishUrl);
+            RegExp('/xblock/([^/]+)/handler').firstMatch(publishUrl);
         videoBlockId = blockMatch?.group(1);
       }
 
@@ -116,7 +116,7 @@ List<ParsedVideoBlock> extractVideoMetadata(String html) {
               meta['transcriptTranslationUrl']?.toString(),
         ),
       );
-    } catch (_) {
+    } on Object catch (_) {
       // Skip malformed metadata blocks.
     }
   }
