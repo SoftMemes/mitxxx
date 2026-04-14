@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:chewie/chewie.dart';
-import 'package:chewie/src/material/material_controls.dart';
 import 'package:emajtee/core/network/connectivity_provider.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/courses/models/xblock_content.dart';
@@ -93,6 +92,7 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
         aspectRatio: controller.value.aspectRatio,
         autoInitialize: true,
         playbackSpeeds: const [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0],
+        customControls: const MaterialControls(),
         materialProgressColors: ChewieProgressColors(
           playedColor: Theme.of(context).colorScheme.primary,
           handleColor: Theme.of(context).colorScheme.primary,
@@ -119,7 +119,7 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
           if (!mounted) return;
           chewie.enterFullScreen();
           if (widget.autoPlay) {
-            controller.play();
+            _videoController?.play();
           }
         });
       } else if (widget.autoPlay) {
