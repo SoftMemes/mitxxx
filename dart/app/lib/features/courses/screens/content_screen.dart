@@ -1,5 +1,6 @@
 import 'package:emajtee/features/courses/models/sequence.dart';
 import 'package:emajtee/features/courses/models/xblock_content.dart';
+import 'package:emajtee/features/courses/providers/auto_advance_provider.dart';
 import 'package:emajtee/features/courses/providers/sequence_provider.dart';
 import 'package:emajtee/features/courses/providers/xblock_provider.dart';
 import 'package:emajtee/features/courses/utils/xblock_parser.dart'
@@ -27,7 +28,6 @@ class ContentScreen extends ConsumerStatefulWidget {
 class _ContentScreenState extends ConsumerState<ContentScreen> {
   late final PageController _pageController;
   int _currentIndex = 0;
-  bool _autoAdvance = false;
   // Index of the vertical that should auto-play when it becomes visible.
   // -1 means no pending auto-play.
   int _autoPlayIndex = -1;
@@ -66,7 +66,10 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
     SequenceDetail sequence, {
     required bool wasFullScreen,
   }) {
-    if (!_autoAdvance) return;
+    // Read the current persisted preference synchronously — if it hasn't
+    // loaded yet, default to off rather than auto-advancing by surprise.
+    final autoAdvance = ref.read(autoAdvanceProvider).value ?? false;
+    if (!autoAdvance) return;
     final next = verticalIndex + 1;
     if (next >= sequence.items.length) return; // end of sequence — stop
     setState(() {
@@ -177,11 +180,15 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
               _NavBar(
                 canGoPrev: _currentIndex > 0,
                 canGoNext: _currentIndex < total - 1,
-                autoAdvance: _autoAdvance,
+                // Default to false while the persisted value is loading so
+                // the toggle renders deterministically on first frame.
+                autoAdvance: ref.watch(autoAdvanceProvider).value ?? false,
                 onPrev: () => _goTo(_currentIndex - 1),
                 onNext: () => _goTo(_currentIndex + 1),
                 onComplete: () => Navigator.of(context).pop(),
-                onAutoAdvanceChanged: (v) => setState(() => _autoAdvance = v),
+                onAutoAdvanceChanged: (v) => ref
+                    .read(autoAdvanceProvider.notifier)
+                    .set(enabled: v),
               ),
             ],
           );
