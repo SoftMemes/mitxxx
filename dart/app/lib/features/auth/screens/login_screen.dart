@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
@@ -113,7 +115,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
           initialSettings: InAppWebViewSettings(
             useShouldOverrideUrlLoading: true,
+            // iOS: make WKWebView share the cookie store that CookieManager
+            // writes to, so Keycloak session cookies are visible cross-host.
+            sharedCookiesEnabled: true,
           ),
+          // iOS auto-zooms on <input> focus when font-size < 16px (Keycloak's
+          // default). Clamp maximum-scale at document start to prevent this.
+          initialUserScripts: UnmodifiableListView([
+            UserScript(
+              source: """
+                var _m = document.querySelector('meta[name=viewport]');
+                if (!_m) { _m = document.createElement('meta'); _m.name = 'viewport'; document.head.appendChild(_m); }
+                _m.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+              """,
+              injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+            ),
+          ]),
           shouldOverrideUrlLoading: (controller, navigationAction) async {
             _log.fine('WebView navigating to: ${navigationAction.request.url}');
             return NavigationActionPolicy.ALLOW;
