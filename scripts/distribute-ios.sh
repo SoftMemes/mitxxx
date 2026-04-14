@@ -35,7 +35,7 @@ IPA="$APP_DIR/build/ios/ipa/emajtee.ipa"
 
 echo "==> Verifying build number in IPA..."
 TMP_PLIST=$(mktemp)
-unzip -p "$IPA" Payload/Runner.app/Info.plist > "$TMP_PLIST"
+unzip -p "$IPA" "Payload/*.app/Info.plist" > "$TMP_PLIST"
 plutil -p "$TMP_PLIST" | grep -E 'CFBundleVersion|CFBundleShortVersionString'
 rm -f "$TMP_PLIST"
 
