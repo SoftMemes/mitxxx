@@ -22,6 +22,9 @@ echo "==> Build number: $BUILD_NUMBER"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_DIR="$REPO_ROOT/dart/app"
 
+echo "==> Cleaning stale iOS archive/IPA to ensure build number is baked in fresh..."
+rm -rf "$APP_DIR/build/ios/archive" "$APP_DIR/build/ios/ipa"
+
 echo "==> Building iOS release IPA..."
 cd "$APP_DIR"
 flutter build ipa --release \
@@ -29,6 +32,9 @@ flutter build ipa --release \
   --export-options-plist=ios/ExportOptions.plist
 
 IPA="$APP_DIR/build/ios/ipa/emajtee.ipa"
+
+echo "==> Verifying build number in IPA..."
+unzip -p "$IPA" Payload/Runner.app/Info.plist | plutil -p - | grep -E 'CFBundleVersion|CFBundleShortVersionString'
 
 echo "==> Uploading to Firebase App Distribution..."
 firebase appdistribution:distribute "$IPA" \

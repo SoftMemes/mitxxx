@@ -31,6 +31,10 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
   // Index of the vertical that should auto-play when it becomes visible.
   // -1 means no pending auto-play.
   int _autoPlayIndex = -1;
+  // Index of the vertical that should auto-enter fullscreen when visible.
+  // Set alongside _autoPlayIndex when the previous video completed while
+  // in fullscreen, so the fullscreen experience persists across advances.
+  int _autoFullScreenIndex = -1;
 
   @override
   void initState() {
@@ -54,12 +58,21 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
 
   /// Called when any video on [verticalIndex] completes.
   /// If auto-advance is on, pages to the next vertical and marks it for
-  /// auto-play. Does nothing if already on the last vertical.
-  void _onVideoCompleted(int verticalIndex, SequenceDetail sequence) {
+  /// auto-play. If the completed video was in fullscreen, also marks it
+  /// to re-enter fullscreen so the experience carries across advances.
+  /// Does nothing if already on the last vertical.
+  void _onVideoCompleted(
+    int verticalIndex,
+    SequenceDetail sequence, {
+    required bool wasFullScreen,
+  }) {
     if (!_autoAdvance) return;
     final next = verticalIndex + 1;
     if (next >= sequence.items.length) return; // end of sequence — stop
-    setState(() => _autoPlayIndex = next);
+    setState(() {
+      _autoPlayIndex = next;
+      _autoFullScreenIndex = wasFullScreen ? next : -1;
+    });
     _goTo(next);
   }
 
@@ -135,8 +148,12 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
                   onPageChanged: (index) {
                     setState(() {
                       _currentIndex = index;
-                      // Clear auto-play if the user navigated manually.
+                      // Clear auto-play / auto-fullscreen if the user
+                      // navigated manually rather than auto-advancing.
                       if (index != _autoPlayIndex) _autoPlayIndex = -1;
+                      if (index != _autoFullScreenIndex) {
+                        _autoFullScreenIndex = -1;
+                      }
                     });
                   },
                   itemBuilder: (context, index) {
@@ -144,8 +161,13 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
                     return _VerticalPage(
                       item: item,
                       autoPlay: index == _autoPlayIndex,
-                      onVideoCompleted: () =>
-                          _onVideoCompleted(index, sequence),
+                      autoFullScreen: index == _autoFullScreenIndex,
+                      onVideoCompleted: (wasFullScreen) =>
+                          _onVideoCompleted(
+                        index,
+                        sequence,
+                        wasFullScreen: wasFullScreen,
+                      ),
                     );
                   },
                 ),
@@ -274,11 +296,13 @@ class _VerticalPage extends ConsumerWidget {
     required this.item,
     required this.onVideoCompleted,
     this.autoPlay = false,
+    this.autoFullScreen = false,
   });
 
   final SequenceItem item;
   final bool autoPlay;
-  final VoidCallback onVideoCompleted;
+  final bool autoFullScreen;
+  final ValueChanged<bool> onVideoCompleted;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -315,6 +339,7 @@ class _VerticalPage extends ConsumerWidget {
         content: content,
         item: item,
         autoPlay: autoPlay,
+        autoFullScreen: autoFullScreen,
         onVideoCompleted: onVideoCompleted,
       ),
     );
@@ -329,12 +354,14 @@ class _PageContent extends StatelessWidget {
     required this.item,
     required this.onVideoCompleted,
     this.autoPlay = false,
+    this.autoFullScreen = false,
   });
 
   final XBlockContent content;
   final SequenceItem item;
   final bool autoPlay;
-  final VoidCallback onVideoCompleted;
+  final bool autoFullScreen;
+  final ValueChanged<bool> onVideoCompleted;
 
   @override
   Widget build(BuildContext context) {
@@ -347,6 +374,7 @@ class _PageContent extends StatelessWidget {
           child: VideoBlock(
             video: video,
             autoPlay: autoPlay,
+            autoFullScreen: autoFullScreen,
             onCompleted: onVideoCompleted,
           ),
         ),

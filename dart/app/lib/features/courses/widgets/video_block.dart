@@ -19,6 +19,7 @@ class VideoBlock extends ConsumerStatefulWidget {
     required this.video,
     super.key,
     this.autoPlay = false,
+    this.autoFullScreen = false,
     this.onCompleted,
   });
 
@@ -27,9 +28,16 @@ class VideoBlock extends ConsumerStatefulWidget {
   /// If true the video starts playing as soon as it is initialized.
   final bool autoPlay;
 
+  /// If true the player enters Chewie's fullscreen mode as soon as it is
+  /// initialized. Used to carry fullscreen state across auto-advance so
+  /// the user stays in fullscreen while a sequence of videos plays through.
+  final bool autoFullScreen;
+
   /// Fires once when the video reaches (or is within ~300ms of) its end.
-  /// Used by the parent to implement auto-advance.
-  final VoidCallback? onCompleted;
+  /// The bool argument is true if the player was in fullscreen at the
+  /// moment of completion, letting the parent restore that state on the
+  /// next video. Used by the parent to implement auto-advance.
+  final ValueChanged<bool>? onCompleted;
 
   @override
   ConsumerState<VideoBlock> createState() => _VideoBlockState();
@@ -100,6 +108,11 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
         _initialized = true;
       });
 
+      if (widget.autoFullScreen) {
+        // Enter fullscreen before starting playback so the transition
+        // into fullscreen is seamless when auto-advancing across videos.
+        chewie.enterFullScreen();
+      }
       if (widget.autoPlay) {
         await controller.play();
       }
@@ -118,7 +131,21 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
     final remaining = c.value.duration - c.value.position;
     if (remaining <= const Duration(milliseconds: 300) && !c.value.isPlaying) {
       _completedFired = true;
-      widget.onCompleted?.call();
+      // If we're in Chewie's fullscreen route when the video ends, the
+      // overlay obscures the PageView transition that the parent triggers
+      // from onCompleted. On iOS the lingering AVPlayerViewController-style
+      // fullscreen also blocks the next video's autoplay — the user sees
+      // the replay icon on the finished video and, only after manually
+      // exiting fullscreen, lands on the next page with autoplay never
+      // having fired. Drop out of fullscreen first so the transition is
+      // visible and the next controller can take over cleanly; the parent
+      // uses the captured wasFullScreen flag to re-enter fullscreen on the
+      // next video so the fullscreen experience persists across advances.
+      final wasFullScreen = _chewieController?.isFullScreen ?? false;
+      if (wasFullScreen) {
+        _chewieController!.exitFullScreen();
+      }
+      widget.onCompleted?.call(wasFullScreen);
     }
   }
 
