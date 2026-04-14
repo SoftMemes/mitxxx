@@ -111,12 +111,12 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.school_outlined, size: 64, color: Colors.grey),
+          Icon(Icons.school_outlined, size: 64, color: Theme.of(context).colorScheme.onSurfaceVariant),
           const SizedBox(height: 16),
           Text(
             message,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.grey),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
           FilledButton.icon(
@@ -233,8 +233,8 @@ class _CourseTile extends StatelessWidget {
                   Row(
                     children: [
                       if (hasError)
-                        const Icon(Icons.error_outline,
-                            size: 14, color: Colors.red)
+                        Icon(Icons.error_outline,
+                            size: 14, color: Theme.of(context).colorScheme.error)
                       else if (isSyncing)
                         const SizedBox(
                           width: 12,
@@ -247,14 +247,15 @@ class _CourseTile extends StatelessWidget {
                             size: 14,
                             color: lastSynced != null
                                 ? Colors.green
-                                : Colors.grey),
+                                : Theme.of(context).colorScheme.onSurfaceVariant),
                       const SizedBox(width: 4),
                       Text(
                         syncLabel,
                         style:
                             Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color:
-                                      hasError ? Colors.red : Colors.grey,
+                                  color: hasError
+                                      ? Theme.of(context).colorScheme.error
+                                      : Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
                       ),
                     ],
@@ -263,7 +264,7 @@ class _CourseTile extends StatelessWidget {
               ),
             ),
 
-            const Icon(Icons.chevron_right, color: Colors.grey),
+            Icon(Icons.chevron_right, color: Theme.of(context).colorScheme.onSurfaceVariant),
           ],
         ),
       ),
@@ -296,7 +297,7 @@ class _ArtworkPlaceholder extends StatelessWidget {
       width: 72,
       height: 72,
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: const Icon(Icons.school_outlined, color: Colors.grey),
+      child: Icon(Icons.school_outlined, color: Theme.of(context).colorScheme.onSurfaceVariant),
     );
   }
 }

@@ -146,6 +146,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Image.asset(
+                'assets/icons/app_icon.png',
+                width: 120,
+                height: 120,
+              ),
+              const SizedBox(height: 16),
               Text(
                 'MITxxx',
                 style: Theme.of(context).textTheme.displaySmall?.copyWith(
@@ -157,7 +163,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               Text(
                 'Unofficial MITx Offline App',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                 textAlign: TextAlign.center,
               ),

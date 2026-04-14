@@ -167,7 +167,7 @@ class _ButtonForState extends StatelessWidget {
             minWidth: iconSize + 8,
             minHeight: iconSize + 8,
           ),
-          icon: Icon(Icons.error_outline, size: iconSize, color: Colors.red),
+          icon: Icon(Icons.error_outline, size: iconSize, color: Theme.of(context).colorScheme.error),
           tooltip: 'Download failed — tap to retry',
           onPressed: onDownload,
         );

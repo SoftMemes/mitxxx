@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "478154015759",
+    "project_id": "mitxxx-f8b17",
+    "storage_bucket": "mitxxx-f8b17.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:478154015759:android:927c5c829f9197bed54f7a",
+        "android_client_info": {
+          "package_name": "com.softmemes.emajtee"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBunL_ryTPpMSb7Wx8BjE8kf8XO1muth6M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

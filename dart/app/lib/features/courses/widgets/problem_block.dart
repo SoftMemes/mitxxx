@@ -28,7 +28,7 @@ class ProblemBlock extends StatelessWidget {
                   Text(
                     'Complete this problem on the MITx site.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                   ),
                 ],

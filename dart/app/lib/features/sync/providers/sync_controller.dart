@@ -1,4 +1,6 @@
 // ignore_for_file: uri_has_not_been_generated
+import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
@@ -137,9 +139,13 @@ class SyncController extends _$SyncController {
                   .cast<String>())
           .toList();
 
-      // 3. Fetch all sequences; collect vertical IDs.
+      // 3 + 4. Fetch sequences (producing vertical IDs) and xblocks concurrently.
+      //        Verticals are enqueued as soon as their parent sequence returns,
+      //        so xblock fetches overlap with remaining sequence fetches.
       final allVerticalIds = <String>[];
-      await _parallelBounded(sequenceIds, 4, (seqId) async {
+      final vertQueue = _AsyncQueue<String>();
+
+      final seqFuture = _parallelBounded(sequenceIds, 8, (seqId) async {
         final seqResp =
             await client.lms.get<dynamic>('/api/courseware/sequence/$seqId');
         final seqData = seqResp.data as Map<String, dynamic>;
@@ -147,14 +153,25 @@ class SyncController extends _$SyncController {
 
         final items =
             ((seqData['items'] as List?) ?? []).cast<Map<String, dynamic>>();
-        allVerticalIds.addAll(items.map((item) => item['id'] as String));
-      });
+        final vertIds = items.map((item) => item['id'] as String).toList();
+        allVerticalIds.addAll(vertIds);
+        for (final id in vertIds) { vertQueue.add(id); }
+      }).whenComplete(vertQueue.close);
 
-      // 4. Fetch all vertical xblocks (with one retry per failure).
-      //    Also detects URL changes and marks stale downloads.
-      await _parallelBounded(allVerticalIds, 4, (verticalId) async {
-        await _fetchAndCacheXblock(client, db, verticalId, courseId: courseId, retry: true);
-      });
+      // Xblock workers drain the queue as vertical IDs arrive from sequences.
+      final xblockFuture = Future.wait(
+        List.generate(8, (_) async {
+          while (true) {
+            final vertId = await vertQueue.take();
+            if (vertId == null) return;
+            await _fetchAndCacheXblock(
+              client, db, vertId, courseId: courseId, retry: true,
+            );
+          }
+        }),
+      );
+
+      await Future.wait([seqFuture, xblockFuture]);
 
       // 5. Cleanup: remove downloads for video blocks that no longer exist.
       await _cleanupRemovedVideos(db, courseId, allVerticalIds);
@@ -307,15 +324,62 @@ class SyncController extends _$SyncController {
     });
   }
 
-  /// Processes [items] in parallel, at most [concurrency] at a time.
+  /// Processes [items] with a rolling pool of [concurrency] concurrent workers.
+  ///
+  /// Unlike a batch-wait approach, a new item starts the moment any worker
+  /// finishes — no head-of-line blocking from one slow request.
   Future<void> _parallelBounded<T>(
-    List<T> items,
+    Iterable<T> items,
     int concurrency,
     Future<void> Function(T) fn,
   ) async {
-    for (var i = 0; i < items.length; i += concurrency) {
-      final end = (i + concurrency).clamp(0, items.length);
-      await Future.wait(items.sublist(i, end).map(fn));
+    final iter = items.iterator;
+    await Future.wait(
+      List.generate(concurrency, (_) async {
+        // Each worker pulls items one at a time. moveNext() + current are
+        // synchronous (no await between them) so they're safe in Dart's
+        // single-threaded isolate — no two workers can observe the same item.
+        while (iter.moveNext()) {
+          final item = iter.current;
+          await fn(item);
+        }
+      }),
+    );
+  }
+}
+
+/// Async FIFO queue for producer-consumer coordination within a single isolate.
+///
+/// Producers call [add]; consumers call [take] (which suspends until an item
+/// is available). Call [close] when no more items will be added — suspended
+/// [take] calls will then return null, signalling consumers to stop.
+class _AsyncQueue<T> {
+  final _items = Queue<T>();
+  final _waiters = Queue<Completer<T?>>();
+  bool _closed = false;
+
+  void add(T item) {
+    if (_waiters.isNotEmpty) {
+      _waiters.removeFirst().complete(item);
+    } else {
+      _items.add(item);
     }
+  }
+
+  void close() {
+    _closed = true;
+    for (final w in _waiters) {
+      w.complete(null);
+    }
+    _waiters.clear();
+  }
+
+  /// Returns the next item, or null when the queue is closed and drained.
+  Future<T?> take() {
+    if (_items.isNotEmpty) return Future.value(_items.removeFirst());
+    if (_closed) return Future<T?>.value();
+    final c = Completer<T?>();
+    _waiters.add(c);
+    return c.future;
   }
 }

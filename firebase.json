@@ -1,0 +1,14 @@
+{
+  "projectId": "mitxxx-f8b17",
+  "appdistribution": {
+    "apps": {
+      "android": {
+        "appId": "1:478154015759:android:927c5c829f9197bed54f7a"
+      },
+      "ios": {
+        "appId": "1:478154015759:ios:1d84be350debcdd2d54f7a"
+      }
+    },
+    "groups": ["internal"]
+  }
+}

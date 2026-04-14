@@ -141,15 +141,15 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
 
     // Show offline-not-downloaded card only when offline AND no local file.
     if (!isOnline && !_initialized) {
-      return const Card(
-        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      return Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Padding(
-          padding: EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              Icon(Icons.wifi_off, color: Colors.grey),
-              SizedBox(width: 8),
-              Expanded(
+              Icon(Icons.wifi_off, color: Theme.of(context).colorScheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              const Expanded(
                 child: Text(
                   'Video not available offline — download it first',
                 ),
@@ -167,7 +167,7 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              const Icon(Icons.error_outline, color: Colors.grey),
+              Icon(Icons.error_outline, color: Theme.of(context).colorScheme.onSurfaceVariant),
               const SizedBox(width: 8),
               const Expanded(child: Text('Video could not be loaded')),
               TextButton(
