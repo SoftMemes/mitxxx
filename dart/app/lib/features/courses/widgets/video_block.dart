@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:chewie/chewie.dart';
+import 'package:chewie/src/material/material_controls.dart';
 import 'package:emajtee/core/network/connectivity_provider.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/courses/models/xblock_content.dart';
@@ -109,11 +110,19 @@ class _VideoBlockState extends ConsumerState<VideoBlock> {
       });
 
       if (widget.autoFullScreen) {
-        // Enter fullscreen before starting playback so the transition
-        // into fullscreen is seamless when auto-advancing across videos.
-        chewie.enterFullScreen();
-      }
-      if (widget.autoPlay) {
+        // Wait one frame so the Chewie widget mounts and registers its
+        // fullscreen listener before we flip isFullScreen — otherwise
+        // enterFullScreen() is a no-op because no listener has pushed the
+        // fullscreen route yet. Start playback from the same callback so
+        // the transition into fullscreen is seamless.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          chewie.enterFullScreen();
+          if (widget.autoPlay) {
+            controller.play();
+          }
+        });
+      } else if (widget.autoPlay) {
         await controller.play();
       }
     } on Object catch (_) {
