@@ -38,31 +38,24 @@ class DownloadProgressBar extends ConsumerWidget {
       loading: () => const SizedBox.shrink(),
       error: (_, _) => const SizedBox.shrink(),
       data: (state) {
-        if (state.isEmpty || (state.downloaded == 0 && !state.isDownloading)) {
+        // Hide when nothing is in progress (including when fully complete).
+        if (state.isEmpty || !state.isDownloading) {
           return const SizedBox.shrink();
         }
-        return _ProgressBar(
-          state: state,
-          unit: useLectureCount ? 'lecture' : 'video',
-        );
+        return _ProgressBar(state: state);
       },
     );
   }
 }
 
 class _ProgressBar extends StatelessWidget {
-  const _ProgressBar({required this.state, required this.unit});
+  const _ProgressBar({required this.state});
   final ScopeDownloadState state;
-  final String unit;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final n = state.requested;
-    final plural = n == 1 ? unit : '${unit}s';
-    final label = state.downloaded == n
-        ? 'All $n $plural downloaded'
-        : '${state.downloaded} / $n $plural';
+    final label = '${state.downloaded} / ${state.requested}';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -72,9 +65,7 @@ class _ProgressBar extends StatelessWidget {
             child: LinearProgressIndicator(
               value: state.requestedProgress,
               minHeight: 4,
-              color: state.downloaded == state.requested
-                  ? Colors.green
-                  : theme.colorScheme.primary,
+              color: theme.colorScheme.primary,
               backgroundColor: theme.colorScheme.surfaceContainerHighest,
             ),
           ),
