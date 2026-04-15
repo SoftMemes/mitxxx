@@ -297,6 +297,14 @@ class AppDatabase extends _$AppDatabase {
         ),
       );
 
+  Future<void> markDownloadQueued(String url) =>
+      (update(downloadedVideos)..where((t) => t.url.equals(url))).write(
+        DownloadedVideosCompanion(
+          status: const Value('queued'),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+
   Future<void> markDownloadStale(String url) =>
       (update(downloadedVideos)..where((t) => t.url.equals(url))).write(
         DownloadedVideosCompanion(

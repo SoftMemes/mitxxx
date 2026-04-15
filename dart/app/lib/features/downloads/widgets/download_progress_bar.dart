@@ -3,27 +3,36 @@ import 'package:emajtee/features/downloads/providers/scope_download_provider.dar
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Inline "3 / 10 videos  ■■■□□□□" progress bar for a download scope.
+/// Inline "3 / 10 lectures  ■■■□□□□" (or "videos") progress bar.
 /// Hidden when there are no videos in scope or when none are downloaded.
+///
+/// Set [useLectureCount] to count sequences (lectures) as the unit rather
+/// than individual video clips — appropriate for the course overview screen.
 class DownloadProgressBar extends ConsumerWidget {
   const DownloadProgressBar({
     required this.courseId,
     super.key,
     this.sequenceId,
     this.verticalId,
+    this.useLectureCount = false,
   });
 
   final String courseId;
   final String? sequenceId;
   final String? verticalId;
 
+  /// When true, progress counts lectures (sequences) rather than clips.
+  final bool useLectureCount;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final stateAsync = ref.watch(scopeDownloadStateProvider(
-      courseId: courseId,
-      sequenceId: sequenceId,
-      verticalId: verticalId,
-    ));
+    final stateAsync = useLectureCount
+        ? ref.watch(courseLectureDownloadStateProvider(courseId: courseId))
+        : ref.watch(scopeDownloadStateProvider(
+            courseId: courseId,
+            sequenceId: sequenceId,
+            verticalId: verticalId,
+          ));
 
     return stateAsync.when(
       loading: () => const SizedBox.shrink(),
@@ -32,22 +41,28 @@ class DownloadProgressBar extends ConsumerWidget {
         if (state.isEmpty || (state.downloaded == 0 && !state.isDownloading)) {
           return const SizedBox.shrink();
         }
-        return _ProgressBar(state: state);
+        return _ProgressBar(
+          state: state,
+          unit: useLectureCount ? 'lecture' : 'video',
+        );
       },
     );
   }
 }
 
 class _ProgressBar extends StatelessWidget {
-  const _ProgressBar({required this.state});
+  const _ProgressBar({required this.state, required this.unit});
   final ScopeDownloadState state;
+  final String unit;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final label = state.isFullyDownloaded
-        ? 'All ${state.total} videos downloaded'
-        : '${state.downloaded} / ${state.total} videos';
+    final n = state.requested;
+    final plural = n == 1 ? unit : '${unit}s';
+    final label = state.downloaded == n
+        ? 'All $n $plural downloaded'
+        : '${state.downloaded} / $n $plural';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -55,9 +70,9 @@ class _ProgressBar extends StatelessWidget {
         children: [
           Expanded(
             child: LinearProgressIndicator(
-              value: state.progress,
+              value: state.requestedProgress,
               minHeight: 4,
-              color: state.isFullyDownloaded
+              color: state.downloaded == state.requested
                   ? Colors.green
                   : theme.colorScheme.primary,
               backgroundColor: theme.colorScheme.surfaceContainerHighest,

@@ -59,25 +59,32 @@ class DownloadButton extends ConsumerWidget {
     WidgetRef ref,
     ScopeDownloadState state,
   ) async {
+    final isActive = state.isDownloading;
     final label = verticalId != null
         ? 'this video'
         : sequenceId != null
             ? "this sequence's videos"
-            : 'all downloaded videos for this course';
+            : isActive
+                ? 'all downloads for this course'
+                : 'all downloaded videos for this course';
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Remove download?'),
-        content: Text('Remove $label from your device?'),
+        title: Text(isActive ? 'Cancel download?' : 'Remove download?'),
+        content: Text(
+          isActive
+              ? 'Cancel and remove $label?'
+              : 'Remove $label from your device?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: const Text('Keep'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Remove'),
+            child: Text(isActive ? 'Cancel download' : 'Remove'),
           ),
         ],
       ),
@@ -93,7 +100,7 @@ class DownloadButton extends ConsumerWidget {
   }
 }
 
-class _ButtonForState extends StatelessWidget {
+class _ButtonForState extends StatefulWidget {
   const _ButtonForState({
     required this.state,
     required this.iconSize,
@@ -107,28 +114,69 @@ class _ButtonForState extends StatelessWidget {
   final VoidCallback onDelete;
 
   @override
+  State<_ButtonForState> createState() => _ButtonForStateState();
+}
+
+class _ButtonForStateState extends State<_ButtonForState>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _spinController;
+
+  @override
+  void initState() {
+    super.initState();
+    _spinController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _spinController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    switch (state.status) {
+    final iconSize = widget.iconSize;
+    // Shared box size that matches what IconButton reserves so all states
+    // are the same width/height and centre-align correctly in AppBar actions.
+    final boxSize = iconSize + 8;
+
+    switch (widget.state.status) {
       case DownloadStatus.downloading:
+        // Tappable: tap triggers cancel confirmation.
         return SizedBox(
-          width: iconSize,
-          height: iconSize,
-          child: CircularProgressIndicator(
-            value: state.progress > 0 ? state.progress : null,
-            strokeWidth: 2,
+          width: boxSize,
+          height: boxSize,
+          child: Tooltip(
+            message: 'Downloading — tap to cancel',
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: widget.onDelete,
+              child: Center(
+                child: SizedBox(
+                  width: iconSize,
+                  height: iconSize,
+                  child: CircularProgressIndicator(
+                    value: widget.state.progress > 0
+                        ? widget.state.progress
+                        : null,
+                    strokeWidth: 2,
+                  ),
+                ),
+              ),
+            ),
           ),
         );
 
       case DownloadStatus.downloaded:
         return IconButton(
           padding: EdgeInsets.zero,
-          constraints: BoxConstraints(
-            minWidth: iconSize + 8,
-            minHeight: iconSize + 8,
-          ),
+          constraints: BoxConstraints(minWidth: boxSize, minHeight: boxSize),
           icon: Icon(Icons.check_circle, size: iconSize, color: Colors.green),
           tooltip: 'Downloaded — tap to remove',
-          onPressed: onDelete,
+          onPressed: widget.onDelete,
         );
 
       case DownloadStatus.stale:
@@ -137,13 +185,11 @@ class _ButtonForState extends StatelessWidget {
           children: [
             IconButton(
               padding: EdgeInsets.zero,
-              constraints: BoxConstraints(
-                minWidth: iconSize + 8,
-                minHeight: iconSize + 8,
-              ),
+              constraints:
+                  BoxConstraints(minWidth: boxSize, minHeight: boxSize),
               icon: Icon(Icons.download_outlined, size: iconSize),
               tooltip: 'New version available — tap to update',
-              onPressed: onDownload,
+              onPressed: widget.onDownload,
             ),
             Positioned(
               top: 4,
@@ -163,26 +209,51 @@ class _ButtonForState extends StatelessWidget {
       case DownloadStatus.failed:
         return IconButton(
           padding: EdgeInsets.zero,
-          constraints: BoxConstraints(
-            minWidth: iconSize + 8,
-            minHeight: iconSize + 8,
-          ),
-          icon: Icon(Icons.error_outline, size: iconSize, color: Theme.of(context).colorScheme.error),
+          constraints: BoxConstraints(minWidth: boxSize, minHeight: boxSize),
+          icon: Icon(Icons.error_outline,
+              size: iconSize,
+              color: Theme.of(context).colorScheme.error),
           tooltip: 'Download failed — tap to retry',
-          onPressed: onDownload,
+          onPressed: widget.onDownload,
+        );
+
+      case DownloadStatus.pending:
+        // Static hourglass — in DB queue, not yet handed to the downloader.
+        return SizedBox(
+          width: boxSize,
+          height: boxSize,
+          child: Center(
+            child: Icon(Icons.hourglass_top_outlined, size: iconSize),
+          ),
+        );
+
+      case DownloadStatus.queued:
+        // Counter-clockwise spinner — in background_downloader holding queue.
+        return SizedBox(
+          width: boxSize,
+          height: boxSize,
+          child: Center(
+            child: RotationTransition(
+              turns: Tween<double>(begin: 0, end: -1).animate(_spinController),
+              child: SizedBox(
+                width: iconSize,
+                height: iconSize,
+                child: const CircularProgressIndicator(
+                  strokeWidth: 2,
+                  value: 0.25, // fixed arc — visually distinct from active
+                ),
+              ),
+            ),
+          ),
         );
 
       case DownloadStatus.notDownloaded:
-      case DownloadStatus.queued:
         return IconButton(
           padding: EdgeInsets.zero,
-          constraints: BoxConstraints(
-            minWidth: iconSize + 8,
-            minHeight: iconSize + 8,
-          ),
+          constraints: BoxConstraints(minWidth: boxSize, minHeight: boxSize),
           icon: Icon(Icons.download_outlined, size: iconSize),
           tooltip: 'Download for offline viewing',
-          onPressed: onDownload,
+          onPressed: widget.onDownload,
         );
     }
   }
