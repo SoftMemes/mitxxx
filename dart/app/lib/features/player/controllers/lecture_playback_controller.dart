@@ -94,6 +94,17 @@ class LecturePlaybackController {
   /// Whether the controller is currently playing (regardless of position).
   bool _wantPlaying = false;
 
+  // ---------------------------------------------------------------------------
+  // Seek serialisation
+  // ---------------------------------------------------------------------------
+  // Suppresses _updateSnapshot while a seekGlobal is in flight so the UI
+  // never sees an intermediate boundary position.
+  bool _seekInProgress = false;
+
+  // Latest-wins: if a second seekGlobal arrives while one is running, the
+  // new target is stored here and executed after the current one finishes.
+  double? _pendingSeekTarget;
+
   // Controllers queued for disposal (async, after swap).
   final List<VideoPlayerController> _pendingDispose = [];
 
@@ -125,17 +136,48 @@ class LecturePlaybackController {
   }
 
   /// Seeks to [globalSeconds] anywhere in the stitched timeline.
+  ///
+  /// If a seek is already in progress the target is updated (latest-wins) and
+  /// the new seek runs immediately after the current one finishes. Intermediate
+  /// snapshots are suppressed so the UI never sees a boundary-flicker.
   Future<void> seekGlobal(double globalSeconds) async {
     if (_disposed) return;
 
+    if (_seekInProgress) {
+      // Another seek is running — queue this target and return; the running
+      // seek will pick it up when it finishes.
+      _pendingSeekTarget = globalSeconds;
+      return;
+    }
+
+    _seekInProgress = true;
+    try {
+      await _doSeek(globalSeconds);
+      // Drain any queued target (latest-wins).
+      while (_pendingSeekTarget != null && !_disposed) {
+        final next = _pendingSeekTarget!;
+        _pendingSeekTarget = null;
+        await _doSeek(next);
+      }
+    } finally {
+      _seekInProgress = false;
+      _updateSnapshot();
+    }
+  }
+
+  Future<void> _doSeek(double globalSeconds) async {
+    if (_disposed) return;
     final clamped = globalSeconds.clamp(0.0, totalDuration);
     final targetIndex = _videoIndexForGlobalTime(clamped);
 
     if (targetIndex != _activeVideoIndex) {
-      // Cancel any pending preloads for the old segment.
+      // Suppress the snapshot that _loadSegment emits after swapping the
+      // active controller so the UI doesn't briefly show the boundary start.
       await _discardPreloaded();
-      await _loadSegment(targetIndex);
+      await _loadSegmentSuppressed(targetIndex);
     }
+
+    if (_activeVpc == null || _disposed) return;
 
     final within = clamped - schedule[targetIndex].globalStartTime;
     await _activeVpc!
@@ -144,11 +186,52 @@ class LecturePlaybackController {
     _boundaryFired = false;
     _preloadStarted = false;
 
-    if (_wantPlaying) {
+    if (_wantPlaying && !_disposed) {
       await _activeVpc!.play();
     }
+  }
 
-    _updateSnapshot();
+  /// Like [_loadSegment] but skips the trailing [_updateSnapshot] call.
+  Future<void> _loadSegmentSuppressed(int index) async {
+    final entry = schedule[index];
+
+    VideoPlayerController? vpc;
+    if (_preloadedVpc != null && index == _activeVideoIndex + 1) {
+      vpc = _preloadedVpc;
+      _preloadedVpc = null;
+    } else {
+      await _discardPreloaded();
+      vpc = _createController(entry.uri);
+      try {
+        await vpc.initialize();
+      } on Object catch (e) {
+        await vpc.dispose();
+        if (!_disposed) {
+          snapshot.value = PlaybackSnapshot(
+            globalPosition: _currentGlobalPosition(),
+            totalDuration: totalDuration,
+            isPlaying: false,
+            activeVideoIndex: index,
+            isComplete: false,
+            error: 'Failed to load segment: $e',
+          );
+        }
+        return;
+      }
+    }
+
+    _activeVpc?.removeListener(_onControllerUpdate);
+    if (_activeVpc != null) {
+      _pendingDispose.add(_activeVpc!);
+      scheduleMicrotask(_flushPendingDispose);
+    }
+
+    _activeVpc = vpc;
+    _activeVideoIndex = index;
+    _boundaryFired = false;
+    _preloadStarted = false;
+    _activeVpc!.addListener(_onControllerUpdate);
+    // No _updateSnapshot here — suppressed while seek is in flight.
   }
 
   void dispose() {
@@ -326,7 +409,7 @@ class LecturePlaybackController {
   }
 
   void _updateSnapshot() {
-    if (_disposed) return;
+    if (_disposed || _seekInProgress) return;
     final vpc = _activeVpc;
     snapshot.value = PlaybackSnapshot(
       globalPosition: _currentGlobalPosition(),
