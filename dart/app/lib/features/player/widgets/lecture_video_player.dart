@@ -428,7 +428,7 @@ class _OverlayControls extends ConsumerWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CastButton(iconSize: 20),
+              const CastButton(iconSize: 20),
               const SizedBox(width: 2),
               _CircleButton(
                 icon: isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,

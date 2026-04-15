@@ -92,23 +92,24 @@ class _LectureScreenState extends ConsumerState<LectureScreen> {
     );
 
     // Listen for active-segment changes to auto-scroll the list.
-    ref.listen(
-      lecturePlayerProvider(
-        courseId: widget.courseId,
-        sequenceId: widget.sequenceId,
-      ),
-      (previous, next) {
-        if (!next.hasValue) return;
-        final prevIndex = previous?.asData?.value.activeSegmentIndex;
-        final newIndex = next.requireValue.activeSegmentIndex;
-        if (prevIndex != newIndex) {
-          _scrollToActive(newIndex);
-        }
-      },
-    );
+    ref
+      ..listen(
+        lecturePlayerProvider(
+          courseId: widget.courseId,
+          sequenceId: widget.sequenceId,
+        ),
+        (previous, next) {
+          if (!next.hasValue) return;
+          final prevIndex = previous?.asData?.value.activeSegmentIndex;
+          final newIndex = next.requireValue.activeSegmentIndex;
+          if (prevIndex != newIndex) {
+            _scrollToActive(newIndex);
+          }
+        },
+      )
 
-    // Listen for cast session transitions.
-    ref.listen<CastState>(castControllerProvider, (previous, next) {
+      // Listen for cast session transitions.
+      ..listen<CastState>(castControllerProvider, (previous, next) {
       final prevStatus = previous?.status ?? CastConnectionStatus.disconnected;
       final nextStatus = next.status;
 

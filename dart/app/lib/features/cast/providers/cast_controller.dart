@@ -160,7 +160,6 @@ class CastController extends _$CastController {
       final item = e.value;
       return GoogleCastQueueItem(
         itemId: _itemIds[i],
-        autoPlay: true,
         mediaInformation: GoogleCastMediaInformation(
           contentId: item.verticalId,
           streamType: CastMediaStreamType.buffered,

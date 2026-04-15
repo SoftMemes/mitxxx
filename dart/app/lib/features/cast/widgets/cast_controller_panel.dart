@@ -4,7 +4,7 @@ import 'package:emajtee/features/player/widgets/unified_scrub_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Full-screen cast controller that replaces [LectureVideoPlayer] while a
+/// Full-screen cast controller that replaces LectureVideoPlayer while a
 /// cast session is active.
 ///
 /// Shows: device name, scrub bar spanning the full lecture, play/pause,
@@ -111,7 +111,7 @@ class _CastControllerPanelState extends ConsumerState<CastControllerPanel> {
             // Aspect-ratio placeholder showing cast icon.
             AspectRatio(
               aspectRatio: 16 / 9,
-              child: Container(
+              child: ColoredBox(
                 color: Colors.black,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,

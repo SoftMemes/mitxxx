@@ -1,6 +1,6 @@
 /// One video segment in the cast queue.
 ///
-/// Built from a [VerticalSegment] but always carries the remote CDN URL
+/// Built from a VerticalSegment but always carries the remote CDN URL
 /// (never a local file path) so the cast receiver can stream from the CDN.
 class CastQueueItem {
   const CastQueueItem({

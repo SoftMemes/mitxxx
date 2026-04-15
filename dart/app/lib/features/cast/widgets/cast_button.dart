@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:emajtee/features/cast/models/cast_state.dart';
 import 'package:emajtee/features/cast/providers/cast_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
@@ -139,7 +138,7 @@ class _DevicePickerDialog extends StatelessWidget {
                 final device = devices[i];
                 return ListTile(
                   leading: const Icon(Icons.cast),
-                  title: Text(device.friendlyName ?? 'Unknown device'),
+                  title: Text(device.friendlyName),
                   onTap: () => onDeviceSelected(device),
                 );
               },
