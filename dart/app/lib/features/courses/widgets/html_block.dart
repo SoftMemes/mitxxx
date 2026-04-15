@@ -6,6 +6,24 @@ import 'package:url_launcher/url_launcher.dart';
 
 final _log = Logger('courses.html_block');
 
+/// Base URL used to resolve relative links (e.g. `/assets/...`) clicked in the
+/// WebView. The WebView itself stays on `about:blank` to avoid the iOS
+/// WKWebView HTTPS-baseURL sandbox quirk — only link resolution uses this.
+const _lmsOrigin = 'https://courses.learn.mit.edu';
+
+/// Resolves a raw href from the page (may be absolute, protocol-relative, or
+/// root-relative) to a launchable absolute URL.
+Uri? _resolveLinkUri(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return null;
+  final parsed = Uri.tryParse(trimmed);
+  if (parsed == null) return null;
+  if (parsed.hasScheme) return parsed;
+  if (trimmed.startsWith('//')) return Uri.tryParse('https:$trimmed');
+  if (trimmed.startsWith('/')) return Uri.tryParse('$_lmsOrigin$trimmed');
+  return Uri.tryParse('$_lmsOrigin/$trimmed');
+}
+
 /// Renders a cached xblock HTML string in a WebView.
 ///
 /// This widget is intentionally offline-first: it does not inject auth
@@ -105,10 +123,12 @@ window.addEventListener('load', function() {
               handlerName: 'FlutterOpenUrl',
               callback: (args) async {
                 final raw = args.isNotEmpty ? args[0].toString() : '';
-                final uri = Uri.tryParse(raw);
+                final uri = _resolveLinkUri(raw);
                 if (uri == null) return;
                 if (await canLaunchUrl(uri)) {
                   await launchUrl(uri, mode: LaunchMode.externalApplication);
+                } else {
+                  _log.warning('Cannot launch URL: $uri (from raw: $raw)');
                 }
               },
             );
@@ -126,8 +146,9 @@ window.addEventListener('load', function() {
               uri.scheme != 'data') {
             // Open in system browser; JS click handler is the primary path but
             // this catches any navigation the JS handler misses (redirects, etc).
-            if (await canLaunchUrl(uri)) {
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            final resolved = _resolveLinkUri(uri.toString()) ?? uri;
+            if (await canLaunchUrl(resolved)) {
+              await launchUrl(resolved, mode: LaunchMode.externalApplication);
             }
             return NavigationActionPolicy.CANCEL;
           }
