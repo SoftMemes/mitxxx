@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+// ignore_for_file: uri_has_not_been_generated
+
 class CourseOutlineScreen extends ConsumerWidget {
   const CourseOutlineScreen({required this.courseId, super.key});
 
@@ -102,19 +104,6 @@ class CourseOutlineScreen extends ConsumerWidget {
                         sectionIndex: index,
                         courseId: courseId,
                         outline: outline,
-                        onSectionPlay: (sequenceId) => ref
-                            .read(analyticsServiceProvider)
-                            .logSectionPlay(
-                              courseId: courseId,
-                              blockId: sequenceId,
-                            ),
-                        onSectionOpen: (sequenceId, seqIdx) => ref
-                            .read(analyticsServiceProvider)
-                            .logSectionOpen(
-                              courseId: courseId,
-                              blockId: sequenceId,
-                              sectionIndex: seqIdx,
-                            ),
                       );
                     },
                     childCount: sections.length,
@@ -138,16 +127,12 @@ class _SectionGroup extends StatelessWidget {
     required this.sectionIndex,
     required this.courseId,
     required this.outline,
-    required this.onSectionPlay,
-    required this.onSectionOpen,
   });
 
   final Section section;
   final int sectionIndex;
   final String courseId;
   final CourseOutline outline;
-  final void Function(String sequenceId) onSectionPlay;
-  final void Function(String sequenceId, int index) onSectionOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -160,15 +145,10 @@ class _SectionGroup extends StatelessWidget {
           _SequenceTile(
             courseId: courseId,
             sequenceId: section.sequenceIds[i],
+            sectionIndex: sectionIndex,
+            sequenceIndex: i,
             title: outline.outline.sequences[section.sequenceIds[i]]?.title ??
                 'Part ${i + 1}',
-            onTap: () {
-              onSectionOpen(section.sequenceIds[i], sectionIndex * 100 + i);
-              context.push(
-                '/course/$courseId/sequence/${section.sequenceIds[i]}',
-              );
-            },
-            onPlay: () => onSectionPlay(section.sequenceIds[i]),
           ),
       ],
     );
@@ -199,41 +179,89 @@ class _SectionHeaderTile extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 
-class _SequenceTile extends StatelessWidget {
+class _SequenceTile extends ConsumerWidget {
   const _SequenceTile({
     required this.courseId,
     required this.sequenceId,
+    required this.sectionIndex,
+    required this.sequenceIndex,
     required this.title,
-    required this.onTap,
-    required this.onPlay,
   });
 
   final String courseId;
   final String sequenceId;
+  final int sectionIndex;
+  final int sequenceIndex;
   final String title;
-  final VoidCallback onTap;
-  final VoidCallback onPlay;
+
+  void _handleTap(BuildContext context, WidgetRef ref, SequenceSyncStatus status) {
+    if (status == SequenceSyncStatus.synced) {
+      ref.read(analyticsServiceProvider).logSectionOpen(
+        courseId: courseId,
+        blockId: sequenceId,
+        sectionIndex: sectionIndex * 100 + sequenceIndex,
+      );
+      context.push('/course/$courseId/sequence/$sequenceId');
+    } else {
+      ref.read(syncControllerProvider.notifier).prioritiseSequence(courseId, sequenceId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Queued — will sync next'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final seqState = ref.watch(
+      sequenceSyncControllerProvider.select((m) => m[sequenceId]),
+    );
+    final status = seqState?.status ?? SequenceSyncStatus.idle;
+    final cs = Theme.of(context).colorScheme;
+
+    Widget statusIcon;
+    switch (status) {
+      case SequenceSyncStatus.syncing:
+        statusIcon = const SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+      case SequenceSyncStatus.synced:
+        statusIcon = const Icon(Icons.check_circle, color: Colors.green, size: 18);
+      case SequenceSyncStatus.error:
+        statusIcon = Icon(Icons.error_outline, color: cs.error, size: 18);
+      case SequenceSyncStatus.idle:
+        statusIcon = Icon(Icons.hourglass_empty, color: cs.onSurfaceVariant, size: 18);
+    }
+
     return ListTile(
       leading: IconButton(
         icon: const Icon(Icons.play_circle_outline),
         tooltip: 'Play from beginning',
         onPressed: () {
-          onPlay();
-          onTap();
+          if (status == SequenceSyncStatus.synced) {
+            ref.read(analyticsServiceProvider).logSectionPlay(
+              courseId: courseId,
+              blockId: sequenceId,
+            );
+          }
+          _handleTap(context, ref, status);
         },
       ),
       title: Text(title),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          statusIcon,
+          const SizedBox(width: 4),
           DownloadButton(courseId: courseId, sequenceId: sequenceId),
           const Icon(Icons.chevron_right),
         ],
       ),
-      onTap: onTap,
+      onTap: () => _handleTap(context, ref, status),
     );
   }
 }

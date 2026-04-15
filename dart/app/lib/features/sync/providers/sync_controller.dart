@@ -1,6 +1,5 @@
 // ignore_for_file: uri_has_not_been_generated
 import 'dart:async';
-import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
@@ -28,11 +27,32 @@ part 'sync_controller.g.dart';
 
 final _log = Logger('sync');
 
+// ---------------------------------------------------------------------------
+// Per-sequence sync state provider
+// ---------------------------------------------------------------------------
+
+@Riverpod(keepAlive: true)
+class SequenceSyncController extends _$SequenceSyncController {
+  @override
+  Map<String, SequenceSyncState> build() => const {};
+
+  void setSequenceState(String sequenceId, SequenceSyncState s) {
+    state = Map.unmodifiable({...state, sequenceId: s});
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Course-level sync controller
+// ---------------------------------------------------------------------------
+
 @Riverpod(keepAlive: true)
 class SyncController extends _$SyncController {
+  /// Pending sequence queues keyed by courseId. Mutated by [prioritiseSequence]
+  /// between awaits — safe in Dart's single-threaded isolate.
+  final Map<String, List<String>> _pendingByCourse = {};
+
   @override
   Map<String, CourseSyncState> build() {
-    // Load persisted sync states from DB asynchronously and update state.
     _initFromDb();
     return {};
   }
@@ -61,9 +81,6 @@ class SyncController extends _$SyncController {
   }
 
   /// Syncs all enrolled courses. Re-authenticates LMS session if needed.
-  ///
-  /// [trigger] is passed through to the analytics event to distinguish
-  /// manual sync button taps, auto-syncs on first load, and pull-to-refresh.
   Future<void> syncAll({String trigger = kTriggerManual}) async {
     final client = ref.read(dioClientProvider);
     final db = ref.read(appDatabaseProvider);
@@ -75,14 +92,12 @@ class SyncController extends _$SyncController {
       trigger: trigger,
     ));
 
-    // Re-validate LMS session before syncing.
     try {
       await client.establishLmsSession();
     } on Object catch (e, st) {
       _log.warning('syncAll: LMS session refresh failed, proceeding anyway', e, st);
     }
 
-    // Fetch enrollment list.
     List<Enrollment> enrollments;
     try {
       final response =
@@ -92,8 +107,6 @@ class SyncController extends _$SyncController {
       enrollments = list
           .map((e) => Enrollment.fromJson(e as Map<String, dynamic>))
           .toList();
-      // Pre-seed sync states as 'syncing' so cards show spinners the moment
-      // the enrollment list appears.
       final seeded = <String, CourseSyncState>{};
       for (final e in list.cast<Map<String, dynamic>>()) {
         final courseId = Enrollment.fromJson(e).run.coursewareId;
@@ -102,7 +115,6 @@ class SyncController extends _$SyncController {
             .copyWith(status: SyncStatus.syncing);
       }
       state = Map.unmodifiable(seeded);
-      // Show the course list immediately — before per-course syncs start.
       ref.invalidate(enrollmentsProvider);
     } on DioException catch (e, st) {
       final status = e.response?.statusCode;
@@ -137,7 +149,6 @@ class SyncController extends _$SyncController {
       return;
     }
 
-    // Sync all courses in parallel.
     await Future.wait(
       enrollments.map((e) => syncCourse(e.run.coursewareId)),
     );
@@ -149,13 +160,16 @@ class SyncController extends _$SyncController {
     ));
   }
 
-  /// Syncs a single course's metadata (outline + sequences + xblocks).
+  /// Syncs a single course using a two-phase approach:
+  /// Phase 1 — fetch outline and surface the sequence list immediately.
+  /// Phase 2 — sync sequence content one at a time, in course order.
   Future<void> syncCourse(String courseId, {String trigger = kTriggerManual}) async {
     _updateCourseState(courseId, SyncStatus.syncing);
 
     final client = ref.read(dioClientProvider);
     final db = ref.read(appDatabaseProvider);
     final analytics = ref.read(analyticsServiceProvider);
+    final seqSync = ref.read(sequenceSyncControllerProvider.notifier);
     final startedAt = DateTime.now();
 
     unawaited(analytics.logSyncStart(
@@ -164,8 +178,9 @@ class SyncController extends _$SyncController {
       trigger: trigger,
     ));
 
+    // ── Phase 1: fetch + persist course outline ──────────────────────────────
+    List<String> sequenceIds;
     try {
-      // 1. Fetch and cache course outline (conditional request if cached).
       final cachedOutline = await db.getOutline(courseId);
       final outlineHeaders = _conditionalHeaders(
         etag: cachedOutline?.etag,
@@ -189,30 +204,62 @@ class SyncController extends _$SyncController {
         }
       } on DioException catch (e) {
         if (e.response?.statusCode == 304 && cachedOutline != null) {
-          // Not modified — reuse cached data.
           outlineData = jsonDecode(cachedOutline.data) as Map<String, dynamic>;
         } else {
           rethrow;
         }
       }
 
-      // 2. Collect all sequence IDs from the outline.
       final outlineSection = outlineData['outline'] as Map<String, dynamic>?;
       final sections =
           (outlineSection?['sections'] as List? ?? []).cast<dynamic>();
-      final sequenceIds = sections
+      sequenceIds = sections
           .expand<String>((s) =>
               ((s as Map<String, dynamic>)['sequence_ids'] as List? ?? [])
                   .cast<String>())
           .toList();
 
-      // 3 + 4. Fetch sequences (producing vertical IDs) and xblocks concurrently.
-      //        Verticals are enqueued as soon as their parent sequence returns,
-      //        so xblock fetches overlap with remaining sequence fetches.
-      final allVerticalIds = <String>[];
-      final vertQueue = _AsyncQueue<String>();
+      // Make the outline screen renderable immediately.
+      ref.invalidate(courseOutlineProvider(courseId: courseId));
 
-      final seqFuture = _parallelBounded(sequenceIds, 8, (seqId) async {
+      // Seed per-sequence state to idle (preserves synced rows from a prior run).
+      for (final seqId in sequenceIds) {
+        final existing = ref.read(sequenceSyncControllerProvider)[seqId];
+        if (existing?.status != SequenceSyncStatus.synced) {
+          seqSync.setSequenceState(seqId, const SequenceSyncState());
+        }
+      }
+    } on Object catch (e, st) {
+      _log.warning('syncCourse($courseId): outline fetch failed', e, st);
+      final errorMsg = e.toString();
+      await db.putSyncError(courseId, errorMsg);
+      _updateCourseState(courseId, SyncStatus.error, errorMessage: errorMsg);
+      unawaited(analytics.logSyncFailure(
+        scope: kScopeCourse,
+        courseId: courseId,
+        durationMs: DateTime.now().difference(startedAt).inMilliseconds,
+        stage: 'outline',
+        errorKind: e is DioException ? 'network' : 'unknown',
+      ));
+      return;
+    }
+
+    // ── Phase 2: sync sequences one at a time ────────────────────────────────
+    _pendingByCourse[courseId] = List<String>.from(sequenceIds);
+    final allVerticalIds = <String>[];
+
+    while (_pendingByCourse[courseId]?.isNotEmpty ?? false) {
+      final seqId = _pendingByCourse[courseId]!.removeAt(0);
+
+      // Skip if already synced this run (e.g. after a prioritise jump).
+      final currentStatus =
+          ref.read(sequenceSyncControllerProvider)[seqId]?.status;
+      if (currentStatus == SequenceSyncStatus.synced) continue;
+
+      seqSync.setSequenceState(seqId, const SequenceSyncState(status: SequenceSyncStatus.syncing));
+
+      try {
+        // Fetch sequence (vertical list).
         final cachedSeq = await db.getSequence(seqId);
         final seqHeaders = _conditionalHeaders(
           etag: cachedSeq?.etag,
@@ -243,56 +290,76 @@ class SyncController extends _$SyncController {
             ((seqData['items'] as List?) ?? []).cast<Map<String, dynamic>>();
         final vertIds = items.map((item) => item['id'] as String).toList();
         allVerticalIds.addAll(vertIds);
-        for (final id in vertIds) { vertQueue.add(id); }
-      }).whenComplete(vertQueue.close);
 
-      // Xblock workers drain the queue as vertical IDs arrive from sequences.
-      final xblockFuture = Future.wait(
-        List.generate(8, (_) async {
-          while (true) {
-            final vertId = await vertQueue.take();
-            if (vertId == null) return;
-            await _fetchAndCacheXblock(
-              client, db, vertId, courseId: courseId, retry: true,
-            );
-          }
-        }),
-      );
+        // Fetch each vertical's xblock content sequentially.
+        for (final vertId in vertIds) {
+          await _fetchAndCacheXblock(client, db, vertId, courseId: courseId, retry: true);
+        }
 
-      await Future.wait([seqFuture, xblockFuture]);
-
-      // 5. Cleanup: remove downloads for video blocks that no longer exist.
-      await _cleanupRemovedVideos(db, courseId, allVerticalIds);
-
-      // 6. Record success; invalidate cached providers for this course.
-      final now = DateTime.now();
-      await db.putSyncSuccess(courseId, now);
-      _updateCourseState(courseId, SyncStatus.idle, lastSyncedAt: now);
-      ref.invalidate(courseOutlineProvider(courseId: courseId));
-      for (final seqId in sequenceIds) {
+        // Make the sequence and its xblocks live immediately.
         ref.invalidate(sequenceDetailProvider(blockId: seqId));
+        for (final vertId in vertIds) {
+          ref.invalidate(xblockContentProvider(blockId: vertId));
+        }
+
+        final now = DateTime.now();
+        seqSync.setSequenceState(
+          seqId,
+          SequenceSyncState(status: SequenceSyncStatus.synced, lastSyncedAt: now),
+        );
+      } on Object catch (e, st) {
+        _log.warning('syncCourse($courseId): sequence $seqId failed', e, st);
+        final errorMsg = e.toString();
+        seqSync.setSequenceState(
+          seqId,
+          SequenceSyncState(status: SequenceSyncStatus.error, errorMessage: errorMsg),
+        );
+        unawaited(analytics.logSyncFailure(
+          scope: kScopeCourse,
+          courseId: courseId,
+          durationMs: DateTime.now().difference(startedAt).inMilliseconds,
+          stage: 'sequence',
+          errorKind: e is DioException ? 'network' : 'unknown',
+        ));
+        // Continue with remaining sequences.
       }
-      for (final vertId in allVerticalIds) {
-        ref.invalidate(xblockContentProvider(blockId: vertId));
+    }
+
+    _pendingByCourse.remove(courseId);
+
+    // Cleanup and finalise.
+    await _cleanupRemovedVideos(db, courseId, allVerticalIds);
+    final now = DateTime.now();
+    await db.putSyncSuccess(courseId, now);
+    _updateCourseState(courseId, SyncStatus.idle, lastSyncedAt: now);
+    unawaited(analytics.logSyncComplete(
+      scope: kScopeCourse,
+      courseId: courseId,
+      durationMs: DateTime.now().difference(startedAt).inMilliseconds,
+      itemsSynced: allVerticalIds.length,
+    ));
+  }
+
+  /// Moves [sequenceId] to the front of the pending queue for [courseId].
+  ///
+  /// If the sequence is already synced, this is a no-op.
+  /// If no sync is currently running for the course, starts one.
+  void prioritiseSequence(String courseId, String sequenceId) {
+    final seqState = ref.read(sequenceSyncControllerProvider)[sequenceId];
+    if (seqState?.status == SequenceSyncStatus.synced) return;
+
+    final queue = _pendingByCourse[courseId];
+    if (queue != null) {
+      queue
+        ..remove(sequenceId)
+        ..insert(0, sequenceId);
+    } else {
+      // No active sync — start one so the sequence gets fetched.
+      _pendingByCourse[courseId] = [sequenceId];
+      final courseStatus = state[courseId]?.status;
+      if (courseStatus != SyncStatus.syncing) {
+        unawaited(syncCourse(courseId));
       }
-      unawaited(analytics.logSyncComplete(
-        scope: kScopeCourse,
-        courseId: courseId,
-        durationMs: DateTime.now().difference(startedAt).inMilliseconds,
-        itemsSynced: allVerticalIds.length,
-      ));
-    } on Object catch (e, st) {
-      _log.warning('syncCourse($courseId): failed', e, st);
-      final errorMsg = e.toString();
-      await db.putSyncError(courseId, errorMsg);
-      _updateCourseState(courseId, SyncStatus.error, errorMessage: errorMsg);
-      unawaited(analytics.logSyncFailure(
-        scope: kScopeCourse,
-        courseId: courseId,
-        durationMs: DateTime.now().difference(startedAt).inMilliseconds,
-        stage: 'outline',
-        errorKind: e is DioException ? 'network' : 'unknown',
-      ));
     }
   }
 
@@ -322,10 +389,7 @@ class SyncController extends _$SyncController {
           htmlContent: html,
           hasContent: html.trim().isNotEmpty,
         );
-
-        // Detect URL changes: compare old xblock URLs against new ones.
         await _detectStaleDownloads(db, verticalId, videos);
-
         await db.putXblock(
           verticalId,
           jsonEncode(content.toJson()),
@@ -334,7 +398,6 @@ class SyncController extends _$SyncController {
         );
       } on DioException catch (e) {
         if (e.response?.statusCode != 304) rethrow;
-        // 304 Not Modified — cached xblock is still current, nothing to do.
       }
     } on Object catch (e, st) {
       if (retry) {
@@ -342,15 +405,10 @@ class SyncController extends _$SyncController {
         await _fetchAndCacheXblock(client, db, verticalId, courseId: courseId);
       } else {
         _log.warning('xblock $verticalId failed after retry', e, st);
-        // Don't rethrow — a single bad vertical shouldn't fail the whole course.
       }
     }
   }
 
-
-  /// Compares the old cached xblock's video URLs against [newVideos].
-  /// Any old URL that is no longer present and has a downloaded row is
-  /// marked stale — the user will see an update-available indicator.
   Future<void> _detectStaleDownloads(
     AppDatabase db,
     String verticalId,
@@ -376,8 +434,6 @@ class SyncController extends _$SyncController {
       final oldUrl = oldVideo.mp4Url;
       if (oldUrl == null) continue;
       if (newUrls.contains(oldUrl)) continue;
-
-      // Old URL is gone — if it was downloaded, mark stale.
       final downloaded = await db.getDownloadedVideo(oldUrl);
       if (downloaded != null &&
           downloaded.status == DownloadStatus.downloaded.name) {
@@ -387,14 +443,11 @@ class SyncController extends _$SyncController {
     }
   }
 
-  /// Removes download rows (and their files) for any URL that belongs to
-  /// [courseId] but is no longer present in any of [currentVerticalIds].
   Future<void> _cleanupRemovedVideos(
     AppDatabase db,
     String courseId,
     List<String> currentVerticalIds,
   ) async {
-    // Collect all current mp4Urls across the course's xblocks.
     final currentUrls = <String>{};
     for (final vertId in currentVerticalIds) {
       final row = await db.getXblock(vertId);
@@ -408,11 +461,9 @@ class SyncController extends _$SyncController {
       } on Object catch (_) {}
     }
 
-    // Find downloads for this course that are no longer in the URL set.
     final courseDownloads = await db.getDownloadsForCourse(courseId);
     for (final row in courseDownloads) {
       if (currentUrls.contains(row.url)) continue;
-      // This URL is no longer in the course — remove the course reference.
       final orphanedPath =
           await db.removeCourseFromDownload(row.url, courseId);
       if (orphanedPath != null && orphanedPath.isNotEmpty) {
@@ -426,9 +477,6 @@ class SyncController extends _$SyncController {
     }
   }
 
-  /// Returns a header map with [If-None-Match] and/or [If-Modified-Since] if
-  /// the cached response carried those validators; returns null when no
-  /// validators are available (i.e. first fetch).
   Map<String, String>? _conditionalHeaders({
     String? etag,
     String? lastModified,
@@ -454,64 +502,5 @@ class SyncController extends _$SyncController {
         errorMessage: errorMessage,
       ),
     });
-  }
-
-  /// Processes [items] with a rolling pool of [concurrency] concurrent workers.
-  ///
-  /// Unlike a batch-wait approach, a new item starts the moment any worker
-  /// finishes — no head-of-line blocking from one slow request.
-  Future<void> _parallelBounded<T>(
-    Iterable<T> items,
-    int concurrency,
-    Future<void> Function(T) fn,
-  ) async {
-    final iter = items.iterator;
-    await Future.wait(
-      List.generate(concurrency, (_) async {
-        // Each worker pulls items one at a time. moveNext() + current are
-        // synchronous (no await between them) so they're safe in Dart's
-        // single-threaded isolate — no two workers can observe the same item.
-        while (iter.moveNext()) {
-          final item = iter.current;
-          await fn(item);
-        }
-      }),
-    );
-  }
-}
-
-/// Async FIFO queue for producer-consumer coordination within a single isolate.
-///
-/// Producers call [add]; consumers call [take] (which suspends until an item
-/// is available). Call [close] when no more items will be added — suspended
-/// [take] calls will then return null, signalling consumers to stop.
-class _AsyncQueue<T> {
-  final _items = Queue<T>();
-  final _waiters = Queue<Completer<T?>>();
-  bool _closed = false;
-
-  void add(T item) {
-    if (_waiters.isNotEmpty) {
-      _waiters.removeFirst().complete(item);
-    } else {
-      _items.add(item);
-    }
-  }
-
-  void close() {
-    _closed = true;
-    for (final w in _waiters) {
-      w.complete(null);
-    }
-    _waiters.clear();
-  }
-
-  /// Returns the next item, or null when the queue is closed and drained.
-  Future<T?> take() {
-    if (_items.isNotEmpty) return Future.value(_items.removeFirst());
-    if (_closed) return Future<T?>.value();
-    final c = Completer<T?>();
-    _waiters.add(c);
-    return c.future;
   }
 }
