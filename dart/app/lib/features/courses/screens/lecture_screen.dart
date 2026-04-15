@@ -71,7 +71,6 @@ class _LectureScreenState extends ConsumerState<LectureScreen> {
         ctx,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
-        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
       );
     });
   }
