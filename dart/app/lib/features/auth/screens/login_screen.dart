@@ -5,6 +5,7 @@ import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:mitx_api/mitx_api.dart';
 
@@ -18,19 +19,17 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  bool _showWebView = false;
+  bool _showWebView = true;
   bool _completingAuth = false;
 
-  Future<void> _startWebViewAuth() async {
-    // Clear any stale Keycloak session cookies from the native WebView store
-    // before starting a new OAuth flow. Stale AUTH_SESSION_ID / KC_RESTART
-    // cookies from a previous (possibly expired) login attempt cause Keycloak
-    // to return 500 rather than redirecting to a fresh login page.
-    await CookieManager.instance().deleteAllCookies();
-    setState(() => _showWebView = true);
+  @override
+  void initState() {
+    super.initState();
+    // Clear stale Keycloak cookies immediately so the WebView starts fresh.
+    CookieManager.instance().deleteAllCookies();
   }
 
-  Future<void> _onWebViewAuthComplete() async {
+Future<void> _onWebViewAuthComplete() async {
     if (_completingAuth) return;
     _log.info('WebView auth complete — syncing cookies and finalising');
     setState(() => _completingAuth = true);
@@ -106,7 +105,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         appBar: AppBar(
           title: const Text('Sign in with MITx'),
           leading: BackButton(
-            onPressed: () => setState(() => _showWebView = false),
+            onPressed: () => context.go('/home'),
           ),
         ),
         body: InAppWebView(
@@ -155,44 +154,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       );
     }
 
-    return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Image.asset(
-                'assets/icons/app_icon.png',
-                width: 120,
-                height: 120,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'MITxxx',
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Unofficial MITx Offline App',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 48),
-              FilledButton(
-                onPressed: _startWebViewAuth,
-                child: const Text('Sign in with MITx'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    // _showWebView is always true on this screen; this branch is unreachable
+    // but kept to satisfy the Dart return-type requirement.
+    return const SizedBox.shrink();
   }
 }
