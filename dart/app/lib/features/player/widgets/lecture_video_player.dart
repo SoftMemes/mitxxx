@@ -29,8 +29,17 @@ class LectureVideoPlayer extends StatefulWidget {
 class _LectureVideoPlayerState extends State<LectureVideoPlayer> {
   bool _controlsVisible = true;
   bool _scrubbing = false;
+  double? _pendingSeekTarget;
 
   void _toggleControls() => setState(() => _controlsVisible = !_controlsVisible);
+
+  void _onSeek(double secs) {
+    setState(() {
+      _pendingSeekTarget = secs;
+      _scrubbing = true;
+    });
+    widget.onSeek(secs);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,6 +146,20 @@ class _LectureVideoPlayerState extends State<LectureVideoPlayer> {
         .where((t) => t > 0)
         .toList();
 
+    // While a seek is in flight, pin the displayed position to the target so
+    // the thumb doesn't briefly jump to a segment boundary before settling.
+    final target = _pendingSeekTarget;
+    if (_scrubbing && target != null) {
+      if ((snap.globalPosition - target).abs() < 0.5) {
+        // Snapshot has converged — stop pinning.
+        _scrubbing = false;
+        _pendingSeekTarget = null;
+      }
+    }
+    final displayPosition = (_scrubbing && target != null)
+        ? target
+        : snap.globalPosition;
+
     return ColoredBox(
       color: Colors.black,
       child: Padding(
@@ -151,14 +174,12 @@ class _LectureVideoPlayerState extends State<LectureVideoPlayer> {
           bottom: 2,
         ),
         child: UnifiedScrubBar(
-          position: _scrubbing
-              ? snap.globalPosition
-              : snap.globalPosition,
+          position: displayPosition,
           duration: snap.totalDuration,
           segmentBoundaries: boundaries,
           onSeekStart: () => setState(() => _scrubbing = true),
-          onSeekEnd: () => setState(() => _scrubbing = false),
-          onSeek: widget.onSeek,
+          onSeekEnd: () {},
+          onSeek: _onSeek,
         ),
       ),
     );
