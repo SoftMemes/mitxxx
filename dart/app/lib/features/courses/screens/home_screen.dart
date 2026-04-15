@@ -64,7 +64,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ref.read(syncControllerProvider.notifier).syncAll(),
               ),
           IconButton(
-            icon: const Icon(Icons.settings_outlined),
+            icon: const Icon(Icons.menu),
             onPressed: () => context.push('/settings'),
           ),
         ],

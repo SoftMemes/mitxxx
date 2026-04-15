@@ -1,7 +1,7 @@
 # Data Usage Specification
 
 > **Version**: 1.3 (April 2026)
-> **Status**: Ready for Implementation
+> **Status**: Implemented
 > **Last Updated**: 2026-04-15
 
 ## Description
@@ -76,6 +76,23 @@ Out of scope for this feature.
 - `dart/app/lib/features/settings/screens/settings_screen.dart` — add "Data Usage" `ListTile` above Sign Out
 - `dart/app/lib/core/router/app_router.dart` — add `/settings/data-usage` route
 - `dart/app/lib/core/storage/app_database.dart` — add a helper to sum `bytesDownloaded` for downloaded videos and expose the DB file path for metadata size calculation
+
+---
+
+## Implementation Notes
+
+**Implemented**: April 2026
+
+**New files:**
+- `dart/app/lib/features/settings/screens/data_usage_screen.dart`
+
+**Modified files:**
+- `dart/app/lib/core/storage/app_database.dart` — added `dbFilePath()`, `getTotalDownloadedBytes()`, `clearDownloadedVideosAndGetPaths()`
+- `dart/app/lib/core/router/app_router.dart` — added `/settings/data-usage` route
+- `dart/app/lib/features/settings/screens/settings_screen.dart` — added "Data Usage" ListTile above Sign Out
+
+**Deviations from spec:**
+- The settings screen had already been refactored to have a separate "Settings" preferences tile (not shown in spec). "Data Usage" was inserted above Sign Out as specified.
 
 ---
 

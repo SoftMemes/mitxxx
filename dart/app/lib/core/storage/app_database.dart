@@ -378,6 +378,36 @@ class AppDatabase extends _$AppDatabase {
     return null;
   }
 
+  // --- Data-usage helpers ---
+
+  /// Returns the absolute path to the SQLite database file. Can be called
+  /// before the database is opened (useful for computing file size).
+  static Future<String> dbFilePath() async {
+    final dbFolder = await getApplicationDocumentsDirectory();
+    return p.join(dbFolder.path, 'emajtee.db');
+  }
+
+  /// Sum of bytesDownloaded for all rows with status = 'downloaded'.
+  Future<int> getTotalDownloadedBytes() async {
+    final result = await customSelect(
+      'SELECT COALESCE(SUM(bytes_downloaded), 0) AS total '
+      "FROM downloaded_videos WHERE status = 'downloaded'",
+    ).getSingle();
+    return result.read<int>('total');
+  }
+
+  /// Clears only the [DownloadedVideos] table and returns the local file paths
+  /// so the caller can delete the files from disk.
+  Future<List<String>> clearDownloadedVideosAndGetPaths() async {
+    final rows = await getAllDownloadedVideos();
+    final paths = rows
+        .where((r) => r.localFilePath.isNotEmpty)
+        .map((r) => r.localFilePath)
+        .toList();
+    await delete(downloadedVideos).go();
+    return paths;
+  }
+
   // --- Clear LMS-side caches (used after fresh LMS auth to discard any
   //     content fetched while unauthenticated). Leaves enrollments and
   //     downloaded videos intact. ---

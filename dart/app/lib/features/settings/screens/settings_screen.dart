@@ -32,6 +32,13 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
           ListTile(
+            leading: const Icon(Icons.storage_outlined),
+            title: const Text('Data Usage'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/settings/data-usage'),
+          ),
+          const Divider(),
+          ListTile(
             leading: const Icon(Icons.logout),
             title: const Text('Sign Out'),
             onTap: () async {
