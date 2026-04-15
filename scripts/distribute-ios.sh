@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELEASE_NOTES="${1:-}"
+RELEASE_NOTES=""
+SKIP_BUILD=false
 IOS_APP_ID="${FIREBASE_IOS_APP_ID:-1:478154015759:ios:1d84be350debcdd2d54f7a}"
 TESTER_GROUP="${FIREBASE_TESTER_GROUP:-internal}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-build) SKIP_BUILD=true; shift ;;
+    *) RELEASE_NOTES="$1"; shift ;;
+  esac
+done
 
 # Build number: seconds since 2020-01-01 UTC (see distribute.sh for rationale).
 # If BUILD_NUMBER is already set by the parent script, this is a no-op.
@@ -22,16 +30,20 @@ echo "==> Build number: $BUILD_NUMBER"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_DIR="$REPO_ROOT/dart/app"
 
-echo "==> Cleaning stale iOS archive/IPA to ensure build number is baked in fresh..."
-rm -rf "$APP_DIR/build/ios/archive" "$APP_DIR/build/ios/ipa"
+if [[ "$SKIP_BUILD" == true ]]; then
+  echo "==> Skipping iOS build (--skip-build)"
+else
+  echo "==> Cleaning stale iOS archive/IPA to ensure build number is baked in fresh..."
+  rm -rf "$APP_DIR/build/ios/archive" "$APP_DIR/build/ios/ipa"
 
-echo "==> Building iOS release IPA..."
-cd "$APP_DIR"
-flutter build ipa --release \
-  --build-number="$BUILD_NUMBER" \
-  --export-options-plist=ios/ExportOptions.plist
+  echo "==> Building iOS release IPA..."
+  cd "$APP_DIR"
+  flutter build ipa --release \
+    --build-number="$BUILD_NUMBER" \
+    --export-options-plist=ios/ExportOptions.plist
+fi
 
-IPA="$APP_DIR/build/ios/ipa/emajtee.ipa"
+IPA="$APP_DIR/build/ios/ipa/MITxxx.ipa"
 
 echo "==> Uploading to Firebase App Distribution..."
 firebase appdistribution:distribute "$IPA" \
