@@ -58,77 +58,64 @@ String stripVideoBlocks(String html) {
 
 /// Sanitizes xblock HTML for display in the lecture content list.
 ///
-/// Strips:
-/// - Video xblock containers (same as [stripVideoBlocks])
-/// - Problem / assessment xblock containers (Open edX `xblock-*-problem`,
-///   `xblock-*-library_content`, `capa_module`, etc.)
-/// - Unsafe tags: `<script>`, `<style>`, `<iframe>`, `<form>`, `<input>`,
-///   `<button>`, `<select>`, `<textarea>`
+/// The LMS returns a full HTML page per vertical. Instead of stripping noise
+/// from the full page, this function **cherry-picks** only the content nodes
+/// inside `.xblock-student_view-html` elements — the actual authored HTML
+/// (paragraphs, lists, images) — and builds a minimal clean document from them.
 ///
-/// Returns sanitized outer HTML. Safe to pass directly to `HtmlBlock`.
+/// Allowlisted content tags are kept as-is; everything else (LMS page chrome,
+/// `<script>`, `<style>`, wrapper divs, problem xblocks, unit-title headings)
+/// is excluded by never being copied in the first place.
+///
+/// Returns a clean HTML fragment string. Safe to pass directly to `HtmlBlock`.
 String sanitizeXBlockHtml(String html) {
   if (html.trim().isEmpty) return html;
 
-  // First strip video xblocks using the existing logic.
-  final stripped = stripVideoBlocks(html);
+  final doc = html_parser.parse(html);
 
-  final doc = html_parser.parse(stripped);
-
-  // Strip problem/assessment xblocks.
-  final problemToRemove = <dom.Element>{};
-  for (final el in doc.querySelectorAll('.xblock')) {
-    final cls = el.className;
-    if (cls.contains('-problem') ||
-        cls.contains('-library_content') ||
-        el.attributes['data-block-type'] == 'problem' ||
-        el.attributes['data-block-type'] == 'library_content') {
-      problemToRemove.add(el);
-    }
-  }
-  for (final el in doc.querySelectorAll(
-    '[data-block-type="problem"], [data-block-type="library_content"]',
-  )) {
-    problemToRemove.add(el);
-  }
-  // Also strip any element with a class suggesting it is a CAPA problem.
-  for (final el in doc.querySelectorAll('.capa_inputtype, .problem-feedback')) {
-    problemToRemove.add(el);
-  }
-  for (final el in problemToRemove) {
-    var target = el;
-    while (true) {
-      final parent = target.parent;
-      if (parent is! dom.Element) break;
-      final hasOther = parent.nodes.any((n) {
-        if (identical(n, target)) return false;
-        if (n is dom.Text) return n.text.trim().isNotEmpty;
-        return true;
-      });
-      if (hasOther) break;
-      if (parent.localName != 'div') break;
-      target = parent;
-    }
-    target.remove();
-  }
-
-  // Strip unsafe tags entirely (including their children for script/style;
-  // for form elements strip the element but keep inner text where present).
-  const removeWithChildren = {'script', 'style', 'iframe'};
-  const removeTagOnly = {'form', 'input', 'button', 'select', 'textarea'};
-
-  for (final tag in removeWithChildren) {
-    for (final el in List.of(doc.querySelectorAll(tag))) {
-      el.remove();
-    }
-  }
-  for (final tag in removeTagOnly) {
-    for (final el in List.of(doc.querySelectorAll(tag))) {
-      // Unwrap: replace the element with its text content.
-      el.replaceWith(dom.Text(el.text));
+  // Collect content nodes from every .xblock-student_view-html block.
+  // This is the authored HTML — <p>, <ul>, <ol>, <img>, <table>, etc.
+  // We skip <script> (Open edX injects a json/xblock-args script peer to the
+  // content) and empty text nodes.
+  final contentNodes = <dom.Node>[];
+  for (final block in doc.querySelectorAll('.xblock-student_view-html')) {
+    for (final node in List.of(block.nodes)) {
+      if (node is dom.Element && node.localName == 'script') continue;
+      if (node is dom.Text && node.text.trim().isEmpty) continue;
+      contentNodes.add(node);
     }
   }
 
-  return doc.documentElement?.outerHtml ?? stripped;
+  // Fallback: if the response was a bare HTML fragment (no LMS page wrapper),
+  // use the original full body content with a light video-block strip.
+  if (contentNodes.isEmpty) {
+    final stripped = stripVideoBlocks(html);
+    final fallbackDoc = html_parser.parse(stripped);
+    for (final tag in ['script', 'style', 'iframe']) {
+      for (final el in List.of(fallbackDoc.querySelectorAll(tag))) {
+        el.remove();
+      }
+    }
+    return fallbackDoc.documentElement?.outerHtml ?? stripped;
+  }
+
+  // Build a fresh minimal document: <html><head></head><body>…</body></html>
+  final cleanDoc = html_parser.parse('<!doctype html><html><head></head><body></body></html>');
+  final body = cleanDoc.body!;
+  for (final node in contentNodes) {
+    body.append(node);
+  }
+
+  // Remove empty <p> elements (no text, no element children).
+  for (final el in List.of(cleanDoc.querySelectorAll('p'))) {
+    final hasContent = el.nodes.any((n) {
+      if (n is dom.Text) return n.text.trim().isNotEmpty;
+      return true;
+    });
+    if (!hasContent) el.remove();
+  }
+
+  return cleanDoc.documentElement?.outerHtml ?? html;
 }
 
 /// Extracts video metadata from raw xblock HTML.

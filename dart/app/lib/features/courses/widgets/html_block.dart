@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 final _log = Logger('courses.html_block');
 
@@ -54,6 +55,16 @@ window.addEventListener('load', function() {
   report();
   setTimeout(report, 300);
   setTimeout(report, 1000);
+
+  // Open all links in the system browser rather than navigating inline.
+  document.addEventListener('click', function(e) {
+    var a = e.target.closest('a[href]');
+    if (!a) return;
+    e.preventDefault();
+    try {
+      window.flutter_inappwebview.callHandler('FlutterOpenUrl', a.href);
+    } catch (_) {}
+  });
 });
 </script>
 ''';
@@ -80,15 +91,27 @@ window.addEventListener('load', function() {
           // (if online) will simply fail CORS/network — acceptable.
         ),
         onWebViewCreated: (controller) {
-          controller.addJavaScriptHandler(
-            handlerName: 'FlutterHeight',
-            callback: (args) {
-              final h = double.tryParse(args.isNotEmpty ? args[0].toString() : '');
-              if (h != null && h > 0 && mounted && (h - _height).abs() > 4) {
-                setState(() => _height = h + 24);
-              }
-            },
-          );
+          controller
+            ..addJavaScriptHandler(
+              handlerName: 'FlutterHeight',
+              callback: (args) {
+                final h = double.tryParse(args.isNotEmpty ? args[0].toString() : '');
+                if (h != null && h > 0 && mounted && (h - _height).abs() > 4) {
+                  setState(() => _height = h + 24);
+                }
+              },
+            )
+            ..addJavaScriptHandler(
+              handlerName: 'FlutterOpenUrl',
+              callback: (args) async {
+                final raw = args.isNotEmpty ? args[0].toString() : '';
+                final uri = Uri.tryParse(raw);
+                if (uri == null) return;
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              },
+            );
         },
         initialData: InAppWebViewInitialData(
           data: _wrapHtml(widget.html),
@@ -97,12 +120,15 @@ window.addEventListener('load', function() {
         ),
         shouldOverrideUrlLoading: (controller, navigationAction) async {
           final uri = navigationAction.request.url;
-          // Block main-frame navigation — open external links in the system
-          // browser instead of navigating within the WebView.
           if (navigationAction.isForMainFrame &&
               uri != null &&
               uri.scheme != 'about' &&
               uri.scheme != 'data') {
+            // Open in system browser; JS click handler is the primary path but
+            // this catches any navigation the JS handler misses (redirects, etc).
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
             return NavigationActionPolicy.CANCEL;
           }
           return NavigationActionPolicy.ALLOW;
