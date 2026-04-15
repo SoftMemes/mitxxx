@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -48,12 +49,45 @@ class HtmlBlock extends ConsumerStatefulWidget {
 }
 
 class _HtmlBlockState extends ConsumerState<HtmlBlock> {
-  double _height = 400;
+  double _height = 0;
+
+  // Loaded once from assets and shared across all HtmlBlock instances.
+  static String? _mathJaxJs;
+
+  @override
+  void initState() {
+    super.initState();
+    _ensureMathJax();
+  }
+
+  Future<void> _ensureMathJax() async {
+    if (_mathJaxJs != null) return;
+    final js = await rootBundle.loadString('assets/js/mathjax.min.js');
+    _mathJaxJs = js;
+    if (mounted) setState(() {});
+  }
 
   String _wrapHtml(String html) {
+    // MathJax 3 config: match the delimiters the LMS uses.
+    const mathJaxConfig = r'''
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [["\\(","\\)"], ["[mathjaxinline]","[/mathjaxinline]"]],
+      displayMath: [["\\[","\\]"], ["[mathjax]","[/mathjax]"]]
+    },
+    options: { enableMenu: false }
+  };
+</script>
+''';
+
+    final mathJaxScript = _mathJaxJs != null
+        ? '<script>$_mathJaxJs</script>'
+        : '';
+
     // Inject a viewport + base styles so text is readable and sized
     // appropriately, plus a scrollHeight callback for auto-sizing.
-    const headExtras = '''
+    final headExtras = '''
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <style>
   html, body { margin: 0; padding: 0; background: transparent; color: inherit; }
@@ -62,7 +96,7 @@ class _HtmlBlockState extends ConsumerState<HtmlBlock> {
   pre, code { white-space: pre-wrap; word-wrap: break-word; }
   table { max-width: 100%; }
 </style>
-<script>
+$mathJaxConfig$mathJaxScript<script>
 window.addEventListener('load', function() {
   function report() {
     try {
@@ -98,6 +132,11 @@ window.addEventListener('load', function() {
 
   @override
   Widget build(BuildContext context) {
+    // Wait for MathJax to be loaded from the asset bundle before creating the
+    // WebView. With _height=0 this is invisible anyway; we just defer WebView
+    // creation until the inline script is ready so the initial load includes it.
+    if (_mathJaxJs == null) return const SizedBox.shrink();
+
     return SizedBox(
       height: _height,
       child: InAppWebView(
