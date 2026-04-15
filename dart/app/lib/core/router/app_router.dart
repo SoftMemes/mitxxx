@@ -8,6 +8,7 @@ import 'package:emajtee/features/courses/screens/lecture_screen.dart';
 import 'package:emajtee/features/onboarding/providers/onboarding_provider.dart';
 import 'package:emajtee/features/onboarding/screens/onboarding_screen.dart';
 import 'package:emajtee/features/settings/screens/about_screen.dart';
+import 'package:emajtee/features/settings/screens/preferences_screen.dart';
 import 'package:emajtee/features/settings/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -85,6 +86,10 @@ GoRouter appRouter(Ref ref) {
           GoRoute(
             path: 'about',
             builder: (context, state) => const AboutScreen(),
+          ),
+          GoRoute(
+            path: 'preferences',
+            builder: (context, state) => const PreferencesScreen(),
           ),
         ],
       ),
