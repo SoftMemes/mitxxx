@@ -33,12 +33,6 @@ flutter build ipa --release \
 
 IPA="$APP_DIR/build/ios/ipa/emajtee.ipa"
 
-echo "==> Verifying build number in IPA..."
-TMP_PLIST=$(mktemp)
-unzip -p "$IPA" "Payload/*.app/Info.plist" > "$TMP_PLIST"
-plutil -p "$TMP_PLIST" | grep -E 'CFBundleVersion|CFBundleShortVersionString'
-rm -f "$TMP_PLIST"
-
 echo "==> Uploading to Firebase App Distribution..."
 firebase appdistribution:distribute "$IPA" \
   --app "$IOS_APP_ID" \

@@ -9,6 +9,7 @@ import 'package:emajtee/features/courses/widgets/html_block.dart';
 import 'package:emajtee/features/courses/widgets/video_block.dart';
 import 'package:emajtee/features/downloads/widgets/download_button.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class ContentScreen extends ConsumerStatefulWidget {
@@ -31,10 +32,13 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
   // Index of the vertical that should auto-play when it becomes visible.
   // -1 means no pending auto-play.
   int _autoPlayIndex = -1;
-  // Index of the vertical that should auto-enter fullscreen when visible.
-  // Set alongside _autoPlayIndex when the previous video completed while
-  // in fullscreen, so the fullscreen experience persists across advances.
-  int _autoFullScreenIndex = -1;
+  // Screen-level fullscreen flag. Controls whether the app bar, progress
+  // bar, and nav bar are visible, and whether pages render video-only.
+  // Owning this at the screen level (rather than using Chewie's per-
+  // controller fullscreen route) keeps fullscreen stable across auto-
+  // advance: swiping PageView to the next video doesn't tear down or
+  // recreate any fullscreen route.
+  bool _isFullScreen = false;
 
   @override
   void initState() {
@@ -44,6 +48,13 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
 
   @override
   void dispose() {
+    // Always restore system UI / orientation on exit — even if the user
+    // backed out of the screen while still in fullscreen, they should
+    // land on the course screen with chrome visible.
+    if (_isFullScreen) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+    }
     _pageController.dispose();
     super.dispose();
   }
@@ -56,26 +67,37 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
     );
   }
 
+  void _toggleFullScreen() {
+    final next = !_isFullScreen;
+    setState(() => _isFullScreen = next);
+    if (next) {
+      // Hide status/nav bars and force landscape. immersiveSticky lets
+      // the user swipe from an edge to briefly reveal system UI without
+      // permanently exiting fullscreen.
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    } else {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+    }
+  }
+
   /// Called when any video on [verticalIndex] completes.
   /// If auto-advance is on, pages to the next vertical and marks it for
-  /// auto-play. If the completed video was in fullscreen, also marks it
-  /// to re-enter fullscreen so the experience carries across advances.
+  /// auto-play. Fullscreen state is managed at the screen level so it
+  /// persists automatically — no special handling needed here.
   /// Does nothing if already on the last vertical.
-  void _onVideoCompleted(
-    int verticalIndex,
-    SequenceDetail sequence, {
-    required bool wasFullScreen,
-  }) {
+  void _onVideoCompleted(int verticalIndex, SequenceDetail sequence) {
     // Read the current persisted preference synchronously — if it hasn't
     // loaded yet, default to off rather than auto-advancing by surprise.
     final autoAdvance = ref.read(autoAdvanceProvider).value ?? false;
     if (!autoAdvance) return;
     final next = verticalIndex + 1;
     if (next >= sequence.items.length) return; // end of sequence — stop
-    setState(() {
-      _autoPlayIndex = next;
-      _autoFullScreenIndex = wasFullScreen ? next : -1;
-    });
+    setState(() => _autoPlayIndex = next);
     _goTo(next);
   }
 
@@ -89,26 +111,29 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
         ?.id;
 
     return Scaffold(
-      appBar: AppBar(
-        title: sequenceAsync.maybeWhen(
-          data: (s) => s.items.isNotEmpty
-              ? Text(
-                  s.items[_currentIndex].pageTitle,
-                  overflow: TextOverflow.ellipsis,
-                )
-              : const Text('Content'),
-          orElse: () => const Text('Content'),
-        ),
-        actions: [
-          if (currentVerticalId != null)
-            DownloadButton(
-              courseId: widget.courseId,
-              sequenceId: widget.sequenceId,
-              verticalId: currentVerticalId,
+      backgroundColor: _isFullScreen ? Colors.black : null,
+      appBar: _isFullScreen
+          ? null
+          : AppBar(
+              title: sequenceAsync.maybeWhen(
+                data: (s) => s.items.isNotEmpty
+                    ? Text(
+                        s.items[_currentIndex].pageTitle,
+                        overflow: TextOverflow.ellipsis,
+                      )
+                    : const Text('Content'),
+                orElse: () => const Text('Content'),
+              ),
+              actions: [
+                if (currentVerticalId != null)
+                  DownloadButton(
+                    courseId: widget.courseId,
+                    sequenceId: widget.sequenceId,
+                    verticalId: currentVerticalId,
+                  ),
+                const SizedBox(width: 8),
+              ],
             ),
-          const SizedBox(width: 8),
-        ],
-      ),
       body: sequenceAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(
@@ -137,11 +162,12 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
 
           return Column(
             children: [
-              // Progress bar.
-              LinearProgressIndicator(
-                value: ((_currentIndex + 1) / total).clamp(0.0, 1.0),
-                minHeight: 4,
-              ),
+              // Progress bar — hidden in fullscreen.
+              if (!_isFullScreen)
+                LinearProgressIndicator(
+                  value: ((_currentIndex + 1) / total).clamp(0.0, 1.0),
+                  minHeight: 4,
+                ),
 
               // Content pages.
               Expanded(
@@ -151,12 +177,9 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
                   onPageChanged: (index) {
                     setState(() {
                       _currentIndex = index;
-                      // Clear auto-play / auto-fullscreen if the user
-                      // navigated manually rather than auto-advancing.
+                      // Clear auto-play flag if the user navigated manually
+                      // rather than auto-advancing.
                       if (index != _autoPlayIndex) _autoPlayIndex = -1;
-                      if (index != _autoFullScreenIndex) {
-                        _autoFullScreenIndex = -1;
-                      }
                     });
                   },
                   itemBuilder: (context, index) {
@@ -164,32 +187,33 @@ class _ContentScreenState extends ConsumerState<ContentScreen> {
                     return _VerticalPage(
                       item: item,
                       autoPlay: index == _autoPlayIndex,
-                      autoFullScreen: index == _autoFullScreenIndex,
-                      onVideoCompleted: (wasFullScreen) =>
-                          _onVideoCompleted(
+                      isFullScreen: _isFullScreen,
+                      onToggleFullScreen: _toggleFullScreen,
+                      onVideoCompleted: () => _onVideoCompleted(
                         index,
                         sequence,
-                        wasFullScreen: wasFullScreen,
                       ),
                     );
                   },
                 ),
               ),
 
-              // Prev / Next / Complete navigation bar + auto-advance toggle.
-              _NavBar(
-                canGoPrev: _currentIndex > 0,
-                canGoNext: _currentIndex < total - 1,
-                // Default to false while the persisted value is loading so
-                // the toggle renders deterministically on first frame.
-                autoAdvance: ref.watch(autoAdvanceProvider).value ?? false,
-                onPrev: () => _goTo(_currentIndex - 1),
-                onNext: () => _goTo(_currentIndex + 1),
-                onComplete: () => Navigator.of(context).pop(),
-                onAutoAdvanceChanged: (v) => ref
-                    .read(autoAdvanceProvider.notifier)
-                    .set(enabled: v),
-              ),
+              // Prev / Next / Complete navigation bar + auto-advance toggle
+              // — hidden in fullscreen.
+              if (!_isFullScreen)
+                _NavBar(
+                  canGoPrev: _currentIndex > 0,
+                  canGoNext: _currentIndex < total - 1,
+                  // Default to false while the persisted value is loading so
+                  // the toggle renders deterministically on first frame.
+                  autoAdvance: ref.watch(autoAdvanceProvider).value ?? false,
+                  onPrev: () => _goTo(_currentIndex - 1),
+                  onNext: () => _goTo(_currentIndex + 1),
+                  onComplete: () => Navigator.of(context).pop(),
+                  onAutoAdvanceChanged: (v) => ref
+                      .read(autoAdvanceProvider.notifier)
+                      .set(enabled: v),
+                ),
             ],
           );
         },
@@ -302,14 +326,16 @@ class _VerticalPage extends ConsumerWidget {
   const _VerticalPage({
     required this.item,
     required this.onVideoCompleted,
+    required this.isFullScreen,
+    required this.onToggleFullScreen,
     this.autoPlay = false,
-    this.autoFullScreen = false,
   });
 
   final SequenceItem item;
   final bool autoPlay;
-  final bool autoFullScreen;
-  final ValueChanged<bool> onVideoCompleted;
+  final bool isFullScreen;
+  final VoidCallback onToggleFullScreen;
+  final VoidCallback onVideoCompleted;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -346,7 +372,8 @@ class _VerticalPage extends ConsumerWidget {
         content: content,
         item: item,
         autoPlay: autoPlay,
-        autoFullScreen: autoFullScreen,
+        isFullScreen: isFullScreen,
+        onToggleFullScreen: onToggleFullScreen,
         onVideoCompleted: onVideoCompleted,
       ),
     );
@@ -360,18 +387,38 @@ class _PageContent extends StatelessWidget {
     required this.content,
     required this.item,
     required this.onVideoCompleted,
+    required this.isFullScreen,
+    required this.onToggleFullScreen,
     this.autoPlay = false,
-    this.autoFullScreen = false,
   });
 
   final XBlockContent content;
   final SequenceItem item;
   final bool autoPlay;
-  final bool autoFullScreen;
-  final ValueChanged<bool> onVideoCompleted;
+  final bool isFullScreen;
+  final VoidCallback onToggleFullScreen;
+  final VoidCallback onVideoCompleted;
 
   @override
   Widget build(BuildContext context) {
+    // In fullscreen, show only the video (the first one on the page) —
+    // centered, filling the screen with black letterbox. HTML content is
+    // hidden so the user gets a distraction-free player. If a page has
+    // no video, show a black background so the PageView still has
+    // something to render without jumping back into chrome.
+    if (isFullScreen) {
+      if (content.videos.isEmpty) {
+        return const ColoredBox(color: Colors.black);
+      }
+      return VideoBlock(
+        video: content.videos.first,
+        autoPlay: autoPlay,
+        isFullScreen: true,
+        onToggleFullScreen: onToggleFullScreen,
+        onCompleted: onVideoCompleted,
+      );
+    }
+
     final widgets = <Widget>[];
 
     for (final video in content.videos) {
@@ -381,7 +428,8 @@ class _PageContent extends StatelessWidget {
           child: VideoBlock(
             video: video,
             autoPlay: autoPlay,
-            autoFullScreen: autoFullScreen,
+            isFullScreen: false,
+            onToggleFullScreen: onToggleFullScreen,
             onCompleted: onVideoCompleted,
           ),
         ),
