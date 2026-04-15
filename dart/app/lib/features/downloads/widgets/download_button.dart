@@ -145,27 +145,18 @@ class _ButtonForStateState extends State<_ButtonForState>
 
     switch (widget.state.status) {
       case DownloadStatus.downloading:
-        // Tappable: tap triggers cancel confirmation.
-        return SizedBox(
-          width: boxSize,
-          height: boxSize,
-          child: Tooltip(
-            message: 'Downloading — tap to cancel',
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: widget.onDelete,
-              child: Center(
-                child: SizedBox(
-                  width: iconSize,
-                  height: iconSize,
-                  child: CircularProgressIndicator(
-                    value: widget.state.progress > 0
-                        ? widget.state.progress
-                        : null,
-                    strokeWidth: 2,
-                  ),
-                ),
-              ),
+        // Use IconButton (same as all other states) so padding/sizing matches.
+        return IconButton(
+          padding: EdgeInsets.zero,
+          constraints: BoxConstraints(minWidth: boxSize, minHeight: boxSize),
+          tooltip: 'Downloading — tap to cancel',
+          onPressed: widget.onDelete,
+          icon: SizedBox(
+            width: iconSize,
+            height: iconSize,
+            child: CircularProgressIndicator(
+              value: widget.state.progress > 0 ? widget.state.progress : null,
+              strokeWidth: 2,
             ),
           ),
         );
