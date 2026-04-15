@@ -8,34 +8,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-class CourseOutlineScreen extends ConsumerStatefulWidget {
+class CourseOutlineScreen extends ConsumerWidget {
   const CourseOutlineScreen({required this.courseId, super.key});
 
   final String courseId;
 
   @override
-  ConsumerState<CourseOutlineScreen> createState() =>
-      _CourseOutlineScreenState();
-}
-
-class _CourseOutlineScreenState extends ConsumerState<CourseOutlineScreen> {
-  // Section indexes that are currently expanded. First section starts open.
-  final Set<int> _expandedSectionIndexes = {0};
-
-  void _toggleSection(int index) {
-    setState(() {
-      if (_expandedSectionIndexes.contains(index)) {
-        _expandedSectionIndexes.remove(index);
-      } else {
-        _expandedSectionIndexes.add(index);
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final outlineAsync =
-        ref.watch(courseOutlineProvider(courseId: widget.courseId));
+        ref.watch(courseOutlineProvider(courseId: courseId));
 
     return Scaffold(
       appBar: AppBar(
@@ -50,7 +31,7 @@ class _CourseOutlineScreenState extends ConsumerState<CourseOutlineScreen> {
           // Per-course refresh button.
           Builder(builder: (context) {
             final syncStatus = ref.watch(syncControllerProvider
-                .select((s) => s[widget.courseId]?.status ?? SyncStatus.idle));
+                .select((s) => s[courseId]?.status ?? SyncStatus.idle));
             final isSyncing = syncStatus == SyncStatus.syncing;
             final hasError = syncStatus == SyncStatus.error;
             if (isSyncing) {
@@ -71,11 +52,11 @@ class _CourseOutlineScreenState extends ConsumerState<CourseOutlineScreen> {
               tooltip: 'Refresh course',
               onPressed: () => ref
                   .read(syncControllerProvider.notifier)
-                  .syncCourse(widget.courseId),
+                  .syncCourse(courseId),
             );
           }),
           // Course-level download button.
-          DownloadButton(courseId: widget.courseId),
+          DownloadButton(courseId: courseId),
           const SizedBox(width: 8),
         ],
       ),
@@ -93,7 +74,7 @@ class _CourseOutlineScreenState extends ConsumerState<CourseOutlineScreen> {
               const SizedBox(height: 8),
               FilledButton(
                 onPressed: () => ref.invalidate(
-                    courseOutlineProvider(courseId: widget.courseId)),
+                    courseOutlineProvider(courseId: courseId)),
                 child: const Text('Retry'),
               ),
             ],
@@ -102,22 +83,19 @@ class _CourseOutlineScreenState extends ConsumerState<CourseOutlineScreen> {
         data: (outline) {
           final sections = outline.outline.sections;
           return RefreshIndicator(
-            onRefresh: () async => ref
-                .invalidate(courseOutlineProvider(courseId: widget.courseId)),
+            onRefresh: () async =>
+                ref.invalidate(courseOutlineProvider(courseId: courseId)),
             child: CustomScrollView(
               slivers: [
                 SliverToBoxAdapter(
-                  child: DownloadProgressBar(courseId: widget.courseId),
+                  child: DownloadProgressBar(courseId: courseId),
                 ),
                 SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
                       return _SectionGroup(
                         section: sections[index],
-                        sectionIndex: index,
-                        isExpanded: _expandedSectionIndexes.contains(index),
-                        onToggle: () => _toggleSection(index),
-                        courseId: widget.courseId,
+                        courseId: courseId,
                         outline: outline,
                       );
                     },
@@ -135,21 +113,15 @@ class _CourseOutlineScreenState extends ConsumerState<CourseOutlineScreen> {
 
 // ---------------------------------------------------------------------------
 
-/// Renders a collapsible section header followed by its sequence tiles.
+/// Renders a section header followed by all its sequence tiles.
 class _SectionGroup extends StatelessWidget {
   const _SectionGroup({
     required this.section,
-    required this.sectionIndex,
-    required this.isExpanded,
-    required this.onToggle,
     required this.courseId,
     required this.outline,
   });
 
   final Section section;
-  final int sectionIndex;
-  final bool isExpanded;
-  final VoidCallback onToggle;
   final String courseId;
   final CourseOutline outline;
 
@@ -159,33 +131,17 @@ class _SectionGroup extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SectionHeaderTile(
-          title: section.title,
-          isExpanded: isExpanded,
-          onTap: onToggle,
-        ),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeInOut,
-          child: isExpanded
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < section.sequenceIds.length; i++)
-                      _SequenceTile(
-                        courseId: courseId,
-                        sequenceId: section.sequenceIds[i],
-                        title: outline.outline.sequences[section.sequenceIds[i]]
-                                ?.title ??
-                            'Part ${i + 1}',
-                        onTap: () => context.push(
-                          '/course/$courseId/sequence/${section.sequenceIds[i]}',
-                        ),
-                      ),
-                  ],
-                )
-              : const SizedBox.shrink(),
-        ),
+        _SectionHeaderTile(title: section.title),
+        for (var i = 0; i < section.sequenceIds.length; i++)
+          _SequenceTile(
+            courseId: courseId,
+            sequenceId: section.sequenceIds[i],
+            title: outline.outline.sequences[section.sequenceIds[i]]?.title ??
+                'Part ${i + 1}',
+            onTap: () => context.push(
+              '/course/$courseId/sequence/${section.sequenceIds[i]}',
+            ),
+          ),
       ],
     );
   }
@@ -194,40 +150,20 @@ class _SectionGroup extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _SectionHeaderTile extends StatelessWidget {
-  const _SectionHeaderTile({
-    required this.title,
-    required this.isExpanded,
-    required this.onTap,
-  });
+  const _SectionHeaderTile({required this.title});
 
   final String title;
-  final bool isExpanded;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
             ),
-            AnimatedRotation(
-              turns: isExpanded ? 0.5 : 0,
-              duration: const Duration(milliseconds: 200),
-              child: const Icon(Icons.expand_more),
-            ),
-          ],
-        ),
       ),
     );
   }
