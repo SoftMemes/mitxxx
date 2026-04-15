@@ -55,10 +55,10 @@ dev_dependencies:
   very_good_analysis: ^8.0.0
 
 scripts:
-  codegen: dart run build_runner build --delete-conflicting-outputs
-  codegen:watch: dart run build_runner watch --delete-conflicting-outputs
-  icons: dart run flutter_launcher_icons
-  splash: dart run flutter_native_splash:create
+  codegen: fvm dart run build_runner build --delete-conflicting-outputs
+  codegen:watch: fvm dart run build_runner watch --delete-conflicting-outputs
+  icons: fvm dart run flutter_launcher_icons
+  splash: fvm dart run flutter_native_splash:create
 
 flutter_launcher_icons:
   android: true
