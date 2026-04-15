@@ -134,7 +134,16 @@ class _LectureVideoPlayerState extends State<LectureVideoPlayer> {
     return ColoredBox(
       color: Colors.black,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        // Left padding must exceed _kBackGestureWidth (20 px) so no drag on
+        // the track can start inside the iOS swipe-back zone. With the 7 px
+        // thumb radius, a 24 px start inset puts the leftmost touchable point
+        // at x = 31 px — safely outside the 20 px back-gesture overlay.
+        padding: const EdgeInsetsDirectional.only(
+          start: 24,
+          end: 12,
+          top: 2,
+          bottom: 2,
+        ),
         child: UnifiedScrubBar(
           position: _scrubbing
               ? snap.globalPosition

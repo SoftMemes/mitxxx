@@ -68,12 +68,7 @@ class _UnifiedScrubBarState extends State<UnifiedScrubBar> {
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
 
-    // While the user is dragging the scrub handle, suppress the route-pop
-    // gesture (iOS swipe-back) so a horizontal drag near the left edge
-    // doesn't accidentally navigate away.
-    return PopScope(
-      canPop: !_dragging,
-      child: SizedBox(
+    return SizedBox(
       height: 36,
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -116,7 +111,6 @@ class _UnifiedScrubBarState extends State<UnifiedScrubBar> {
             ),
           );
         },
-      ),
       ),
     );
   }
