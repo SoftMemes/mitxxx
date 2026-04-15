@@ -5,8 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Full-screen onboarding disclaimer shown to every user once, before login.
 ///
-/// The user must tick the checkbox and tap "I understand" to proceed.
-/// Back navigation is suppressed — the only way forward is acknowledgement.
+/// Back navigation is suppressed — the only way forward is tapping
+/// "I understand".
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -15,11 +15,10 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 }
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
-  bool _checked = false;
   bool _busy = false;
 
   Future<void> _acknowledge() async {
-    if (!_checked || _busy) return;
+    if (_busy) return;
     setState(() => _busy = true);
     await ref.read(onboardingAcknowledgedProvider.notifier).acknowledge();
     // Router redirect picks up the state change and navigates to /login.
@@ -122,49 +121,19 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               Container(
                 decoration: BoxDecoration(
                   border: Border(
-                    top: BorderSide(
-                      color: cs.outlineVariant,
-                    ),
+                    top: BorderSide(color: cs.outlineVariant),
                   ),
                 ),
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    InkWell(
-                      onTap: () => setState(() => _checked = !_checked),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          children: [
-                            Checkbox(
-                              value: _checked,
-                              onChanged: (v) =>
-                                  setState(() => _checked = v ?? false),
-                            ),
-                            const SizedBox(width: 4),
-                            const Expanded(
-                              child: Text(
-                                'I have read and understood the above.',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    FilledButton(
-                      onPressed: _checked && !_busy ? _acknowledge : null,
-                      child: _busy
-                          ? const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('I understand'),
-                    ),
-                  ],
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                child: FilledButton(
+                  onPressed: _busy ? null : _acknowledge,
+                  child: _busy
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('I understand'),
                 ),
               ),
             ],

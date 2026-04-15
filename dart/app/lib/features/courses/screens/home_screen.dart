@@ -1,4 +1,5 @@
 import 'package:emajtee/core/analytics/analytics_events.dart';
+import 'package:emajtee/core/analytics/analytics_preferences.dart';
 import 'package:emajtee/core/analytics/analytics_service.dart';
 import 'package:emajtee/features/courses/models/enrollment.dart';
 import 'package:emajtee/features/courses/providers/enrollments_provider.dart';
@@ -7,6 +8,7 @@ import 'package:emajtee/features/sync/providers/sync_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -15,8 +17,32 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
+const _kAnalyticsNoticeSeenKey = 'analytics_notice_seen';
+
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _autoSyncTriggered = false;
+  bool _showAnalyticsBanner = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAnalyticsBanner();
+  }
+
+  Future<void> _checkAnalyticsBanner() async {
+    final prefs = await SharedPreferences.getInstance();
+    final seen = prefs.getBool(_kAnalyticsNoticeSeenKey) ?? false;
+    if (!seen && mounted) setState(() => _showAnalyticsBanner = true);
+  }
+
+  Future<void> _dismissAnalyticsBanner({bool optOut = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kAnalyticsNoticeSeenKey, true);
+    if (optOut) {
+      await ref.read(analyticsPreferencesProvider.notifier).setOptedIn(false);
+    }
+    if (mounted) setState(() => _showAnalyticsBanner = false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +88,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
-      body: enrollmentsAsync.when(
+      body: Column(
+        children: [
+          if (_showAnalyticsBanner) _AnalyticsBanner(onDismiss: _dismissAnalyticsBanner),
+          Expanded(child: enrollmentsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => _EmptyState(
           onSync: () => ref.read(syncControllerProvider.notifier).syncAll(),
@@ -99,6 +128,72 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             },
           );
         },
+      )),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnalyticsBanner extends StatelessWidget {
+  const _AnalyticsBanner({required this.onDismiss});
+
+  final void Function({bool optOut}) onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      color: cs.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.bar_chart_outlined, size: 20, color: cs.onSurfaceVariant),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Anonymous usage analytics',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'MITxxx collects anonymous data to improve the app. '
+                  'No course content, names, or emails are ever sent.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ),
+                      onPressed: () => onDismiss(optOut: true),
+                      child: const Text('Opt out'),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ),
+                      onPressed: onDismiss,
+                      child: const Text('OK'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
