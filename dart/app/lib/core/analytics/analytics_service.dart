@@ -15,12 +15,11 @@ final _analyticsLog = Logger('analytics');
 /// Central analytics service. All Firebase Analytics calls route through here.
 ///
 /// Instantiated as a Riverpod provider so it can react to the user's opt-in
-/// preference. When opted out, all [logX] methods no-op and Firebase
+/// preference. When opted out, all log methods no-op and Firebase
 /// collection is disabled.
 @Riverpod(keepAlive: true)
 AnalyticsService analyticsService(Ref ref) {
-  final optedIn = ref
-      .watch(analyticsPreferencesProvider.select((v) => v.valueOrNull ?? true));
+  final optedIn = ref.watch(analyticsPreferencesProvider).value ?? true;
   // Sync the Firebase SDK's collection state whenever the preference changes.
   FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(optedIn);
   return AnalyticsService._(optedIn: optedIn);
@@ -30,7 +29,7 @@ class AnalyticsService {
   AnalyticsService._({required this.optedIn});
 
   final bool optedIn;
-  final _analytics = FirebaseAnalytics.instance;
+  final FirebaseAnalytics _analytics = FirebaseAnalytics.instance;
 
   // ---------------------------------------------------------------------------
   // FirebaseAnalyticsObserver for GoRouter
@@ -77,8 +76,8 @@ class AnalyticsService {
 
   Future<void> logSyncStart({
     required String scope,
-    String? courseId,
     required String trigger,
+    String? courseId,
   }) =>
       _emit(kEventSyncStart, {
         kParamScope: scope,
@@ -88,9 +87,9 @@ class AnalyticsService {
 
   Future<void> logSyncComplete({
     required String scope,
-    String? courseId,
     required int durationMs,
     required int itemsSynced,
+    String? courseId,
   }) =>
       _emit(kEventSyncComplete, {
         kParamScope: scope,
@@ -101,10 +100,10 @@ class AnalyticsService {
 
   Future<void> logSyncFailure({
     required String scope,
-    String? courseId,
     required int durationMs,
     required String stage,
     required String errorKind,
+    String? courseId,
   }) =>
       _emit(kEventSyncFailure, {
         kParamScope: scope,
@@ -121,8 +120,8 @@ class AnalyticsService {
   Future<void> logDownloadStart({
     required String scope,
     required String courseId,
-    String? blockId,
     required int videoCount,
+    String? blockId,
   }) =>
       _emit(kEventDownloadStart, {
         kParamScope: scope,
@@ -134,10 +133,10 @@ class AnalyticsService {
   Future<void> logDownloadComplete({
     required String scope,
     required String courseId,
-    String? blockId,
     required int durationMs,
     required int bytesDownloaded,
     required int videoCount,
+    String? blockId,
   }) =>
       _emit(kEventDownloadComplete, {
         kParamScope: scope,
@@ -151,10 +150,10 @@ class AnalyticsService {
   Future<void> logDownloadFailure({
     required String scope,
     required String courseId,
-    String? blockId,
     required String errorKind,
     required int videosCompleted,
     required int videosTotal,
+    String? blockId,
   }) =>
       _emit(kEventDownloadFailure, {
         kParamScope: scope,

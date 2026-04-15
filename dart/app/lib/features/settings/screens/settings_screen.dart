@@ -29,9 +29,7 @@ class SettingsScreen extends ConsumerWidget {
               'Help improve MITxxx by sharing anonymous usage data. '
               'No course content, names, or emails are ever sent.',
             ),
-            value: ref
-                .watch(analyticsPreferencesProvider)
-                .valueOrNull ?? true,
+            value: ref.watch(analyticsPreferencesProvider).value ?? true,
             onChanged: (value) =>
                 ref.read(analyticsPreferencesProvider.notifier).setOptedIn(value),
           ),

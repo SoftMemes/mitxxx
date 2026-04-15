@@ -41,10 +41,6 @@ class LecturePlayer extends _$LecturePlayer {
   /// Position captured at scrub-start, in seconds, for the analytics event.
   int _scrubFromPositionS = 0;
 
-  /// Whether the video was already at a non-zero position before the latest
-  /// [play] call (used to set [is_resume]).
-  bool _wasAtStart = true;
-
   // ---------------------------------------------------------------------------
   // Public accessor for the widget layer
   // ---------------------------------------------------------------------------
@@ -174,19 +170,18 @@ class LecturePlayer extends _$LecturePlayer {
     final positionS = snap != null ? snap.globalPosition.round() : 0;
     final durationS = snap != null ? snap.totalDuration.round() : 0;
     final isResume = positionS > 0;
-    _wasAtStart = positionS == 0;
 
     await _playbackController?.play();
 
     final verticalId = _currentVerticalId;
     if (verticalId != null) {
-      ref.read(analyticsServiceProvider).logVideoPlay(
+      unawaited(ref.read(analyticsServiceProvider).logVideoPlay(
         courseId: courseId,
         videoBlockId: verticalId,
         positionS: positionS,
         durationS: durationS,
         isResume: isResume,
-      );
+      ));
     }
   }
 
@@ -205,12 +200,12 @@ class LecturePlayer extends _$LecturePlayer {
 
     final verticalId = _currentVerticalId;
     if (verticalId != null) {
-      ref.read(analyticsServiceProvider).logVideoPause(
+      unawaited(ref.read(analyticsServiceProvider).logVideoPause(
         courseId: courseId,
         videoBlockId: verticalId,
         positionS: positionS,
         durationS: durationS,
-      );
+      ));
     }
   }
 

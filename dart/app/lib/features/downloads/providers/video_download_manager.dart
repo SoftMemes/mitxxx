@@ -1,4 +1,5 @@
 // ignore_for_file: uri_has_not_been_generated
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -13,7 +14,6 @@ import 'package:emajtee/features/courses/models/sequence.dart';
 import 'package:emajtee/features/courses/models/xblock_content.dart';
 import 'package:emajtee/features/downloads/models/download_status.dart';
 import 'package:emajtee/features/downloads/utils/download_paths.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -37,9 +37,9 @@ class _DownloadJob {
   _DownloadJob({
     required this.scope,
     required this.courseId,
-    this.blockId,
     required this.videoCount,
     required this.startedAt,
+    this.blockId,
   });
 
   final String scope;
@@ -131,17 +131,17 @@ class VideoDownloadManager {
     _jobs[jobKey] = _DownloadJob(
       scope: scope,
       courseId: courseId,
-      blockId: blockId,
       videoCount: urlsToDownload.length,
       startedAt: DateTime.now(),
+      blockId: blockId,
     );
 
-    _ref.read(analyticsServiceProvider).logDownloadStart(
+    unawaited(_ref.read(analyticsServiceProvider).logDownloadStart(
       scope: scope,
       courseId: courseId,
-      blockId: blockId,
       videoCount: urlsToDownload.length,
-    );
+      blockId: blockId,
+    ));
 
     for (final url in urlsToDownload) {
       // If stale or failed, re-download.
@@ -274,11 +274,6 @@ class VideoDownloadManager {
   }
 
   void _onVideoComplete(String url) {
-    for (final job in _jobs.values) {
-      // We don't know which job this URL belongs to without a lookup, so
-      // conservatively advance any active job that still has pending items.
-      // In the common case (one scope at a time) this is correct.
-    }
     _advanceJobs(url, completed: true, bytes: 0);
   }
 
@@ -289,7 +284,7 @@ class VideoDownloadManager {
   void _advanceJobs(String url, {
     required bool completed,
     required int bytes,
-    String? errorKind,
+    String? errorKind,  // ignore: always_put_required_named_parameters_first
   }) {
     final analytics = _ref.read(analyticsServiceProvider);
     final toRemove = <String>[];
@@ -306,23 +301,23 @@ class VideoDownloadManager {
         final durationMs =
             DateTime.now().difference(job.startedAt).inMilliseconds;
         if (completed) {
-          analytics.logDownloadComplete(
+          unawaited(analytics.logDownloadComplete(
             scope: job.scope,
             courseId: job.courseId,
-            blockId: job.blockId,
             durationMs: durationMs,
             bytesDownloaded: job.bytesDownloaded,
             videoCount: job.completed,
-          );
+            blockId: job.blockId,
+          ));
         } else {
-          analytics.logDownloadFailure(
+          unawaited(analytics.logDownloadFailure(
             scope: job.scope,
             courseId: job.courseId,
-            blockId: job.blockId,
             errorKind: errorKind ?? 'unknown',
             videosCompleted: job.completed,
             videosTotal: job.videoCount,
-          );
+            blockId: job.blockId,
+          ));
         }
         toRemove.add(entry.key);
       }

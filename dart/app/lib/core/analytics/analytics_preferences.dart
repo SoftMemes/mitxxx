@@ -1,4 +1,4 @@
-// ignore_for_file: uri_has_not_been_generated
+// ignore_for_file: uri_has_not_been_generated, avoid_positional_boolean_parameters
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,8 +22,8 @@ class AnalyticsPreferences extends _$AnalyticsPreferences {
   }
 
   /// Returns true and sets a persistent flag on the very first call.
-  /// Subsequent calls return false, so [kEventAppOpen] only carries
-  /// [kParamIsFirstOpen]=true once.
+  /// Subsequent calls return false, so the app_open event only carries
+  /// is_first_open=true once.
   static Future<bool> consumeFirstOpen() async {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(_kFirstOpenKey) ?? false) return false;

@@ -1,7 +1,7 @@
 # Basic Analytics Specification
 
-> **Version**: 1.1 (April 2026)
-> **Status**: Ready for Implementation
+> **Version**: 1.2 (April 2026)
+> **Status**: Implemented
 > **Last Updated**: 2026-04-15
 
 ## Description
@@ -172,6 +172,24 @@ All three emit `download_start`, then exactly one `download_complete` **or** `do
 - `dart/app/lib/features/player/**` — emit `video_play`, `video_pause`, `video_complete`, `video_scrub` from the Chewie/video_player wrapper; suppress scrub-induced pauses; distinguish resume seeks.
 - `dart/app/lib/features/settings/**` — add "Share usage analytics" toggle; persist via `flutter_secure_storage`.
 - `dart/app/README.md` — short "Analytics / DebugView" section documenting how to verify locally.
+
+---
+
+## Implementation Notes
+
+**Implemented**: April 2026
+
+**New files:**
+- `dart/app/lib/core/analytics/analytics_events.dart` — event name + param key constants
+- `dart/app/lib/core/analytics/analytics_preferences.dart` — SharedPreferences-backed opt-in notifier + first-open flag
+- `dart/app/lib/core/analytics/advertising_id_provider.dart` — IDFA/GAID provider with graceful null handling
+- `dart/app/lib/core/analytics/analytics_service.dart` — central typed service, Riverpod provider, debug logging
+
+**Key deviations from spec:**
+- Settings screen had no existing persistence infrastructure; used `shared_preferences` (new dep) instead of `flutter_secure_storage`
+- `_SequenceTile.onTap` now serves as both section-open and section-play trigger (play icon button fires both); `logSectionPlay` fires in addition to `logSectionOpen` on the play icon
+- `syncAll` accepts an optional `trigger` string param so call sites can pass `kTriggerAuto`/`kTriggerManual`; `syncCourse` called from `syncAll` internally uses `kTriggerManual` as default
+- Download job tracking is best-effort: jobs keyed by `blockId ?? courseId`; in the (rare) concurrent multi-scope case, all active jobs advance on every completion event
 
 ---
 
