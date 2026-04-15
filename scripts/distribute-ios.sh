@@ -38,7 +38,7 @@ else
 
   echo "==> Building iOS release IPA..."
   cd "$APP_DIR"
-  flutter build ipa --release \
+  fvm flutter build ipa --release \
     --build-number="$BUILD_NUMBER" \
     --export-options-plist=ios/ExportOptions.plist
 fi

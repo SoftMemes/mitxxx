@@ -35,7 +35,7 @@ if [[ "$SKIP_BUILD" == true ]]; then
 else
   echo "==> Building Android release APK..."
   cd "$APP_DIR"
-  flutter build apk --release --build-number="$BUILD_NUMBER"
+  fvm flutter build apk --release --build-number="$BUILD_NUMBER"
 fi
 
 APK="$APP_DIR/build/app/outputs/flutter-apk/app-release.apk"
