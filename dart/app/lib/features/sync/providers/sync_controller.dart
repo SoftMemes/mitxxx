@@ -137,7 +137,9 @@ class _SeqTracker {
   _SeqTracker({required this.courseId, required this.order});
   final String courseId;
   final int order; // position in course (used as scheduling priority)
-  int pendingTasks = 0;
+  int totalTasks = 0;
+  int completedTasks = 0;
+  int get pendingTasks => totalTasks - completedTasks;
   bool errored = false;
   String? errorMessage;
 }
@@ -397,16 +399,24 @@ class SyncController extends _$SyncController {
 
   // ── Scheduling helpers ─────────────────────────────────────────────────────
 
+  void _publishSeqProgress(String seqId, _SeqTracker t) {
+    ref.read(sequenceSyncControllerProvider.notifier).setSequenceState(
+      seqId,
+      SequenceSyncState(
+        status: SequenceSyncStatus.syncing,
+        totalTasks: t.totalTasks,
+        completedTasks: t.completedTasks,
+      ),
+    );
+  }
+
   void _scheduleSequence(String seqId, String courseId, {required int order}) {
     final tracker = _SeqTracker(courseId: courseId, order: order);
     _trackers[seqId] = tracker;
-    tracker.pendingTasks = 1; // metadata fetch
+    tracker.totalTasks = 1; // metadata fetch
     _courses[courseId]?.pendingSeqIds.add(seqId);
 
-    ref.read(sequenceSyncControllerProvider.notifier).setSequenceState(
-          seqId,
-          const SequenceSyncState(status: SequenceSyncStatus.syncing),
-        );
+    _publishSeqProgress(seqId, tracker);
 
     _scheduler.enqueue(_SyncTask(
       priority: order,
@@ -461,14 +471,14 @@ class SyncController extends _$SyncController {
 
     ref.invalidate(sequenceDetailProvider(blockId: seqId));
 
-    // Atomic transition: decrement metadata task, then enqueue xblock tasks
+    // Atomic transition: mark metadata complete, then enqueue xblock tasks
     // before _checkSequenceComplete runs (so the sequence doesn't briefly
     // flip to synced between the two steps).
-    tracker.pendingTasks--;
+    tracker.completedTasks++;
     if (!tracker.errored) {
       _courses[tracker.courseId]?.allVerticalIds.addAll(vertIds);
       for (final vertId in vertIds) {
-        tracker.pendingTasks++;
+        tracker.totalTasks++;
         _scheduler.enqueue(_SyncTask(
           priority: tracker.order,
           sequenceId: seqId,
@@ -476,6 +486,7 @@ class SyncController extends _$SyncController {
         ));
       }
     }
+    _publishSeqProgress(seqId, tracker);
     _checkSequenceComplete(seqId);
   }
 
@@ -487,7 +498,8 @@ class SyncController extends _$SyncController {
 
     final tracker = _trackers[seqId];
     if (tracker == null) return;
-    tracker.pendingTasks--;
+    tracker.completedTasks++;
+    _publishSeqProgress(seqId, tracker);
     _checkSequenceComplete(seqId);
   }
 

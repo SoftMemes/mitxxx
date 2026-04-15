@@ -64,25 +64,8 @@ class CourseOutlineScreen extends ConsumerWidget {
         ],
       ),
       body: outlineAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.error_outline,
-                  size: 48,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant),
-              const SizedBox(height: 16),
-              const Text('Could not load course outline'),
-              const SizedBox(height: 8),
-              FilledButton(
-                onPressed: () => ref.invalidate(
-                    courseOutlineProvider(courseId: courseId)),
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
+        loading: () => const _CourseOutlineSkeleton(),
+        error: (_, _) => const _CourseOutlineSkeleton(),
         data: (outline) {
           final sections = outline.outline.sections;
           return RefreshIndicator(
@@ -115,6 +98,173 @@ class CourseOutlineScreen extends ConsumerWidget {
         },
       ),
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton loading state — shown while outline data is not yet cached.
+// ---------------------------------------------------------------------------
+
+class _CourseOutlineSkeleton extends StatefulWidget {
+  const _CourseOutlineSkeleton();
+
+  @override
+  State<_CourseOutlineSkeleton> createState() => _CourseOutlineSkeletonState();
+}
+
+class _CourseOutlineSkeletonState extends State<_CourseOutlineSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _pulse;
+
+  // Fake section/sequence counts that look like a real course.
+  static const _sections = [3, 4, 2, 3];
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _pulse = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, _) {
+        final shimmer = Color.lerp(
+          cs.surfaceContainerHighest,
+          cs.surfaceContainerLowest,
+          _pulse.value,
+        )!;
+        final shimmerDim = Color.lerp(
+          cs.surfaceContainerHighest,
+          cs.surfaceContainer,
+          _pulse.value,
+        )!;
+
+        return ListView(
+          physics: const NeverScrollableScrollPhysics(),
+          children: [
+            for (var s = 0; s < _sections.length; s++) ...[
+              // Section header placeholder.
+              Container(
+                color: cs.surfaceContainerHighest,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                child: _SkeletonBox(
+                  color: shimmerDim,
+                  width: _titleWidth(s, 0),
+                  height: 14,
+                ),
+              ),
+              // Sequence tile placeholders.
+              for (var i = 0; i < _sections[s]; i++)
+                _SkeletonTile(
+                  shimmer: shimmer,
+                  titleWidth: _titleWidth(s, i + 1),
+                ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  // Vary widths so the skeleton looks natural rather than uniform.
+  static const _widthTable = [0.72, 0.58, 0.81, 0.65, 0.76, 0.53, 0.69, 0.84];
+  double _titleWidth(int s, int i) =>
+      _widthTable[(s * 3 + i) % _widthTable.length];
+}
+
+class _SkeletonTile extends StatelessWidget {
+  const _SkeletonTile({required this.shimmer, required this.titleWidth});
+
+  final Color shimmer;
+  final double titleWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          // Leading icon placeholder.
+          _SkeletonBox(
+            color: shimmer,
+            width: 40,
+            height: 40,
+            radius: 20,
+          ),
+          const SizedBox(width: 16),
+          // Title placeholder.
+          Expanded(
+            child: _SkeletonBox(
+              color: shimmer,
+              widthFactor: titleWidth,
+              height: 14,
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Trailing chevron placeholder.
+          _SkeletonBox(
+            color: cs.surfaceContainerHighest,
+            width: 20,
+            height: 20,
+            radius: 4,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SkeletonBox extends StatelessWidget {
+  const _SkeletonBox({
+    required this.color,
+    required this.height,
+    this.width,
+    this.widthFactor,
+    this.radius = 6,
+  }) : assert(
+          width != null || widthFactor != null,
+          'Provide width or widthFactor',
+        );
+
+  final Color color;
+  final double? width;
+  final double? widthFactor;
+  final double height;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget box = Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+    if (widthFactor != null) {
+      box = FractionallySizedBox(widthFactor: widthFactor, child: box);
+    }
+    return box;
   }
 }
 
@@ -221,57 +371,67 @@ class _SequenceTile extends ConsumerWidget {
     final status = seqState?.status ?? SequenceSyncStatus.idle;
     final cs = Theme.of(context).colorScheme;
 
-    // Status indicator: only shown while sync hasn't completed. Once the
-    // sequence is synced we drop the icon entirely — the absence of an icon
-    // is the "synced" signal (and the download button becomes visible).
-    Widget? statusIcon;
-    switch (status) {
-      case SequenceSyncStatus.syncing:
-        statusIcon = const SizedBox(
-          width: 16,
-          height: 16,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        );
-      case SequenceSyncStatus.error:
-        statusIcon = Icon(Icons.error_outline, color: cs.error, size: 18);
-      case SequenceSyncStatus.idle:
-        statusIcon = Icon(Icons.hourglass_empty, color: cs.onSurfaceVariant, size: 18);
-      case SequenceSyncStatus.synced:
-        statusIcon = null;
-    }
-
     final isSynced = status == SequenceSyncStatus.synced;
+    final isSyncing = status == SequenceSyncStatus.syncing;
+    final isError = status == SequenceSyncStatus.error;
 
-    return ListTile(
-      leading: IconButton(
-        icon: const Icon(Icons.play_circle_outline),
-        tooltip: 'Play from beginning',
-        onPressed: () {
-          if (isSynced) {
-            ref.read(analyticsServiceProvider).logSectionPlay(
-              courseId: courseId,
-              blockId: sequenceId,
-            );
-          }
-          _handleTap(context, ref, status);
-        },
-      ),
-      title: Text(title),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (statusIcon != null) ...[
-            statusIcon,
-            const SizedBox(width: 4),
-          ],
-          // Download button hidden until the sequence is fully synced — no
-          // point offering video download before we know what videos exist.
-          if (isSynced)
-            DownloadButton(courseId: courseId, sequenceId: sequenceId),
-          const Icon(Icons.chevron_right),
-        ],
-      ),
-      onTap: () => _handleTap(context, ref, status),
+    final progress = (seqState == null || seqState.totalTasks == 0)
+        ? 0.0
+        : (seqState.completedTasks / seqState.totalTasks).clamp(0.0, 1.0);
+
+    // Gray out text for any row that isn't fully synced yet.
+    final titleColor = isSynced ? null : cs.onSurfaceVariant;
+
+    return Stack(
+      children: [
+        // Full-row background progress fill — only while actively syncing.
+        if (isSyncing)
+          Positioned.fill(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: progress),
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              builder: (_, v, _) => FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: v,
+                child: ColoredBox(
+                  color: cs.primaryContainer.withValues(alpha: 0.45),
+                ),
+              ),
+            ),
+          ),
+        ListTile(
+          leading: IconButton(
+            icon: const Icon(Icons.play_circle_outline),
+            tooltip: 'Play from beginning',
+            onPressed: () {
+              if (isSynced) {
+                ref.read(analyticsServiceProvider).logSectionPlay(
+                  courseId: courseId,
+                  blockId: sequenceId,
+                );
+              }
+              _handleTap(context, ref, status);
+            },
+          ),
+          title: Text(title, style: TextStyle(color: titleColor)),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isError) ...[
+                Icon(Icons.error_outline, color: cs.error, size: 18),
+                const SizedBox(width: 4),
+              ],
+              // Download button hidden until the sequence is fully synced — no
+              // point offering video download before we know what videos exist.
+              if (isSynced)
+                DownloadButton(courseId: courseId, sequenceId: sequenceId),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+          onTap: () => _handleTap(context, ref, status),
+        ),
+      ],
     );
   }
 }

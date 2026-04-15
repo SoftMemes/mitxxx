@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:emajtee/core/storage/app_database.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
+import 'package:emajtee/features/courses/providers/enrollments_provider.dart';
+import 'package:emajtee/features/sync/providers/sync_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -103,6 +105,11 @@ class _DataUsageScreenState extends ConsumerState<DataUsageScreen> {
           _log.warning('Could not delete video file $path: $e');
         }
       }
+      // Invalidate in-memory provider state so the home screen re-reads the
+      // (now empty) DB rather than serving stale cached values.
+      ref
+        ..invalidate(enrollmentsProvider)
+        ..invalidate(syncControllerProvider);
       if (!mounted) return;
       context.go('/home');
     } finally {
@@ -135,35 +142,31 @@ class _DataUsageScreenState extends ConsumerState<DataUsageScreen> {
                   leading: const Icon(Icons.video_library_outlined),
                   title: const Text('Downloaded videos'),
                   subtitle: const Text('Offline video files'),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _formatBytes(_videoBytes!),
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      const SizedBox(width: 8),
-                      TextButton(
-                        onPressed: _busy || _videoBytes == 0
-                            ? null
-                            : _deleteVideos,
-                        child: const Text('Delete'),
-                      ),
-                    ],
+                  trailing: Text(
+                    _formatBytes(_videoBytes!),
+                    style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ),
                 const Divider(),
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: OutlinedButton.icon(
+                    onPressed: _busy || _videoBytes == 0 ? null : _deleteVideos,
+                    icon: Icon(Icons.video_library_outlined, color: cs.error),
+                    label: Text(
+                      'Delete downloaded videos',
+                      style: TextStyle(color: cs.error),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: cs.error.withValues(alpha: 0.5)),
+                    ),
                   ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
                   child: OutlinedButton.icon(
                     onPressed: _busy ? null : _deleteAll,
-                    icon: Icon(
-                      Icons.delete_forever_outlined,
-                      color: cs.error,
-                    ),
+                    icon: Icon(Icons.delete_forever_outlined, color: cs.error),
                     label: Text(
                       'Delete all data',
                       style: TextStyle(color: cs.error),
@@ -174,13 +177,10 @@ class _DataUsageScreenState extends ConsumerState<DataUsageScreen> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 4,
-                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                   child: Text(
-                    'Removes all videos and cached course content. '
-                    'Everything will be re-downloaded on the next sync.',
+                    'Delete all data removes videos and all cached course '
+                    'content. Everything will be re-downloaded on the next sync.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: cs.onSurfaceVariant,
                         ),

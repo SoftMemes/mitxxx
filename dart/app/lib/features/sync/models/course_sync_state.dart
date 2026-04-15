@@ -19,6 +19,8 @@ enum SequenceSyncStatus { idle, syncing, synced, error }
 abstract class SequenceSyncState with _$SequenceSyncState {
   const factory SequenceSyncState({
     @Default(SequenceSyncStatus.idle) SequenceSyncStatus status,
+    @Default(0) int completedTasks,
+    @Default(1) int totalTasks,
     DateTime? lastSyncedAt,
     String? errorMessage,
   }) = _SequenceSyncState;
