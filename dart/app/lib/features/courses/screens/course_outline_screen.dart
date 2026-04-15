@@ -221,7 +221,10 @@ class _SequenceTile extends ConsumerWidget {
     final status = seqState?.status ?? SequenceSyncStatus.idle;
     final cs = Theme.of(context).colorScheme;
 
-    Widget statusIcon;
+    // Status indicator: only shown while sync hasn't completed. Once the
+    // sequence is synced we drop the icon entirely — the absence of an icon
+    // is the "synced" signal (and the download button becomes visible).
+    Widget? statusIcon;
     switch (status) {
       case SequenceSyncStatus.syncing:
         statusIcon = const SizedBox(
@@ -229,20 +232,22 @@ class _SequenceTile extends ConsumerWidget {
           height: 16,
           child: CircularProgressIndicator(strokeWidth: 2),
         );
-      case SequenceSyncStatus.synced:
-        statusIcon = const Icon(Icons.check_circle, color: Colors.green, size: 18);
       case SequenceSyncStatus.error:
         statusIcon = Icon(Icons.error_outline, color: cs.error, size: 18);
       case SequenceSyncStatus.idle:
         statusIcon = Icon(Icons.hourglass_empty, color: cs.onSurfaceVariant, size: 18);
+      case SequenceSyncStatus.synced:
+        statusIcon = null;
     }
+
+    final isSynced = status == SequenceSyncStatus.synced;
 
     return ListTile(
       leading: IconButton(
         icon: const Icon(Icons.play_circle_outline),
         tooltip: 'Play from beginning',
         onPressed: () {
-          if (status == SequenceSyncStatus.synced) {
+          if (isSynced) {
             ref.read(analyticsServiceProvider).logSectionPlay(
               courseId: courseId,
               blockId: sequenceId,
@@ -255,9 +260,14 @@ class _SequenceTile extends ConsumerWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          statusIcon,
-          const SizedBox(width: 4),
-          DownloadButton(courseId: courseId, sequenceId: sequenceId),
+          if (statusIcon != null) ...[
+            statusIcon,
+            const SizedBox(width: 4),
+          ],
+          // Download button hidden until the sequence is fully synced — no
+          // point offering video download before we know what videos exist.
+          if (isSynced)
+            DownloadButton(courseId: courseId, sequenceId: sequenceId),
           const Icon(Icons.chevron_right),
         ],
       ),

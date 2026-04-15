@@ -95,15 +95,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               return _CourseTile(
                 enrollment: enrollment,
                 syncState: courseSyncState,
-                onTap: courseSyncState?.status == SyncStatus.syncing
-                    ? null
-                    : () {
-                        ref.read(analyticsServiceProvider).logCourseView(
-                          courseId: courseId,
-                          source: kSourceCourseList,
-                        );
-                        context.push('/course/$courseId');
-                      },
+                onTap: () {
+                  ref.read(analyticsServiceProvider).logCourseView(
+                    courseId: courseId,
+                    source: kSourceCourseList,
+                  );
+                  context.push('/course/$courseId');
+                },
               );
             },
           );
