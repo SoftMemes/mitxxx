@@ -146,8 +146,21 @@ class LecturePlayer extends _$LecturePlayer {
 
   Future<void> seekGlobal(double globalSeconds) async {
     await _playbackController?.seekGlobal(globalSeconds);
-    // After a seek, clear userOverride.
-    _updateState((s) => s.copyWith(userOverrideActive: false));
+    // After a seek, update activeSegmentIndex to the seek target and lock
+    // override so snapshot-sync doesn't thrash the section on every frame.
+    // The boundary-crossing branch in _handlePlaybackSnapshot will still
+    // release override when playback crosses into the next video naturally.
+    _updateState((s) {
+      // Find the last segment whose globalStartTime is <= the seek target.
+      var targetIndex = 0;
+      for (var i = 0; i < s.segments.length; i++) {
+        if (s.segments[i].globalStartTime <= globalSeconds) targetIndex = i;
+      }
+      return s.copyWith(
+        activeSegmentIndex: targetIndex,
+        userOverrideActive: true,
+      );
+    });
   }
 
   /// Manually expand a section. Suspends auto-sync until the next video

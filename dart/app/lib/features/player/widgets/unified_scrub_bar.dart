@@ -56,7 +56,11 @@ class _UnifiedScrubBarState extends State<UnifiedScrubBar> {
     final frac = (localPos.dx / width).clamp(0.0, 1.0);
     final secs = frac * widget.duration;
     setState(() => _dragPosition = secs);
-    widget.onSeek(secs);
+  }
+
+  void _commitSeek() {
+    if (widget.duration <= 0) return;
+    widget.onSeek(_dragPosition ?? widget.position);
   }
 
   @override
@@ -87,12 +91,14 @@ class _UnifiedScrubBarState extends State<UnifiedScrubBar> {
               _handleTapOrDrag(d.localPosition, width);
             },
             onHorizontalDragEnd: (_) {
+              _commitSeek();
               widget.onSeekEnd?.call();
               setState(() => _dragging = false);
             },
             onTapDown: (d) {
               widget.onSeekStart?.call();
               _handleTapOrDrag(d.localPosition, width);
+              _commitSeek();
               widget.onSeekEnd?.call();
             },
             child: CustomPaint(
