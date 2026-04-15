@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:emajtee/features/cast/widgets/cast_button.dart';
 import 'package:emajtee/features/player/controllers/lecture_playback_controller.dart';
 import 'package:emajtee/features/player/widgets/unified_scrub_bar.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 
 /// Video player widget for the stitched lecture player.
@@ -14,7 +16,7 @@ import 'package:video_player/video_player.dart';
 /// In non-fullscreen the scrub bar is laid out below the video and always
 /// visible. In fullscreen the scrub bar becomes part of the auto-hiding
 /// overlay — tap to reveal, auto-hides after a few seconds.
-class LectureVideoPlayer extends StatefulWidget {
+class LectureVideoPlayer extends ConsumerStatefulWidget {
   const LectureVideoPlayer({
     required this.controller,
     required this.isFullScreen,
@@ -29,10 +31,11 @@ class LectureVideoPlayer extends StatefulWidget {
   final ValueChanged<double> onSeek;
 
   @override
-  State<LectureVideoPlayer> createState() => _LectureVideoPlayerState();
+  ConsumerState<LectureVideoPlayer> createState() =>
+      _LectureVideoPlayerState();
 }
 
-class _LectureVideoPlayerState extends State<LectureVideoPlayer> {
+class _LectureVideoPlayerState extends ConsumerState<LectureVideoPlayer> {
   static const _autoHideDelay = Duration(seconds: 3);
   static const List<double> _speeds = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
@@ -317,7 +320,7 @@ class _LectureVideoPlayerState extends State<LectureVideoPlayer> {
 
 // ---------------------------------------------------------------------------
 
-class _OverlayControls extends StatelessWidget {
+class _OverlayControls extends ConsumerWidget {
   const _OverlayControls({
     required this.isPlaying,
     required this.onPlayPause,
@@ -344,7 +347,7 @@ class _OverlayControls extends StatelessWidget {
   final Widget? bottomBar;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Stack(
       children: [
         // Scrim so controls are legible over light video content.
@@ -418,16 +421,23 @@ class _OverlayControls extends StatelessWidget {
           ),
         ),
 
-        // Top-right: fullscreen toggle.
+        // Top-right: cast button + fullscreen toggle.
         Positioned(
           top: 4,
           right: 4,
-          child: _CircleButton(
-            icon: isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
-            iconSize: 22,
-            minSize: 36,
-            onPressed: onToggleFullScreen,
-            tooltip: isFullScreen ? 'Exit fullscreen' : 'Enter fullscreen',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CastButton(iconSize: 20),
+              const SizedBox(width: 2),
+              _CircleButton(
+                icon: isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                iconSize: 22,
+                minSize: 36,
+                onPressed: onToggleFullScreen,
+                tooltip: isFullScreen ? 'Exit fullscreen' : 'Enter fullscreen',
+              ),
+            ],
           ),
         ),
 

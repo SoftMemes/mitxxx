@@ -35,6 +35,8 @@ dependencies:
   riverpod_annotation: ^4.0.0
   sqlite3_flutter_libs: ^0.5.25
   url_launcher: ^6.3.2
+  flutter_chrome_cast: ^1.4.5
+  flutter_to_airplay: ^2.1.0
   video_player: ^2.9.2
 
 dev_dependencies:

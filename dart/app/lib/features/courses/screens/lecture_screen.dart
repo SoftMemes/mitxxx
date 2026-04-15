@@ -1,4 +1,7 @@
 // ignore_for_file: uri_has_not_been_generated
+import 'package:emajtee/features/cast/models/cast_state.dart';
+import 'package:emajtee/features/cast/providers/cast_controller.dart';
+import 'package:emajtee/features/cast/widgets/cast_controller_panel.dart';
 import 'package:emajtee/features/courses/providers/outline_provider.dart';
 import 'package:emajtee/features/courses/widgets/vertical_section_tile.dart';
 import 'package:emajtee/features/downloads/widgets/download_button.dart';
@@ -104,6 +107,51 @@ class _LectureScreenState extends ConsumerState<LectureScreen> {
       },
     );
 
+    // Listen for cast session transitions.
+    ref.listen<CastState>(castControllerProvider, (previous, next) {
+      final prevStatus = previous?.status ?? CastConnectionStatus.disconnected;
+      final nextStatus = next.status;
+
+      final playerNotifier = ref.read(
+        lecturePlayerProvider(
+          courseId: widget.courseId,
+          sequenceId: widget.sequenceId,
+        ).notifier,
+      );
+
+      if (prevStatus != CastConnectionStatus.connected &&
+          nextStatus == CastConnectionStatus.connected) {
+        // Just connected — load the queue and pause local playback.
+        final queue = playerNotifier.castQueue;
+        final globalPos =
+            playerNotifier.playbackController?.snapshot.value.globalPosition ??
+                0.0;
+
+        // Compute which queue item contains the current position.
+        var startIndex = 0;
+        var startOffset = 0.0;
+        for (var i = 0; i < queue.length; i++) {
+          if (queue[i].globalStartTime <= globalPos) {
+            startIndex = i;
+            startOffset = globalPos - queue[i].globalStartTime;
+          }
+        }
+
+        ref
+            .read(castControllerProvider.notifier)
+            .loadQueue(queue, startIndex: startIndex, startOffset: startOffset);
+        playerNotifier.pause();
+      }
+
+      if (prevStatus == CastConnectionStatus.connected &&
+          nextStatus == CastConnectionStatus.disconnected) {
+        // Just disconnected — resume local player at last cast position, paused.
+        final lastPos = previous?.globalPosition ?? 0.0;
+        playerNotifier.seekGlobal(lastPos);
+        // Do NOT call play() — per spec: fall back paused.
+      }
+    });
+
     return Scaffold(
       backgroundColor: _isFullScreen ? Colors.black : null,
       appBar: _isFullScreen
@@ -165,6 +213,13 @@ class _LectureScreenState extends ConsumerState<LectureScreen> {
         activeIndex: lectureState.activeSegmentIndex,
         onTileTap: notifier.selectSegment,
       );
+    }
+
+    // While a cast session is active, replace the video player with the cast
+    // controller panel.
+    final castState = ref.watch(castControllerProvider);
+    if (castState.isConnected) {
+      return const CastControllerPanel();
     }
 
     // Error overlay over the video area.
