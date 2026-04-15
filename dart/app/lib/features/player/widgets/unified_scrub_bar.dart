@@ -68,49 +68,55 @@ class _UnifiedScrubBarState extends State<UnifiedScrubBar> {
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
 
-    return SizedBox(
-      height: 36,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth;
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onHorizontalDragStart: (d) {
-              setState(() {
-                _dragging = true;
-                _dragPosition = _clampedFrac(d.localPosition.dx / width) * widget.duration;
-              });
-              widget.onSeekStart?.call();
-            },
-            onHorizontalDragUpdate: (d) {
-              _handleTapOrDrag(d.localPosition, width);
-            },
-            onHorizontalDragEnd: (_) {
-              _commitSeek();
-              widget.onSeekEnd?.call();
-              setState(() => _dragging = false);
-            },
-            onTapDown: (d) {
-              widget.onSeekStart?.call();
-              _handleTapOrDrag(d.localPosition, width);
-              _commitSeek();
-              widget.onSeekEnd?.call();
-            },
-            child: CustomPaint(
-              size: Size(width, 36),
-              painter: _ScrubBarPainter(
-                position: _displayPosition,
-                duration: widget.duration,
-                segmentBoundaries: widget.segmentBoundaries,
-                progressColor: primaryColor,
-                trackColor: theme.colorScheme.surfaceContainerHighest,
-                thumbColor: primaryColor,
-                dividerColor: Colors.white.withValues(alpha: 0.6),
-                isDragging: _dragging,
+    // Suppress the iOS swipe-back gesture while the user is dragging the
+    // scrub handle — a horizontal drag near the left edge would otherwise
+    // accidentally navigate away.
+    return PopScope(
+      canPop: !_dragging,
+      child: SizedBox(
+        height: 36,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragStart: (d) {
+                setState(() {
+                  _dragging = true;
+                  _dragPosition = _clampedFrac(d.localPosition.dx / width) * widget.duration;
+                });
+                widget.onSeekStart?.call();
+              },
+              onHorizontalDragUpdate: (d) {
+                _handleTapOrDrag(d.localPosition, width);
+              },
+              onHorizontalDragEnd: (_) {
+                _commitSeek();
+                widget.onSeekEnd?.call();
+                setState(() => _dragging = false);
+              },
+              onTapDown: (d) {
+                widget.onSeekStart?.call();
+                _handleTapOrDrag(d.localPosition, width);
+                _commitSeek();
+                widget.onSeekEnd?.call();
+              },
+              child: CustomPaint(
+                size: Size(width, 36),
+                painter: _ScrubBarPainter(
+                  position: _displayPosition,
+                  duration: widget.duration,
+                  segmentBoundaries: widget.segmentBoundaries,
+                  progressColor: primaryColor,
+                  trackColor: theme.colorScheme.surfaceContainerHighest,
+                  thumbColor: primaryColor,
+                  dividerColor: Colors.white.withValues(alpha: 0.6),
+                  isDragging: _dragging,
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
