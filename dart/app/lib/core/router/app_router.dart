@@ -5,6 +5,9 @@ import 'package:emajtee/features/auth/screens/login_screen.dart';
 import 'package:emajtee/features/courses/screens/course_outline_screen.dart';
 import 'package:emajtee/features/courses/screens/home_screen.dart';
 import 'package:emajtee/features/courses/screens/lecture_screen.dart';
+import 'package:emajtee/features/onboarding/providers/onboarding_provider.dart';
+import 'package:emajtee/features/onboarding/screens/onboarding_screen.dart';
+import 'package:emajtee/features/settings/screens/about_screen.dart';
 import 'package:emajtee/features/settings/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -14,11 +17,12 @@ part 'app_router.g.dart';
 
 @Riverpod(keepAlive: true)
 GoRouter appRouter(Ref ref) {
-  // A ValueNotifier used as GoRouter's refreshListenable.
-  // Notifies GoRouter whenever auth state changes so redirects are re-evaluated.
+  // Notifies GoRouter whenever auth or onboarding state changes so redirects
+  // are re-evaluated.
   final notifier = ValueNotifier<int>(0);
   ref
     ..listen<AsyncValue<dynamic>>(authProvider, (_, _) => notifier.value++)
+    ..listen<bool>(onboardingAcknowledgedProvider, (_, _) => notifier.value++)
     ..onDispose(notifier.dispose);
 
   return GoRouter(
@@ -26,6 +30,15 @@ GoRouter appRouter(Ref ref) {
     refreshListenable: notifier,
     observers: [ref.read(analyticsServiceProvider).observer],
     redirect: (context, state) {
+      final isAcknowledged = ref.read(onboardingAcknowledgedProvider);
+      final isOnboardingRoute = state.matchedLocation == '/onboarding';
+
+      // Onboarding must be acknowledged before anything else is accessible.
+      if (!isAcknowledged && !isOnboardingRoute) return '/onboarding';
+      // If the user somehow lands on /onboarding but is already acknowledged,
+      // fall through to the auth redirect which will send them to /login or /home.
+      if (!isAcknowledged && isOnboardingRoute) return null;
+
       final authState = ref.read(authProvider);
       final isLoading = authState.isLoading;
       final isAuthenticated = authState.value != null;
@@ -42,10 +55,15 @@ GoRouter appRouter(Ref ref) {
       GoRoute(
         path: '/',
         redirect: (context, state) {
-          final isAuthenticated =
-              ref.read(authProvider).value != null;
+          final isAcknowledged = ref.read(onboardingAcknowledgedProvider);
+          if (!isAcknowledged) return '/onboarding';
+          final isAuthenticated = ref.read(authProvider).value != null;
           return isAuthenticated ? '/home' : '/login';
         },
+      ),
+      GoRoute(
+        path: '/onboarding',
+        builder: (context, state) => const OnboardingScreen(),
       ),
       GoRoute(
         path: '/login',
@@ -58,6 +76,12 @@ GoRouter appRouter(Ref ref) {
       GoRoute(
         path: '/settings',
         builder: (context, state) => const SettingsScreen(),
+        routes: [
+          GoRoute(
+            path: 'about',
+            builder: (context, state) => const AboutScreen(),
+          ),
+        ],
       ),
       GoRoute(
         path: '/course/:courseId',

@@ -6,6 +6,7 @@ import 'package:emajtee/core/analytics/analytics_service.dart';
 import 'package:emajtee/core/logging.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/core/router/app_router.dart';
+import 'package:emajtee/core/storage/shared_preferences_provider.dart';
 import 'package:emajtee/core/theme/app_theme.dart';
 import 'package:emajtee/firebase_options.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
@@ -14,6 +15,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> main() async {
   unawaited(runZonedGuarded<Future<void>>(
@@ -34,9 +36,13 @@ Future<void> main() async {
       };
 
       final dioClient = await buildDioClient();
+      final prefs = await SharedPreferences.getInstance();
       runApp(
         ProviderScope(
-          overrides: [dioClientProvider.overrideWithValue(dioClient)],
+          overrides: [
+            dioClientProvider.overrideWithValue(dioClient),
+            sharedPreferencesProvider.overrideWithValue(prefs),
+          ],
           child: const EmajteeApp(),
         ),
       );

@@ -1,7 +1,7 @@
 # App Onboarding Specification
 
 > **Version**: 1.1 (April 2026)
-> **Status**: Ready for Implementation
+> **Status**: Implemented
 > **Last Updated**: 2026-04-15
 
 ## Description
@@ -99,3 +99,21 @@ A read-only version of the same content is accessible from the existing (current
 | User opens Settings → About | Read-only disclosure screen, normal back navigation |
 | User logs out | Onboarding does NOT reappear (flag is persisted independently of auth) |
 | App data wiped / reinstall | SharedPreferences cleared → onboarding shown again on next launch |
+
+---
+
+## Implementation Notes
+
+**Implemented**: April 2026
+
+**Key files created / modified**:
+- `lib/core/storage/shared_preferences_provider.dart` — new manual Provider, overridden at bootstrap
+- `lib/features/onboarding/providers/onboarding_provider.dart` — new `@riverpod` `OnboardingAcknowledged` notifier
+- `lib/features/onboarding/disclosure_content.dart` — shared `DisclosureItem` list (used by both screens)
+- `lib/features/onboarding/screens/onboarding_screen.dart` — new full-screen onboarding modal
+- `lib/features/settings/screens/about_screen.dart` — new read-only disclosure screen
+- `lib/core/router/app_router.dart` — added `/onboarding` + `/settings/about` routes; redirect checks onboarding state first; notifier refreshes on both auth and onboarding changes
+- `lib/features/settings/screens/settings_screen.dart` — About tile wired to `/settings/about`
+- `lib/main.dart` — `SharedPreferences.getInstance()` called at bootstrap; instance injected via provider override
+
+**Deviations from spec**: None.

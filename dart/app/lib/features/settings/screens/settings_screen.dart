@@ -2,6 +2,7 @@ import 'package:emajtee/core/analytics/analytics_preferences.dart';
 import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -14,12 +15,14 @@ class SettingsScreen extends ConsumerWidget {
       ),
       body: ListView(
         children: [
-          const ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('About'),
-            subtitle: Text(
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('About'),
+            subtitle: const Text(
               'MITxxx is an unofficial app and is not affiliated with MIT.',
             ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/settings/about'),
           ),
           const Divider(),
           SwitchListTile(
