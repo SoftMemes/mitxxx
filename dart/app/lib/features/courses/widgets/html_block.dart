@@ -87,14 +87,66 @@ class _HtmlBlockState extends ConsumerState<HtmlBlock> {
 
     // Inject a viewport + base styles so text is readable and sized
     // appropriately, plus a scrollHeight callback for auto-sizing.
+    // Typography is tuned to match the app (system font stack, Material 3 scale,
+    // MIT brand red for links). Heading sizes are scaled down relative to browser
+    // defaults so they complement rather than dominate body text. List indentation
+    // is reduced from the browser default 40px to a tighter 1.3em.
     final headExtras = '''
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <style>
   html, body { margin: 0; padding: 0; background: transparent; color: inherit; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 16px; line-height: 1.5; padding: 12px; }
-  img { max-width: 100%; height: auto; }
-  pre, code { white-space: pre-wrap; word-wrap: break-word; }
-  table { max-width: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    padding: 12px;
+  }
+
+  /* Heading hierarchy — scaled down to sit naturally alongside 15px body text */
+  h1, h2, h3, h4, h5, h6 {
+    line-height: 1.3;
+    margin: 0.85em 0 0.35em;
+    font-weight: 600;
+  }
+  h1 { font-size: 1.4em; }
+  h2 { font-size: 1.25em; }
+  h3 { font-size: 1.1em; }
+  h4, h5, h6 { font-size: 1em; font-weight: 500; }
+
+  /* Lists — tighter indent than browser default (40px → 1.3em ≈ 20px) */
+  ul, ol { padding-left: 1.3em; margin: 0.4em 0; }
+  li { margin-bottom: 0.25em; }
+  ul ul, ol ol, ul ol, ol ul { margin: 0.15em 0; }
+
+  /* Links — MIT brand red */
+  a { color: #A31F34; }
+
+  /* Images & media */
+  img { max-width: 100%; height: auto; display: block; }
+
+  /* Code */
+  code {
+    font-family: 'SFMono-Regular', Menlo, Consolas, 'Courier New', monospace;
+    font-size: 0.875em;
+    background: rgba(0,0,0,0.05);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+  }
+  pre { white-space: pre-wrap; word-wrap: break-word; }
+  pre code { background: none; padding: 0; border-radius: 0; }
+
+  /* Tables */
+  table { max-width: 100%; border-collapse: collapse; margin: 0.5em 0; }
+  td, th { padding: 5px 8px; border: 1px solid rgba(0,0,0,0.15); font-size: 0.933em; }
+  th { font-weight: 600; background: rgba(0,0,0,0.04); }
+
+  /* Blockquotes */
+  blockquote {
+    margin: 0.6em 0;
+    padding: 0.4em 0.75em;
+    border-left: 3px solid rgba(0,0,0,0.18);
+    color: rgba(0,0,0,0.65);
+  }
 </style>
 $mathJaxConfig$mathJaxScript<script>
 window.addEventListener('load', function() {
