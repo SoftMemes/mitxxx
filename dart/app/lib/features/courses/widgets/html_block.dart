@@ -49,12 +49,20 @@ class HtmlBlock extends ConsumerStatefulWidget {
 }
 
 /// Formats a Flutter [Color] as a CSS `rgba(r,g,b,a)` string.
-String _cssColor(Color c) =>
-    'rgba(${c.red},${c.green},${c.blue},${c.alpha / 255})';
+String _cssColor(Color c) {
+  final r = (c.r * 255).round();
+  final g = (c.g * 255).round();
+  final b = (c.b * 255).round();
+  return 'rgba($r,$g,$b,${c.a})';
+}
 
 /// Formats a Flutter [Color] with an alpha override (0.0–1.0).
-String _cssColorA(Color c, double alpha) =>
-    'rgba(${c.red},${c.green},${c.blue},$alpha)';
+String _cssColorA(Color c, double alpha) {
+  final r = (c.r * 255).round();
+  final g = (c.g * 255).round();
+  final b = (c.b * 255).round();
+  return 'rgba($r,$g,$b,$alpha)';
+}
 
 class _HtmlBlockState extends ConsumerState<HtmlBlock> {
   double _height = 0;
