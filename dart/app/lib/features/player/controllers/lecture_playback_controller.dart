@@ -94,6 +94,11 @@ class LecturePlaybackController {
   /// Whether the controller is currently playing (regardless of position).
   bool _wantPlaying = false;
 
+  /// Cached playback speed — applied to the active controller and re-applied
+  /// to any newly loaded segment so speed persists across segment swaps.
+  double _playbackSpeed = 1;
+  double get playbackSpeed => _playbackSpeed;
+
   // ---------------------------------------------------------------------------
   // Seek serialisation
   // ---------------------------------------------------------------------------
@@ -133,6 +138,14 @@ class LecturePlaybackController {
     _wantPlaying = false;
     await _activeVpc!.pause();
     _updateSnapshot();
+  }
+
+  /// Sets playback speed (1.0 = normal). Applied immediately to the active
+  /// segment and cached so later segment swaps inherit it.
+  Future<void> setPlaybackSpeed(double speed) async {
+    _playbackSpeed = speed;
+    if (_disposed || _activeVpc == null) return;
+    await _activeVpc!.setPlaybackSpeed(speed);
   }
 
   /// Seeks to [globalSeconds] anywhere in the stitched timeline.
@@ -231,6 +244,9 @@ class LecturePlaybackController {
     _boundaryFired = false;
     _preloadStarted = false;
     _activeVpc!.addListener(_onControllerUpdate);
+    if (_playbackSpeed != 1.0) {
+      await _activeVpc!.setPlaybackSpeed(_playbackSpeed);
+    }
     // No _updateSnapshot here — suppressed while seek is in flight.
   }
 
@@ -292,6 +308,9 @@ class LecturePlaybackController {
     _boundaryFired = false;
     _preloadStarted = false;
     _activeVpc!.addListener(_onControllerUpdate);
+    if (_playbackSpeed != 1.0) {
+      await _activeVpc!.setPlaybackSpeed(_playbackSpeed);
+    }
 
     _updateSnapshot();
   }
