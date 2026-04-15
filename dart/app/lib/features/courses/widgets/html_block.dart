@@ -48,8 +48,18 @@ class HtmlBlock extends ConsumerStatefulWidget {
   ConsumerState<HtmlBlock> createState() => _HtmlBlockState();
 }
 
+/// Formats a Flutter [Color] as a CSS `rgba(r,g,b,a)` string.
+String _cssColor(Color c) =>
+    'rgba(${c.red},${c.green},${c.blue},${c.alpha / 255})';
+
+/// Formats a Flutter [Color] with an alpha override (0.0–1.0).
+String _cssColorA(Color c, double alpha) =>
+    'rgba(${c.red},${c.green},${c.blue},$alpha)';
+
 class _HtmlBlockState extends ConsumerState<HtmlBlock> {
   double _height = 0;
+  InAppWebViewController? _webViewController;
+  Brightness? _lastBrightness;
 
   // Loaded once from assets and shared across all HtmlBlock instances.
   static String? _mathJaxJs;
@@ -67,7 +77,20 @@ class _HtmlBlockState extends ConsumerState<HtmlBlock> {
     if (mounted) setState(() {});
   }
 
-  String _wrapHtml(String html) {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final brightness = Theme.of(context).brightness;
+    if (_lastBrightness != null && _lastBrightness != brightness) {
+      // Reload the WebView HTML with updated theme colors.
+      _webViewController?.loadData(
+        data: _wrapHtml(widget.html, Theme.of(context)),
+      );
+    }
+    _lastBrightness = brightness;
+  }
+
+  String _wrapHtml(String html, ThemeData theme) {
     // MathJax 3 config: match the delimiters the LMS uses.
     const mathJaxConfig = r'''
 <script>
@@ -91,10 +114,20 @@ class _HtmlBlockState extends ConsumerState<HtmlBlock> {
     // MIT brand red for links). Heading sizes are scaled down relative to browser
     // defaults so they complement rather than dominate body text. List indentation
     // is reduced from the browser default 40px to a tighter 1.3em.
+    // Colors are derived from the Flutter ThemeData so they respond to dark mode.
+    final cs = theme.colorScheme;
+    final bodyColor = _cssColor(cs.onSurface);
+    final linkColor = _cssColor(cs.primary);
+    final codeBg = _cssColorA(cs.onSurface, 0.06);
+    final tableBorder = _cssColorA(cs.onSurface, 0.15);
+    final tableHeadBg = _cssColorA(cs.onSurface, 0.05);
+    final bqBorder = _cssColorA(cs.onSurface, 0.18);
+    final bqColor = _cssColor(cs.onSurfaceVariant);
+
     final headExtras = '''
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <style>
-  html, body { margin: 0; padding: 0; background: transparent; color: inherit; }
+  html, body { margin: 0; padding: 0; background: transparent; color: $bodyColor; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 15px;
@@ -118,8 +151,8 @@ class _HtmlBlockState extends ConsumerState<HtmlBlock> {
   li { margin-bottom: 0.25em; }
   ul ul, ol ol, ul ol, ol ul { margin: 0.15em 0; }
 
-  /* Links — MIT brand red */
-  a { color: #A31F34; }
+  /* Links */
+  a { color: $linkColor; }
 
   /* Images & media */
   img { max-width: 100%; height: auto; display: block; }
@@ -128,7 +161,7 @@ class _HtmlBlockState extends ConsumerState<HtmlBlock> {
   code {
     font-family: 'SFMono-Regular', Menlo, Consolas, 'Courier New', monospace;
     font-size: 0.875em;
-    background: rgba(0,0,0,0.05);
+    background: $codeBg;
     padding: 0.1em 0.3em;
     border-radius: 3px;
   }
@@ -137,15 +170,15 @@ class _HtmlBlockState extends ConsumerState<HtmlBlock> {
 
   /* Tables */
   table { max-width: 100%; border-collapse: collapse; margin: 0.5em 0; }
-  td, th { padding: 5px 8px; border: 1px solid rgba(0,0,0,0.15); font-size: 0.933em; }
-  th { font-weight: 600; background: rgba(0,0,0,0.04); }
+  td, th { padding: 5px 8px; border: 1px solid $tableBorder; font-size: 0.933em; }
+  th { font-weight: 600; background: $tableHeadBg; }
 
   /* Blockquotes */
   blockquote {
     margin: 0.6em 0;
     padding: 0.4em 0.75em;
-    border-left: 3px solid rgba(0,0,0,0.18);
-    color: rgba(0,0,0,0.65);
+    border-left: 3px solid $bqBorder;
+    color: $bqColor;
   }
 </style>
 $mathJaxConfig$mathJaxScript<script>
@@ -200,6 +233,7 @@ window.addEventListener('load', function() {
           // (if online) will simply fail CORS/network — acceptable.
         ),
         onWebViewCreated: (controller) {
+          _webViewController = controller;
           controller
             ..addJavaScriptHandler(
               handlerName: 'FlutterHeight',
@@ -225,7 +259,7 @@ window.addEventListener('load', function() {
             );
         },
         initialData: InAppWebViewInitialData(
-          data: _wrapHtml(widget.html),
+          data: _wrapHtml(widget.html, Theme.of(context)),
           // No baseUrl → defaults to about:blank, avoiding the iOS
           // WKWebView HTTPS-baseURL sandbox quirk.
         ),
