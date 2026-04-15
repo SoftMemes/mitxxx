@@ -1,3 +1,4 @@
+import 'package:emajtee/core/analytics/analytics_preferences.dart';
 import 'package:emajtee/features/onboarding/disclosure_content.dart';
 import 'package:emajtee/features/onboarding/providers/onboarding_provider.dart';
 import 'package:flutter/material.dart';
@@ -16,10 +17,14 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   bool _busy = false;
+  bool _analyticsOptIn = true;
 
   Future<void> _acknowledge() async {
     if (_busy) return;
     setState(() => _busy = true);
+    if (!_analyticsOptIn) {
+      await ref.read(analyticsPreferencesProvider.notifier).setOptedIn(false);
+    }
     await ref.read(onboardingAcknowledgedProvider.notifier).acknowledge();
     // Router redirect picks up the state change and navigates to /login.
   }
@@ -124,16 +129,46 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     top: BorderSide(color: cs.outlineVariant),
                   ),
                 ),
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                child: FilledButton(
-                  onPressed: _busy ? null : _acknowledge,
-                  child: _busy
-                      ? const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('I understand'),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Analytics opt-out checkbox (default ticked)
+                    GestureDetector(
+                      onTap: _busy ? null : () => setState(() => _analyticsOptIn = !_analyticsOptIn),
+                      child: Row(
+                        children: [
+                          Checkbox(
+                            value: _analyticsOptIn,
+                            onChanged: _busy ? null : (v) => setState(() => _analyticsOptIn = v ?? true),
+                            visualDensity: VisualDensity.compact,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              'Share anonymous usage analytics to help improve MITxxx. '
+                              'No course content, names, or emails are ever sent.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton(
+                      onPressed: _busy ? null : _acknowledge,
+                      child: _busy
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('I understand'),
+                    ),
+                  ],
                 ),
               ),
             ],
