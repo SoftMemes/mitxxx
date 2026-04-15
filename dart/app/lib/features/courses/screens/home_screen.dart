@@ -70,7 +70,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ],
       ),
       body: !isAuthenticated
-          ? _LoggedOutState(onLogin: () => context.push('/login'))
+          ? _LoggedOutState(onLogin: () => context.go('/login'))
           : enrollmentsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => _EmptyState(
