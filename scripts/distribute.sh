@@ -4,7 +4,15 @@
 #   Override build number: BUILD_NUMBER=12345 ./scripts/distribute.sh "notes"
 set -euo pipefail
 
-RELEASE_NOTES="${1:-}"
+RELEASE_NOTES=""
+SKIP_BUILD=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-build) SKIP_BUILD=true; shift ;;
+    *) RELEASE_NOTES="$1"; shift ;;
+  esac
+done
 
 # Build number: seconds since 2020-01-01 UTC.
 # Offsetting from 2020 keeps the value ~200M today vs ~1.78B for raw Unix time,
@@ -21,5 +29,6 @@ export BUILD_NUMBER="${BUILD_NUMBER:-$RAW}"
 echo "==> Build number: $BUILD_NUMBER"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-"$SCRIPT_DIR/distribute-android.sh" "$RELEASE_NOTES"
-"$SCRIPT_DIR/distribute-ios.sh" "$RELEASE_NOTES"
+SKIP_FLAG=$( [[ "$SKIP_BUILD" == true ]] && echo "--skip-build" || echo "" )
+"$SCRIPT_DIR/distribute-android.sh" $SKIP_FLAG ${RELEASE_NOTES:+"$RELEASE_NOTES"}
+"$SCRIPT_DIR/distribute-ios.sh" $SKIP_FLAG ${RELEASE_NOTES:+"$RELEASE_NOTES"}
