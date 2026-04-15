@@ -47,7 +47,11 @@ GoRouter appRouter(Ref ref) {
       // While checking auth on startup, stay put.
       if (isLoading) return null;
 
-      if (!isAuthenticated && !isLoginRoute) return '/login';
+      // Logged-out users can browse /home, /settings, /onboarding, /login.
+      // Course content routes require auth (they need cached data from a sync).
+      final location = state.matchedLocation;
+      final requiresAuth = location.startsWith('/course/');
+      if (!isAuthenticated && requiresAuth) return '/login';
       if (isAuthenticated && isLoginRoute) return '/home';
       return null;
     },
@@ -57,8 +61,7 @@ GoRouter appRouter(Ref ref) {
         redirect: (context, state) {
           final isAcknowledged = ref.read(onboardingAcknowledgedProvider);
           if (!isAcknowledged) return '/onboarding';
-          final isAuthenticated = ref.read(authProvider).value != null;
-          return isAuthenticated ? '/home' : '/login';
+          return '/home';
         },
       ),
       GoRoute(

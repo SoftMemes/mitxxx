@@ -1,5 +1,6 @@
 import 'package:emajtee/core/analytics/analytics_events.dart';
 import 'package:emajtee/core/analytics/analytics_service.dart';
+import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:emajtee/features/courses/models/enrollment.dart';
 import 'package:emajtee/features/courses/providers/enrollments_provider.dart';
 import 'package:emajtee/features/sync/models/course_sync_state.dart';
@@ -23,10 +24,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final enrollmentsAsync = ref.watch(enrollmentsProvider);
     final syncState = ref.watch(syncControllerProvider);
     final isSyncing = syncState.values.any((s) => s.status == SyncStatus.syncing);
+    final isAuthenticated = ref.watch(authProvider).value != null;
 
-    // Auto-trigger an initial sync when there is no cached data yet
-    // (e.g. first login). Only do this once per screen lifecycle.
-    if (!_autoSyncTriggered && enrollmentsAsync.hasError && !isSyncing) {
+    // Auto-trigger an initial sync when logged in and there is no cached data
+    // yet (e.g. first login). Only do this once per screen lifecycle.
+    if (isAuthenticated &&
+        !_autoSyncTriggered &&
+        enrollmentsAsync.hasError &&
+        !isSyncing) {
       _autoSyncTriggered = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -40,29 +45,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         title: const Text('My Courses'),
         actions: [
           // Global refresh button — spins while any course is syncing.
-          if (isSyncing)
-            const Padding(
-              padding: EdgeInsets.all(14),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
+          // Hidden when logged out (nothing to refresh).
+          if (isAuthenticated)
+            if (isSyncing)
+              const Padding(
+                padding: EdgeInsets.all(14),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.sync),
+                tooltip: 'Refresh courses',
+                onPressed: () =>
+                    ref.read(syncControllerProvider.notifier).syncAll(),
               ),
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.sync),
-              tooltip: 'Refresh courses',
-              onPressed: () =>
-                  ref.read(syncControllerProvider.notifier).syncAll(),
-            ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             onPressed: () => context.push('/settings'),
           ),
         ],
       ),
-      body: enrollmentsAsync.when(
+      body: !isAuthenticated
+          ? _LoggedOutState(onLogin: () => context.push('/login'))
+          : enrollmentsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => _EmptyState(
           onSync: () => ref.read(syncControllerProvider.notifier).syncAll(),
@@ -99,6 +108,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class _LoggedOutState extends StatelessWidget {
+  const _LoggedOutState({required this.onLogin});
+
+  final VoidCallback onLogin;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.cloud_download_outlined, size: 64, color: cs.onSurfaceVariant),
+            const SizedBox(height: 16),
+            Text(
+              'Log in to sync your enrolled MIT Learn courses for offline access.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onLogin,
+              icon: const Icon(Icons.login),
+              label: const Text('Log in to sync'),
+            ),
+          ],
+        ),
       ),
     );
   }
