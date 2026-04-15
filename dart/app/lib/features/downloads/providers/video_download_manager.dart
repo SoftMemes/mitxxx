@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
 import 'package:drift/drift.dart' show Value;
+import 'package:emajtee/core/analytics/analytics_events.dart';
+import 'package:emajtee/core/analytics/analytics_service.dart';
 import 'package:emajtee/core/storage/app_database.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/courses/models/outline.dart';
@@ -11,6 +13,7 @@ import 'package:emajtee/features/courses/models/sequence.dart';
 import 'package:emajtee/features/courses/models/xblock_content.dart';
 import 'package:emajtee/features/downloads/models/download_status.dart';
 import 'package:emajtee/features/downloads/utils/download_paths.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -24,9 +27,28 @@ const _kConcurrency = 3;
 @Riverpod(keepAlive: true)
 VideoDownloadManager videoDownloadManager(Ref ref) {
   final db = ref.read(appDatabaseProvider);
-  final manager = VideoDownloadManager._(db);
+  final manager = VideoDownloadManager._(db, ref);
   ref.onDispose(manager._dispose);
   return manager;
+}
+
+/// Tracks the aggregate state of a scoped download job for analytics.
+class _DownloadJob {
+  _DownloadJob({
+    required this.scope,
+    required this.courseId,
+    this.blockId,
+    required this.videoCount,
+    required this.startedAt,
+  });
+
+  final String scope;
+  final String courseId;
+  final String? blockId;
+  final int videoCount;
+  final DateTime startedAt;
+  int completed = 0;
+  int bytesDownloaded = 0;
 }
 
 /// Service that manages video downloads using background_downloader.
@@ -34,11 +56,16 @@ VideoDownloadManager videoDownloadManager(Ref ref) {
 /// All persistent state lives in [AppDatabase.downloadedVideos]. This class
 /// orchestrates the download engine and keeps the DB in sync with task events.
 class VideoDownloadManager {
-  VideoDownloadManager._(this._db) {
+  VideoDownloadManager._(this._db, this._ref) {
     _init();
   }
 
   final AppDatabase _db;
+  final Ref _ref;
+
+  /// Active download jobs keyed by a scope identifier (url of first video or
+  /// blockId/courseId combo). Used for aggregate completion analytics.
+  final Map<String, _DownloadJob> _jobs = {};
 
   Future<void> _init() async {
     await FileDownloader().configure(globalConfig: [
@@ -78,16 +105,45 @@ class VideoDownloadManager {
       verticalId: verticalId,
     );
 
+    final scope = verticalId != null
+        ? kScopeVideo
+        : sequenceId != null
+            ? kScopeSection
+            : kScopeCourse;
+    final blockId = verticalId ?? sequenceId;
+
+    final urlsToDownload = <String>[];
     for (final url in urls) {
       final existing = await _db.getDownloadedVideo(url);
       if (existing != null &&
           (existing.status == DownloadStatus.downloaded.name ||
               existing.status == DownloadStatus.downloading.name ||
               existing.status == DownloadStatus.queued.name)) {
-        // Already downloaded or in-flight — skip.
         continue;
       }
+      urlsToDownload.add(url);
+    }
 
+    if (urlsToDownload.isEmpty) return;
+
+    // Register job for aggregate analytics.
+    final jobKey = blockId ?? courseId;
+    _jobs[jobKey] = _DownloadJob(
+      scope: scope,
+      courseId: courseId,
+      blockId: blockId,
+      videoCount: urlsToDownload.length,
+      startedAt: DateTime.now(),
+    );
+
+    _ref.read(analyticsServiceProvider).logDownloadStart(
+      scope: scope,
+      courseId: courseId,
+      blockId: blockId,
+      videoCount: urlsToDownload.length,
+    );
+
+    for (final url in urlsToDownload) {
       // If stale or failed, re-download.
       final localPath = await localPathForUrl(url);
       final courseIds = await _mergedCourseIds(url, courseId);
@@ -195,13 +251,16 @@ class VideoDownloadManager {
         final localPath = await localPathForUrl(url);
         await _db.markDownloadComplete(url, localPath);
         _log.fine('Download complete: $url → $localPath');
+        _onVideoComplete(url);
 
       case TaskStatus.failed:
         await _db.markDownloadFailed(url);
         _log.warning('Download failed: $url');
+        _onVideoFailed(url, 'network');
 
       case TaskStatus.canceled:
         // cancel() already removes the row; nothing to do here.
+        _onVideoFailed(url, 'cancelled');
 
       case TaskStatus.running:
         // Progress callbacks will flip status to 'downloading' via
@@ -211,6 +270,66 @@ class VideoDownloadManager {
       case TaskStatus.waitingToRetry:
       case TaskStatus.paused:
       case TaskStatus.notFound:
+    }
+  }
+
+  void _onVideoComplete(String url) {
+    for (final job in _jobs.values) {
+      // We don't know which job this URL belongs to without a lookup, so
+      // conservatively advance any active job that still has pending items.
+      // In the common case (one scope at a time) this is correct.
+    }
+    _advanceJobs(url, completed: true, bytes: 0);
+  }
+
+  void _onVideoFailed(String url, String errorKind) {
+    _advanceJobs(url, completed: false, bytes: 0, errorKind: errorKind);
+  }
+
+  void _advanceJobs(String url, {
+    required bool completed,
+    required int bytes,
+    String? errorKind,
+  }) {
+    final analytics = _ref.read(analyticsServiceProvider);
+    final toRemove = <String>[];
+
+    for (final entry in _jobs.entries) {
+      final job = entry.value;
+      if (completed) {
+        job.completed++;
+        job.bytesDownloaded += bytes;
+      }
+
+      final remaining = job.videoCount - job.completed;
+      if (remaining <= 0 || (!completed && errorKind != null)) {
+        final durationMs =
+            DateTime.now().difference(job.startedAt).inMilliseconds;
+        if (completed) {
+          analytics.logDownloadComplete(
+            scope: job.scope,
+            courseId: job.courseId,
+            blockId: job.blockId,
+            durationMs: durationMs,
+            bytesDownloaded: job.bytesDownloaded,
+            videoCount: job.completed,
+          );
+        } else {
+          analytics.logDownloadFailure(
+            scope: job.scope,
+            courseId: job.courseId,
+            blockId: job.blockId,
+            errorKind: errorKind ?? 'unknown',
+            videosCompleted: job.completed,
+            videosTotal: job.videoCount,
+          );
+        }
+        toRemove.add(entry.key);
+      }
+    }
+
+    for (final key in toRemove) {
+      _jobs.remove(key);
     }
   }
 
@@ -231,6 +350,14 @@ class VideoDownloadManager {
       bytesDownloaded: bytesDownloaded,
       totalBytes: expectedFileSize,
     );
+
+    // When progress reaches 1.0 update the job's byte tally so
+    // logDownloadComplete carries an accurate total.
+    if (progress >= 1.0 && bytesDownloaded > 0) {
+      for (final job in _jobs.values) {
+        job.bytesDownloaded += bytesDownloaded;
+      }
+    }
   }
 
   Future<List<String>> _collectUrls({

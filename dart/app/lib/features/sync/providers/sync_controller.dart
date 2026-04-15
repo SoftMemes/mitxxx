@@ -5,6 +5,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:emajtee/core/analytics/analytics_events.dart';
+import 'package:emajtee/core/analytics/analytics_service.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/core/storage/app_database.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
@@ -59,9 +61,19 @@ class SyncController extends _$SyncController {
   }
 
   /// Syncs all enrolled courses. Re-authenticates LMS session if needed.
-  Future<void> syncAll() async {
+  ///
+  /// [trigger] is passed through to the analytics event to distinguish
+  /// manual sync button taps, auto-syncs on first load, and pull-to-refresh.
+  Future<void> syncAll({String trigger = kTriggerManual}) async {
     final client = ref.read(dioClientProvider);
     final db = ref.read(appDatabaseProvider);
+    final analytics = ref.read(analyticsServiceProvider);
+    final startedAt = DateTime.now();
+
+    unawaited(analytics.logSyncStart(
+      scope: kScopeAllCourses,
+      trigger: trigger,
+    ));
 
     // Re-validate LMS session before syncing.
     try {
@@ -94,15 +106,34 @@ class SyncController extends _$SyncController {
       ref.invalidate(enrollmentsProvider);
     } on DioException catch (e, st) {
       final status = e.response?.statusCode;
+      final durationMs = DateTime.now().difference(startedAt).inMilliseconds;
       if (status == 401 || status == 403) {
         _log.warning('syncAll: enrollment fetch returned $status — signing out', e, st);
+        unawaited(analytics.logSyncFailure(
+          scope: kScopeAllCourses,
+          durationMs: durationMs,
+          stage: 'enrollments',
+          errorKind: 'auth',
+        ));
         await ref.read(authProvider.notifier).signOut();
         return;
       }
       _log.warning('syncAll: enrollment fetch failed', e, st);
+      unawaited(analytics.logSyncFailure(
+        scope: kScopeAllCourses,
+        durationMs: durationMs,
+        stage: 'enrollments',
+        errorKind: 'network',
+      ));
       return;
     } on Object catch (e, st) {
       _log.warning('syncAll: enrollment fetch failed (non-http)', e, st);
+      unawaited(analytics.logSyncFailure(
+        scope: kScopeAllCourses,
+        durationMs: DateTime.now().difference(startedAt).inMilliseconds,
+        stage: 'enrollments',
+        errorKind: 'unknown',
+      ));
       return;
     }
 
@@ -110,14 +141,28 @@ class SyncController extends _$SyncController {
     await Future.wait(
       enrollments.map((e) => syncCourse(e.run.coursewareId)),
     );
+
+    unawaited(analytics.logSyncComplete(
+      scope: kScopeAllCourses,
+      durationMs: DateTime.now().difference(startedAt).inMilliseconds,
+      itemsSynced: enrollments.length,
+    ));
   }
 
   /// Syncs a single course's metadata (outline + sequences + xblocks).
-  Future<void> syncCourse(String courseId) async {
+  Future<void> syncCourse(String courseId, {String trigger = kTriggerManual}) async {
     _updateCourseState(courseId, SyncStatus.syncing);
 
     final client = ref.read(dioClientProvider);
     final db = ref.read(appDatabaseProvider);
+    final analytics = ref.read(analyticsServiceProvider);
+    final startedAt = DateTime.now();
+
+    unawaited(analytics.logSyncStart(
+      scope: kScopeCourse,
+      courseId: courseId,
+      trigger: trigger,
+    ));
 
     try {
       // 1. Fetch and cache course outline.
@@ -187,11 +232,24 @@ class SyncController extends _$SyncController {
       for (final vertId in allVerticalIds) {
         ref.invalidate(xblockContentProvider(blockId: vertId));
       }
+      unawaited(analytics.logSyncComplete(
+        scope: kScopeCourse,
+        courseId: courseId,
+        durationMs: DateTime.now().difference(startedAt).inMilliseconds,
+        itemsSynced: allVerticalIds.length,
+      ));
     } on Object catch (e, st) {
       _log.warning('syncCourse($courseId): failed', e, st);
       final errorMsg = e.toString();
       await db.putSyncError(courseId, errorMsg);
       _updateCourseState(courseId, SyncStatus.error, errorMessage: errorMsg);
+      unawaited(analytics.logSyncFailure(
+        scope: kScopeCourse,
+        courseId: courseId,
+        durationMs: DateTime.now().difference(startedAt).inMilliseconds,
+        stage: 'outline',
+        errorKind: e is DioException ? 'network' : 'unknown',
+      ));
     }
   }
 

@@ -1,4 +1,5 @@
 // ignore_for_file: uri_has_not_been_generated
+import 'package:emajtee/core/analytics/analytics_service.dart';
 import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:emajtee/features/auth/screens/login_screen.dart';
 import 'package:emajtee/features/courses/screens/course_outline_screen.dart';
@@ -23,6 +24,7 @@ GoRouter appRouter(Ref ref) {
   return GoRouter(
     initialLocation: '/',
     refreshListenable: notifier,
+    observers: [ref.read(analyticsServiceProvider).observer],
     redirect: (context, state) {
       final authState = ref.read(authProvider);
       final isLoading = authState.isLoading;

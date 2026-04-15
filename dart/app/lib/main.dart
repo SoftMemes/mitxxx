@@ -1,10 +1,14 @@
 import 'dart:async';
 
+import 'package:emajtee/core/analytics/advertising_id_provider.dart';
+import 'package:emajtee/core/analytics/analytics_preferences.dart';
+import 'package:emajtee/core/analytics/analytics_service.dart';
 import 'package:emajtee/core/logging.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/core/router/app_router.dart';
 import 'package:emajtee/core/theme/app_theme.dart';
 import 'package:emajtee/firebase_options.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
@@ -45,11 +49,37 @@ Future<void> main() async {
   ));
 }
 
-class EmajteeApp extends ConsumerWidget {
+class EmajteeApp extends ConsumerStatefulWidget {
   const EmajteeApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<EmajteeApp> createState() => _EmajteeAppState();
+}
+
+class _EmajteeAppState extends ConsumerState<EmajteeApp> {
+  @override
+  void initState() {
+    super.initState();
+    _initAnalytics();
+  }
+
+  Future<void> _initAnalytics() async {
+    // Set user ID from device advertising ID (IDFA/GAID).
+    // Runs in background; analytics events that fire before this resolves
+    // will be attributed to Firebase's own anonymous instance ID.
+    final adId = await ref.read(advertisingIdProvider.future);
+    if (adId != null) {
+      await FirebaseAnalytics.instance.setUserId(id: adId);
+    }
+
+    if (!mounted) return;
+    final isFirstOpen = await AnalyticsPreferences.consumeFirstOpen();
+    if (!mounted) return;
+    await ref.read(analyticsServiceProvider).logAppOpen(isFirstOpen: isFirstOpen);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     return MaterialApp.router(
       title: 'MITxxx',

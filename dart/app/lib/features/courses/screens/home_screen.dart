@@ -1,3 +1,5 @@
+import 'package:emajtee/core/analytics/analytics_events.dart';
+import 'package:emajtee/core/analytics/analytics_service.dart';
 import 'package:emajtee/features/courses/models/enrollment.dart';
 import 'package:emajtee/features/courses/providers/enrollments_provider.dart';
 import 'package:emajtee/features/sync/models/course_sync_state.dart';
@@ -28,7 +30,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _autoSyncTriggered = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          ref.read(syncControllerProvider.notifier).syncAll();
+          ref.read(syncControllerProvider.notifier).syncAll(trigger: kTriggerAuto);
         }
       });
     }
@@ -86,7 +88,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 syncState: courseSyncState,
                 onTap: courseSyncState?.status == SyncStatus.syncing
                     ? null
-                    : () => context.push('/course/$courseId'),
+                    : () {
+                        ref.read(analyticsServiceProvider).logCourseView(
+                          courseId: courseId,
+                          source: kSourceCourseList,
+                        );
+                        context.push('/course/$courseId');
+                      },
               );
             },
           );

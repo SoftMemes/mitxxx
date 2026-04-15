@@ -1,4 +1,5 @@
 // ignore_for_file: uri_has_not_been_generated
+import 'package:emajtee/core/analytics/analytics_service.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/courses/providers/sequence_provider.dart';
 import 'package:emajtee/features/courses/providers/xblock_provider.dart';
@@ -28,6 +29,21 @@ class LecturePlayer extends _$LecturePlayer {
   /// Video-schedule index that was active the last time we processed a
   /// playback snapshot (used to detect boundary crossings).
   int _lastVideoIndex = 0;
+
+  /// Cached segment list so analytics methods can resolve the current
+  /// video block ID without going through state.
+  List<VerticalSegment> _segments = [];
+
+  /// Set true between [onScrubStart] and [onScrubEnd] to suppress the
+  /// pause event that Chewie/video_player emits during scrubbing.
+  bool _scrubInProgress = false;
+
+  /// Position captured at scrub-start, in seconds, for the analytics event.
+  int _scrubFromPositionS = 0;
+
+  /// Whether the video was already at a non-zero position before the latest
+  /// [play] call (used to set [is_resume]).
+  bool _wasAtStart = true;
 
   // ---------------------------------------------------------------------------
   // Public accessor for the widget layer
@@ -106,6 +122,9 @@ class LecturePlayer extends _$LecturePlayer {
       ));
     }
 
+    // Cache segments for analytics resolution.
+    _segments = segments;
+
     // If there are no video segments, return immediately with no controller.
     if (videoSchedule.isEmpty) {
       return LecturePlayerState(segments: segments);
@@ -133,15 +152,89 @@ class LecturePlayer extends _$LecturePlayer {
   }
 
   // ---------------------------------------------------------------------------
+  // Analytics helpers
+  // ---------------------------------------------------------------------------
+
+  String? get _currentVerticalId {
+    final snap = _playbackController?.snapshot.value;
+    if (snap == null) return null;
+    final vidIdx = snap.activeVideoIndex;
+    if (vidIdx >= _videoIndexToSegmentIndex.length) return null;
+    final segIdx = _videoIndexToSegmentIndex[vidIdx];
+    if (segIdx >= _segments.length) return null;
+    return _segments[segIdx].verticalId;
+  }
+
+  // ---------------------------------------------------------------------------
   // Public control methods
   // ---------------------------------------------------------------------------
 
   Future<void> play() async {
+    final snap = _playbackController?.snapshot.value;
+    final positionS = snap != null ? snap.globalPosition.round() : 0;
+    final durationS = snap != null ? snap.totalDuration.round() : 0;
+    final isResume = positionS > 0;
+    _wasAtStart = positionS == 0;
+
     await _playbackController?.play();
+
+    final verticalId = _currentVerticalId;
+    if (verticalId != null) {
+      ref.read(analyticsServiceProvider).logVideoPlay(
+        courseId: courseId,
+        videoBlockId: verticalId,
+        positionS: positionS,
+        durationS: durationS,
+        isResume: isResume,
+      );
+    }
   }
 
   Future<void> pause() async {
+    if (_scrubInProgress) {
+      // Suppress pause events caused purely by scrubbing.
+      await _playbackController?.pause();
+      return;
+    }
+
+    final snap = _playbackController?.snapshot.value;
+    final positionS = snap != null ? snap.globalPosition.round() : 0;
+    final durationS = snap != null ? snap.totalDuration.round() : 0;
+
     await _playbackController?.pause();
+
+    final verticalId = _currentVerticalId;
+    if (verticalId != null) {
+      ref.read(analyticsServiceProvider).logVideoPause(
+        courseId: courseId,
+        videoBlockId: verticalId,
+        positionS: positionS,
+        durationS: durationS,
+      );
+    }
+  }
+
+  /// Called by the widget layer when the user begins dragging the scrub bar.
+  void onScrubStart(double fromPositionS) {
+    _scrubInProgress = true;
+    _scrubFromPositionS = fromPositionS.round();
+  }
+
+  /// Called by the widget layer when the user releases the scrub bar.
+  void onScrubEnd(double toPositionS) {
+    _scrubInProgress = false;
+    final snap = _playbackController?.snapshot.value;
+    final durationS = snap != null ? snap.totalDuration.round() : 0;
+    final verticalId = _currentVerticalId;
+    if (verticalId != null) {
+      ref.read(analyticsServiceProvider).logVideoScrub(
+        courseId: courseId,
+        videoBlockId: verticalId,
+        fromPositionS: _scrubFromPositionS,
+        toPositionS: toPositionS.round(),
+        durationS: durationS,
+      );
+    }
   }
 
   Future<void> seekGlobal(double globalSeconds) async {
@@ -226,6 +319,18 @@ class LecturePlayer extends _$LecturePlayer {
         snap.error != null && snap.error != current.errorMessage
             ? snap.error
             : (snap.error == null ? null : current.errorMessage);
+
+    // Fire video_complete when playback transitions to complete for the first time.
+    if (snap.isComplete && !current.isComplete) {
+      final verticalId = _currentVerticalId;
+      if (verticalId != null) {
+        ref.read(analyticsServiceProvider).logVideoComplete(
+          courseId: courseId,
+          videoBlockId: verticalId,
+          durationS: snap.totalDuration.round(),
+        );
+      }
+    }
 
     state = AsyncData(current.copyWith(
       globalPosition: snap.globalPosition,

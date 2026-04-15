@@ -196,6 +196,8 @@ class _LectureScreenState extends ConsumerState<LectureScreen> {
               isFullScreen: true,
               onToggleFullScreen: _toggleFullScreen,
               onSeek: notifier.seekGlobal,
+              onScrubStart: notifier.onScrubStart,
+              onScrubEnd: notifier.onScrubEnd,
             ),
           )
         else
@@ -204,6 +206,8 @@ class _LectureScreenState extends ConsumerState<LectureScreen> {
             isFullScreen: false,
             onToggleFullScreen: _toggleFullScreen,
             onSeek: notifier.seekGlobal,
+            onScrubStart: notifier.onScrubStart,
+            onScrubEnd: notifier.onScrubEnd,
           ),
 
         // Content list — hidden in fullscreen.

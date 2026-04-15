@@ -14,6 +14,8 @@ class LectureVideoPlayer extends StatefulWidget {
     required this.isFullScreen,
     required this.onToggleFullScreen,
     required this.onSeek,
+    this.onScrubStart,
+    this.onScrubEnd,
     super.key,
   });
 
@@ -21,6 +23,12 @@ class LectureVideoPlayer extends StatefulWidget {
   final bool isFullScreen;
   final VoidCallback onToggleFullScreen;
   final ValueChanged<double> onSeek;
+
+  /// Called with the current position when the user starts dragging the scrub bar.
+  final ValueChanged<double>? onScrubStart;
+
+  /// Called with the target position when the user releases the scrub bar.
+  final ValueChanged<double>? onScrubEnd;
 
   @override
   State<LectureVideoPlayer> createState() => _LectureVideoPlayerState();
@@ -156,8 +164,14 @@ class _LectureVideoPlayerState extends State<LectureVideoPlayer> {
               : snap.globalPosition,
           duration: snap.totalDuration,
           segmentBoundaries: boundaries,
-          onSeekStart: () => setState(() => _scrubbing = true),
-          onSeekEnd: () => setState(() => _scrubbing = false),
+          onSeekStart: () {
+            setState(() => _scrubbing = true);
+            widget.onScrubStart?.call(snap.globalPosition);
+          },
+          onSeekEnd: () {
+            setState(() => _scrubbing = false);
+            widget.onScrubEnd?.call(snap.globalPosition);
+          },
           onSeek: widget.onSeek,
         ),
       ),

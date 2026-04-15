@@ -1,3 +1,4 @@
+import 'package:emajtee/core/analytics/analytics_service.dart';
 import 'package:emajtee/features/courses/models/outline.dart';
 import 'package:emajtee/features/courses/providers/outline_provider.dart';
 import 'package:emajtee/features/downloads/widgets/download_button.dart';
@@ -95,8 +96,22 @@ class CourseOutlineScreen extends ConsumerWidget {
                     (context, index) {
                       return _SectionGroup(
                         section: sections[index],
+                        sectionIndex: index,
                         courseId: courseId,
                         outline: outline,
+                        onSectionPlay: (sequenceId) => ref
+                            .read(analyticsServiceProvider)
+                            .logSectionPlay(
+                              courseId: courseId,
+                              blockId: sequenceId,
+                            ),
+                        onSectionOpen: (sequenceId, seqIdx) => ref
+                            .read(analyticsServiceProvider)
+                            .logSectionOpen(
+                              courseId: courseId,
+                              blockId: sequenceId,
+                              sectionIndex: seqIdx,
+                            ),
                       );
                     },
                     childCount: sections.length,
@@ -117,13 +132,19 @@ class CourseOutlineScreen extends ConsumerWidget {
 class _SectionGroup extends StatelessWidget {
   const _SectionGroup({
     required this.section,
+    required this.sectionIndex,
     required this.courseId,
     required this.outline,
+    required this.onSectionPlay,
+    required this.onSectionOpen,
   });
 
   final Section section;
+  final int sectionIndex;
   final String courseId;
   final CourseOutline outline;
+  final void Function(String sequenceId) onSectionPlay;
+  final void Function(String sequenceId, int index) onSectionOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -138,9 +159,13 @@ class _SectionGroup extends StatelessWidget {
             sequenceId: section.sequenceIds[i],
             title: outline.outline.sequences[section.sequenceIds[i]]?.title ??
                 'Part ${i + 1}',
-            onTap: () => context.push(
-              '/course/$courseId/sequence/${section.sequenceIds[i]}',
-            ),
+            onTap: () {
+              onSectionOpen(section.sequenceIds[i], sectionIndex * 100 + i);
+              context.push(
+                '/course/$courseId/sequence/${section.sequenceIds[i]}',
+              );
+            },
+            onPlay: () => onSectionPlay(section.sequenceIds[i]),
           ),
       ],
     );
@@ -177,17 +202,26 @@ class _SequenceTile extends StatelessWidget {
     required this.sequenceId,
     required this.title,
     required this.onTap,
+    required this.onPlay,
   });
 
   final String courseId;
   final String sequenceId;
   final String title;
   final VoidCallback onTap;
+  final VoidCallback onPlay;
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: const Icon(Icons.play_circle_outline),
+      leading: IconButton(
+        icon: const Icon(Icons.play_circle_outline),
+        tooltip: 'Play from beginning',
+        onPressed: () {
+          onPlay();
+          onTap();
+        },
+      ),
       title: Text(title),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,

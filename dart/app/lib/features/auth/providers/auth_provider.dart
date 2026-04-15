@@ -2,6 +2,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:emajtee/core/analytics/analytics_service.dart';
 import 'package:emajtee/core/network/dio_client_provider.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
 import 'package:emajtee/features/auth/models/user.dart';
@@ -108,11 +109,20 @@ class Auth extends _$Auth {
     });
     if (state.hasError) {
       _log.severe('onLoginComplete: guard caught error', state.error, state.stackTrace);
+      unawaited(
+        ref.read(analyticsServiceProvider).logLoginFailure(
+          reason: 'unknown',
+          stage: 'lms',
+        ),
+      );
+    } else {
+      unawaited(ref.read(analyticsServiceProvider).logLoginSuccess());
     }
   }
 
   /// Sign out: clears all cookies, cached data, and secure storage.
   Future<void> signOut() async {
+    unawaited(ref.read(analyticsServiceProvider).logLogout());
     _log.info('signOut: clearing session');
     final client = ref.read(dioClientProvider);
     final db = ref.read(appDatabaseProvider);
