@@ -185,13 +185,26 @@ class _LectureScreenState extends ConsumerState<LectureScreen> {
 
     return Column(
       children: [
-        // Stitched video player — always at the top.
-        LectureVideoPlayer(
-          controller: playbackController,
-          isFullScreen: _isFullScreen,
-          onToggleFullScreen: _toggleFullScreen,
-          onSeek: notifier.seekGlobal,
-        ),
+        // In fullscreen the player must fill all remaining height, so wrap it
+        // in Expanded to give it a bounded constraint.  The player's own inner
+        // Column then uses mainAxisSize.max and its Expanded(video) child can
+        // share that bounded space with the scrub bar.
+        if (_isFullScreen)
+          Expanded(
+            child: LectureVideoPlayer(
+              controller: playbackController,
+              isFullScreen: true,
+              onToggleFullScreen: _toggleFullScreen,
+              onSeek: notifier.seekGlobal,
+            ),
+          )
+        else
+          LectureVideoPlayer(
+            controller: playbackController,
+            isFullScreen: false,
+            onToggleFullScreen: _toggleFullScreen,
+            onSeek: notifier.seekGlobal,
+          ),
 
         // Content list — hidden in fullscreen.
         if (!_isFullScreen) ...[

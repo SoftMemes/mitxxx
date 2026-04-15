@@ -109,8 +109,14 @@ class _LectureVideoPlayerState extends State<LectureVideoPlayer> {
 
         return ColoredBox(
           color: Colors.black,
+          // In fullscreen the parent Expanded gives us bounded height, so we
+          // must use mainAxisSize.max to fill it and let Expanded(video) share
+          // the space with the scrub bar.  In non-fullscreen, min is correct
+          // so the column wraps the AspectRatio player tightly.
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: widget.isFullScreen
+                ? MainAxisSize.max
+                : MainAxisSize.min,
             children: [
               if (widget.isFullScreen)
                 Expanded(child: Center(child: player))
