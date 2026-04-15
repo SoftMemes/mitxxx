@@ -1,14 +1,16 @@
 import 'dart:async';
 
-import 'package:emajtee/core/analytics/advertising_id_provider.dart';
-import 'package:emajtee/core/analytics/analytics_preferences.dart';
-import 'package:emajtee/core/analytics/analytics_service.dart';
-import 'package:emajtee/core/logging.dart';
-import 'package:emajtee/core/network/dio_client_provider.dart';
-import 'package:emajtee/core/router/app_router.dart';
-import 'package:emajtee/core/storage/shared_preferences_provider.dart';
-import 'package:emajtee/core/theme/app_theme.dart';
-import 'package:emajtee/firebase_options.dart';
+import 'package:omnilect/core/analytics/advertising_id_provider.dart';
+import 'package:omnilect/core/analytics/analytics_preferences.dart';
+import 'package:omnilect/core/analytics/analytics_service.dart';
+import 'package:omnilect/core/logging.dart';
+import 'package:omnilect/core/network/dio_client_provider.dart';
+import 'package:omnilect/core/router/app_router.dart';
+import 'package:omnilect/core/storage/shared_preferences_provider.dart';
+import 'package:omnilect/core/theme/app_theme.dart';
+import 'package:omnilect/firebase_options_dev.dart';
+import 'package:omnilect/firebase_options_prod.dart';
+import 'package:omnilect/flavor_config.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -17,15 +19,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Future<void> main() async {
+Future<void> bootstrap() async {
   unawaited(runZonedGuarded<Future<void>>(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
       initLogging();
 
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
+      final firebaseOptions = FlavorConfig.isDev
+          ? DevFirebaseOptions.currentPlatform
+          : ProdFirebaseOptions.currentPlatform;
+
+      await Firebase.initializeApp(options: firebaseOptions);
       // Only report crashes from release builds; debug crashes go to console.
       await FirebaseCrashlytics.instance
           .setCrashlyticsCollectionEnabled(!kDebugMode);
@@ -43,7 +47,7 @@ Future<void> main() async {
             dioClientProvider.overrideWithValue(dioClient),
             sharedPreferencesProvider.overrideWithValue(prefs),
           ],
-          child: const EmajteeApp(),
+          child: const OmnilectApp(),
         ),
       );
     },
@@ -55,14 +59,14 @@ Future<void> main() async {
   ));
 }
 
-class EmajteeApp extends ConsumerStatefulWidget {
-  const EmajteeApp({super.key});
+class OmnilectApp extends ConsumerStatefulWidget {
+  const OmnilectApp({super.key});
 
   @override
-  ConsumerState<EmajteeApp> createState() => _EmajteeAppState();
+  ConsumerState<OmnilectApp> createState() => _OmnilectAppState();
 }
 
-class _EmajteeAppState extends ConsumerState<EmajteeApp> {
+class _OmnilectAppState extends ConsumerState<OmnilectApp> {
   @override
   void initState() {
     super.initState();

@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:emajtee/features/cast/providers/cast_controller.dart';
+import 'package:omnilect/features/cast/providers/cast_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

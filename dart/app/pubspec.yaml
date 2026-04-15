@@ -1,4 +1,4 @@
-name: emajtee
+name: omnilect
 description: "MITxxx — Unofficial MITx offline course app."
 publish_to: 'none'
 
@@ -57,17 +57,10 @@ dev_dependencies:
 scripts:
   codegen: fvm dart run build_runner build --delete-conflicting-outputs
   codegen:watch: fvm dart run build_runner watch --delete-conflicting-outputs
-  icons: fvm dart run flutter_launcher_icons
+  icons:dev: fvm dart run flutter_launcher_icons -f flutter_launcher_icons-dev.yaml
+  icons:prod: fvm dart run flutter_launcher_icons -f flutter_launcher_icons-prod.yaml
   splash: fvm dart run flutter_native_splash:create
 
-flutter_launcher_icons:
-  android: true
-  ios: true
-  image_path: "assets/icons/app_icon.png"
-  min_sdk_android: 21
-  remove_alpha_ios: true
-  adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/icons/app_icon.png"
 
 flutter_native_splash:
   color: "#FFFFFF"

@@ -2,8 +2,8 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:emajtee/features/cast/models/cast_queue_item.dart';
-import 'package:emajtee/features/cast/models/cast_state.dart';
+import 'package:omnilect/features/cast/models/cast_queue_item.dart';
+import 'package:omnilect/features/cast/models/cast_state.dart';
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';

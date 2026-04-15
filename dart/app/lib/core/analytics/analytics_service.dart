@@ -1,8 +1,8 @@
 // ignore_for_file: uri_has_not_been_generated
 import 'dart:io';
 
-import 'package:emajtee/core/analytics/analytics_events.dart';
-import 'package:emajtee/core/analytics/analytics_preferences.dart';
+import 'package:omnilect/core/analytics/analytics_events.dart';
+import 'package:omnilect/core/analytics/analytics_preferences.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';

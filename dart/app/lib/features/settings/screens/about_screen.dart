@@ -1,4 +1,4 @@
-import 'package:emajtee/features/onboarding/disclosure_content.dart';
+import 'package:omnilect/features/onboarding/disclosure_content.dart';
 import 'package:flutter/material.dart';
 
 /// Read-only screen showing the four app-disclosure points.

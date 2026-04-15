@@ -1,9 +1,9 @@
 import 'dart:io';
 
-import 'package:emajtee/core/storage/app_database.dart';
-import 'package:emajtee/core/storage/database_provider.dart';
-import 'package:emajtee/features/courses/providers/enrollments_provider.dart';
-import 'package:emajtee/features/sync/providers/sync_controller.dart';
+import 'package:omnilect/core/storage/app_database.dart';
+import 'package:omnilect/core/storage/database_provider.dart';
+import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
+import 'package:omnilect/features/sync/providers/sync_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';

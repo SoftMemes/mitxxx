@@ -1,14 +1,14 @@
 // ignore_for_file: uri_has_not_been_generated
-import 'package:emajtee/core/analytics/analytics_service.dart';
-import 'package:emajtee/core/storage/database_provider.dart';
-import 'package:emajtee/features/cast/models/cast_queue_item.dart';
-import 'package:emajtee/features/courses/providers/sequence_provider.dart';
-import 'package:emajtee/features/courses/providers/xblock_provider.dart';
-import 'package:emajtee/features/courses/utils/xblock_parser.dart';
-import 'package:emajtee/features/downloads/utils/resolve_playable_uri.dart';
-import 'package:emajtee/features/player/controllers/lecture_playback_controller.dart';
-import 'package:emajtee/features/player/models/lecture_player_state.dart';
-import 'package:emajtee/features/player/models/vertical_segment.dart';
+import 'package:omnilect/core/analytics/analytics_service.dart';
+import 'package:omnilect/core/storage/database_provider.dart';
+import 'package:omnilect/features/cast/models/cast_queue_item.dart';
+import 'package:omnilect/features/courses/providers/sequence_provider.dart';
+import 'package:omnilect/features/courses/providers/xblock_provider.dart';
+import 'package:omnilect/features/courses/utils/xblock_parser.dart';
+import 'package:omnilect/features/downloads/utils/resolve_playable_uri.dart';
+import 'package:omnilect/features/player/controllers/lecture_playback_controller.dart';
+import 'package:omnilect/features/player/models/lecture_player_state.dart';
+import 'package:omnilect/features/player/models/vertical_segment.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'lecture_player_provider.g.dart';

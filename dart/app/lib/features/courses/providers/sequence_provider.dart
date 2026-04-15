@@ -1,8 +1,8 @@
 // ignore_for_file: uri_has_not_been_generated
 import 'dart:convert';
 
-import 'package:emajtee/core/storage/database_provider.dart';
-import 'package:emajtee/features/courses/models/sequence.dart';
+import 'package:omnilect/core/storage/database_provider.dart';
+import 'package:omnilect/features/courses/models/sequence.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'sequence_provider.g.dart';

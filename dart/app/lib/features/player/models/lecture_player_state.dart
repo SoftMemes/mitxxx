@@ -1,5 +1,5 @@
 // ignore_for_file: uri_has_not_been_generated
-import 'package:emajtee/features/player/models/vertical_segment.dart';
+import 'package:omnilect/features/player/models/vertical_segment.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'lecture_player_state.freezed.dart';

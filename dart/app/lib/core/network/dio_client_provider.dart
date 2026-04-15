@@ -1,5 +1,5 @@
 // ignore_for_file: uri_has_not_been_generated
-import 'package:emajtee/core/network/secure_cookie_store.dart';
+import 'package:omnilect/core/network/secure_cookie_store.dart';
 import 'package:mitx_api/mitx_api.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 

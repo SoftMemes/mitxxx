@@ -1,0 +1,4 @@
+source "https://rubygems.org"
+
+gem "fastlane"
+gem "google-cloud-storage" # required by firebase_app_distribution plugin

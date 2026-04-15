@@ -2,11 +2,11 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:emajtee/core/analytics/analytics_service.dart';
-import 'package:emajtee/core/network/dio_client_provider.dart';
-import 'package:emajtee/core/storage/database_provider.dart';
-import 'package:emajtee/features/auth/models/user.dart';
-import 'package:emajtee/features/downloads/providers/video_download_manager.dart';
+import 'package:omnilect/core/analytics/analytics_service.dart';
+import 'package:omnilect/core/network/dio_client_provider.dart';
+import 'package:omnilect/core/storage/database_provider.dart';
+import 'package:omnilect/features/auth/models/user.dart';
+import 'package:omnilect/features/downloads/providers/video_download_manager.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:logging/logging.dart';
 import 'package:mitx_api/mitx_api.dart';

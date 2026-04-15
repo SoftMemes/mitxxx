@@ -1,0 +1,4 @@
+app_identifier ["app.omnilect", "app.omnilect.dev"]
+apple_id "kristian@slingshotai.com"
+team_id "K83337NAZ8"
+# itc_team_id "..."  # Fill in after first App Store Connect login

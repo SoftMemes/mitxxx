@@ -1,4 +1,4 @@
-package com.softmemes.emajtee
+package app.omnilect
 
 import io.flutter.embedding.android.FlutterActivity
 

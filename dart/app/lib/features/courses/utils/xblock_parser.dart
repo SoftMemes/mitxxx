@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:emajtee/features/courses/models/xblock_content.dart';
+import 'package:omnilect/features/courses/models/xblock_content.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:html_unescape/html_unescape.dart';

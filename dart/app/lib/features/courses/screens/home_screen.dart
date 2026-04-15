@@ -1,10 +1,10 @@
-import 'package:emajtee/core/analytics/analytics_events.dart';
-import 'package:emajtee/core/analytics/analytics_service.dart';
-import 'package:emajtee/features/auth/providers/auth_provider.dart';
-import 'package:emajtee/features/courses/models/enrollment.dart';
-import 'package:emajtee/features/courses/providers/enrollments_provider.dart';
-import 'package:emajtee/features/sync/models/course_sync_state.dart';
-import 'package:emajtee/features/sync/providers/sync_controller.dart';
+import 'package:omnilect/core/analytics/analytics_events.dart';
+import 'package:omnilect/core/analytics/analytics_service.dart';
+import 'package:omnilect/features/auth/providers/auth_provider.dart';
+import 'package:omnilect/features/courses/models/enrollment.dart';
+import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
+import 'package:omnilect/features/sync/models/course_sync_state.dart';
+import 'package:omnilect/features/sync/providers/sync_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';

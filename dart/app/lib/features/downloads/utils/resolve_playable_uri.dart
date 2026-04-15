@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:emajtee/core/storage/app_database.dart';
-import 'package:emajtee/features/courses/models/xblock_content.dart';
-import 'package:emajtee/features/downloads/models/download_status.dart';
+import 'package:omnilect/core/storage/app_database.dart';
+import 'package:omnilect/features/courses/models/xblock_content.dart';
+import 'package:omnilect/features/downloads/models/download_status.dart';
 
 /// Resolves the best playable URI for [video].
 ///

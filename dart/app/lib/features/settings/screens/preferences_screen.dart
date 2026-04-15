@@ -1,4 +1,4 @@
-import 'package:emajtee/core/analytics/analytics_preferences.dart';
+import 'package:omnilect/core/analytics/analytics_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

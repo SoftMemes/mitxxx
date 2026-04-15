@@ -17,7 +17,7 @@ if (keyPropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.softmemes.emajtee"
+    namespace = "app.omnilect"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -40,11 +40,25 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.softmemes.emajtee"
         minSdk = flutter.minSdkVersion // Flutter 3.41+ enforces minimum API 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    flavorDimensions += "flavor"
+
+    productFlavors {
+        create("dev") {
+            dimension = "flavor"
+            applicationId = "app.omnilect.dev"
+            resValue("string", "app_name", "MITxxx (dev)")
+        }
+        create("prod") {
+            dimension = "flavor"
+            applicationId = "app.omnilect"
+            resValue("string", "app_name", "MITxxx")
+        }
     }
 
     buildTypes {

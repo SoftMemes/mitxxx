@@ -1,12 +1,11 @@
-// File generated manually — equivalent to `flutterfire configure` output.
-// Regenerate with `flutterfire configure` if Firebase apps are added/changed.
+// Firebase options for the prod flavor (app.omnilect).
+// Regenerate with `flutterfire configure` after registering new Firebase apps.
 // ignore_for_file: type=lint
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
-/// Default [FirebaseOptions] for use with your Firebase apps.
-class DefaultFirebaseOptions {
+class ProdFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
       throw UnsupportedError('Web platform is not configured for Firebase.');
@@ -18,7 +17,7 @@ class DefaultFirebaseOptions {
         return ios;
       default:
         throw UnsupportedError(
-          'DefaultFirebaseOptions are not supported for this platform.',
+          'ProdFirebaseOptions are not supported for this platform.',
         );
     }
   }
@@ -37,6 +36,6 @@ class DefaultFirebaseOptions {
     messagingSenderId: '478154015759',
     projectId: 'mitxxx-f8b17',
     storageBucket: 'mitxxx-f8b17.firebasestorage.app',
-    iosBundleId: 'com.softmemes.emajtee',
+    iosBundleId: 'app.omnilect',
   );
 }

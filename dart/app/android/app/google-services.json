@@ -9,13 +9,32 @@
       "client_info": {
         "mobilesdk_app_id": "1:478154015759:android:927c5c829f9197bed54f7a",
         "android_client_info": {
-          "package_name": "com.softmemes.emajtee"
+          "package_name": "app.omnilect"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
           "current_key": "AIzaSyBunL_ryTPpMSb7Wx8BjE8kf8XO1muth6M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "REPLACE_AFTER_REGISTRATION",
+        "android_client_info": {
+          "package_name": "app.omnilect.dev"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "REPLACE_AFTER_REGISTRATION"
         }
       ],
       "services": {

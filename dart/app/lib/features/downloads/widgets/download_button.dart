@@ -1,6 +1,6 @@
-import 'package:emajtee/features/downloads/models/download_status.dart';
-import 'package:emajtee/features/downloads/providers/scope_download_provider.dart';
-import 'package:emajtee/features/downloads/providers/video_download_manager.dart';
+import 'package:omnilect/features/downloads/models/download_status.dart';
+import 'package:omnilect/features/downloads/providers/scope_download_provider.dart';
+import 'package:omnilect/features/downloads/providers/video_download_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

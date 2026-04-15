@@ -1,4 +1,4 @@
-import 'package:emajtee/features/cast/models/cast_queue_item.dart';
+import 'package:omnilect/features/cast/models/cast_queue_item.dart';
 
 enum CastConnectionStatus {
   /// No active cast session.

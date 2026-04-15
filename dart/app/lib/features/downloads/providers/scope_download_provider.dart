@@ -1,12 +1,12 @@
 // ignore_for_file: uri_has_not_been_generated
 import 'dart:convert';
 
-import 'package:emajtee/core/storage/app_database.dart';
-import 'package:emajtee/core/storage/database_provider.dart';
-import 'package:emajtee/features/courses/models/outline.dart';
-import 'package:emajtee/features/courses/models/sequence.dart';
-import 'package:emajtee/features/courses/models/xblock_content.dart';
-import 'package:emajtee/features/downloads/models/download_status.dart';
+import 'package:omnilect/core/storage/app_database.dart';
+import 'package:omnilect/core/storage/database_provider.dart';
+import 'package:omnilect/features/courses/models/outline.dart';
+import 'package:omnilect/features/courses/models/sequence.dart';
+import 'package:omnilect/features/courses/models/xblock_content.dart';
+import 'package:omnilect/features/downloads/models/download_status.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'scope_download_provider.g.dart';

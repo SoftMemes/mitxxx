@@ -5,15 +5,15 @@ import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
 import 'package:drift/drift.dart' show Value;
-import 'package:emajtee/core/analytics/analytics_events.dart';
-import 'package:emajtee/core/analytics/analytics_service.dart';
-import 'package:emajtee/core/storage/app_database.dart';
-import 'package:emajtee/core/storage/database_provider.dart';
-import 'package:emajtee/features/courses/models/outline.dart';
-import 'package:emajtee/features/courses/models/sequence.dart';
-import 'package:emajtee/features/courses/models/xblock_content.dart';
-import 'package:emajtee/features/downloads/models/download_status.dart';
-import 'package:emajtee/features/downloads/utils/download_paths.dart';
+import 'package:omnilect/core/analytics/analytics_events.dart';
+import 'package:omnilect/core/analytics/analytics_service.dart';
+import 'package:omnilect/core/storage/app_database.dart';
+import 'package:omnilect/core/storage/database_provider.dart';
+import 'package:omnilect/features/courses/models/outline.dart';
+import 'package:omnilect/features/courses/models/sequence.dart';
+import 'package:omnilect/features/courses/models/xblock_content.dart';
+import 'package:omnilect/features/downloads/models/download_status.dart';
+import 'package:omnilect/features/downloads/utils/download_paths.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 

@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:emajtee/features/cast/widgets/cast_button.dart';
-import 'package:emajtee/features/player/controllers/lecture_playback_controller.dart';
-import 'package:emajtee/features/player/widgets/unified_scrub_bar.dart';
+import 'package:omnilect/features/cast/widgets/cast_button.dart';
+import 'package:omnilect/features/player/controllers/lecture_playback_controller.dart';
+import 'package:omnilect/features/player/widgets/unified_scrub_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';

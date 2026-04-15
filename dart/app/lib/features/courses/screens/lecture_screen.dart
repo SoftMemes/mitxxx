@@ -1,14 +1,14 @@
 // ignore_for_file: uri_has_not_been_generated
-import 'package:emajtee/features/cast/models/cast_state.dart';
-import 'package:emajtee/features/cast/providers/cast_controller.dart';
-import 'package:emajtee/features/cast/widgets/cast_controller_panel.dart';
-import 'package:emajtee/features/courses/providers/outline_provider.dart';
-import 'package:emajtee/features/courses/widgets/vertical_section_tile.dart';
-import 'package:emajtee/features/downloads/widgets/download_button.dart';
-import 'package:emajtee/features/player/models/lecture_player_state.dart';
-import 'package:emajtee/features/player/models/vertical_segment.dart';
-import 'package:emajtee/features/player/providers/lecture_player_provider.dart';
-import 'package:emajtee/features/player/widgets/lecture_video_player.dart';
+import 'package:omnilect/features/cast/models/cast_state.dart';
+import 'package:omnilect/features/cast/providers/cast_controller.dart';
+import 'package:omnilect/features/cast/widgets/cast_controller_panel.dart';
+import 'package:omnilect/features/courses/providers/outline_provider.dart';
+import 'package:omnilect/features/courses/widgets/vertical_section_tile.dart';
+import 'package:omnilect/features/downloads/widgets/download_button.dart';
+import 'package:omnilect/features/player/models/lecture_player_state.dart';
+import 'package:omnilect/features/player/models/vertical_segment.dart';
+import 'package:omnilect/features/player/providers/lecture_player_provider.dart';
+import 'package:omnilect/features/player/widgets/lecture_video_player.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
