@@ -47,7 +47,11 @@ class AnalyticsService {
     if (kDebugMode) {
       _analyticsLog.info('[$name] ${params ?? {}}');
     }
-    await _analytics.logEvent(name: name, parameters: params?.cast());
+    // Firebase logEvent only accepts String or num values; convert bools to int.
+    final normalized = params?.map(
+      (k, v) => MapEntry(k, v is bool ? (v ? 1 : 0) : v),
+    );
+    await _analytics.logEvent(name: name, parameters: normalized?.cast());
   }
 
   // ---------------------------------------------------------------------------

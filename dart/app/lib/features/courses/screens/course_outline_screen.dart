@@ -89,7 +89,10 @@ class CourseOutlineScreen extends ConsumerWidget {
             child: CustomScrollView(
               slivers: [
                 SliverToBoxAdapter(
-                  child: DownloadProgressBar(courseId: courseId),
+                  child: DownloadProgressBar(
+                    courseId: courseId,
+                    useLectureCount: true,
+                  ),
                 ),
                 SliverList(
                   delegate: SliverChildBuilderDelegate(

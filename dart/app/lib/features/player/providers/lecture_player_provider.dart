@@ -1,6 +1,7 @@
 // ignore_for_file: uri_has_not_been_generated
 import 'package:emajtee/core/analytics/analytics_service.dart';
 import 'package:emajtee/core/storage/database_provider.dart';
+import 'package:emajtee/features/cast/models/cast_queue_item.dart';
 import 'package:emajtee/features/courses/providers/sequence_provider.dart';
 import 'package:emajtee/features/courses/providers/xblock_provider.dart';
 import 'package:emajtee/features/courses/utils/xblock_parser.dart';
@@ -47,6 +48,24 @@ class LecturePlayer extends _$LecturePlayer {
 
   /// The underlying playback controller. Available once [state] has data.
   LecturePlaybackController? get playbackController => _playbackController;
+
+  /// Returns the cast queue for the current lecture — one item per video
+  /// segment, always using the remote CDN URL (never a local file path).
+  ///
+  /// Returns an empty list if the lecture hasn't loaded yet.
+  List<CastQueueItem> get castQueue {
+    if (!state.hasValue) return [];
+    return state.requireValue.segments
+        .where((s) => s.remoteVideoUrl != null)
+        .map((s) => CastQueueItem(
+              verticalId: s.verticalId,
+              title: s.title,
+              remoteUrl: Uri.parse(s.remoteVideoUrl!),
+              duration: s.videoDuration,
+              globalStartTime: s.globalStartTime,
+            ))
+        .toList();
+  }
 
   // ---------------------------------------------------------------------------
   // Build
@@ -115,6 +134,7 @@ class LecturePlayer extends _$LecturePlayer {
         videoDuration: duration,
         globalStartTime: segGlobalStart,
         safeHtmlContent: safeHtml,
+        remoteVideoUrl: video?.mp4Url,
       ));
     }
 

@@ -74,11 +74,12 @@ class VideoDownloadManager {
 
     FileDownloader().updates.listen(_handleUpdate);
 
-    // Re-queue any rows left in 'queued' state from a previous session
-    // (app was killed before background_downloader could pick them up).
+    // Re-queue any rows left in 'pending' or 'queued' state from a previous
+    // session (app was killed before background_downloader could pick them up).
     final all = await _db.getAllDownloadedVideos();
     for (final row in all) {
-      if (row.status == DownloadStatus.queued.name) {
+      if (row.status == DownloadStatus.pending.name ||
+          row.status == DownloadStatus.queued.name) {
         await _enqueueTask(row.url);
       }
     }
@@ -118,7 +119,9 @@ class VideoDownloadManager {
       if (existing != null &&
           (existing.status == DownloadStatus.downloaded.name ||
               existing.status == DownloadStatus.downloading.name ||
-              existing.status == DownloadStatus.queued.name)) {
+              existing.status == DownloadStatus.queued.name ||
+              existing.status == DownloadStatus.pending.name)) {
+        // Already downloaded or in-flight — skip.
         continue;
       }
       urlsToDownload.add(url);
@@ -148,11 +151,13 @@ class VideoDownloadManager {
       final localPath = await localPathForUrl(url);
       final courseIds = await _mergedCourseIds(url, courseId);
 
+      // Write 'pending' first so the UI shows the hourglass immediately,
+      // then transition to 'queued' after handing off to background_downloader.
       await _db.upsertDownloadedVideo(DownloadedVideosCompanion.insert(
         url: url,
         localFilePath: localPath,
         courseIds: jsonEncode(courseIds),
-        status: DownloadStatus.queued.name,
+        status: DownloadStatus.pending.name,
         taskId: Value(urlToSha1(url)),
         updatedAt: DateTime.now(),
       ));
@@ -230,6 +235,9 @@ class VideoDownloadManager {
       metaData: url, // store original URL so we can look up the DB row
     );
     await FileDownloader().enqueue(task);
+    // Transition from 'pending' → 'queued' now that the task is in the
+    // background_downloader holding queue.
+    await _db.markDownloadQueued(url);
     _log.fine('Enqueued download for $url');
   }
 

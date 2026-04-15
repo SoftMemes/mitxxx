@@ -22,5 +22,8 @@ abstract class VerticalSegment with _$VerticalSegment {
     required double videoDuration,
     required double globalStartTime,
     required String safeHtmlContent,
+    /// Original remote CDN URL for the video (not the resolved local/file URI).
+    /// Used for cast — the receiver must fetch from the CDN, not a local path.
+    String? remoteVideoUrl,
   }) = _VerticalSegment;
 }

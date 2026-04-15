@@ -24,7 +24,7 @@ class UnifiedScrubBar extends StatefulWidget {
   /// Total duration of the stitched lecture in seconds.
   final double duration;
 
-  /// Called while the user drags the thumb and on final release.
+  /// Called on tap or at drag-end with the target position in seconds.
   final ValueChanged<double> onSeek;
 
   /// Optional: global-time offsets (seconds) at which segment dividers are drawn.
@@ -44,20 +44,22 @@ class _UnifiedScrubBarState extends State<UnifiedScrubBar> {
   double? _dragPosition;
   bool _dragging = false;
 
-  double get _displayPosition => _dragging ? (_dragPosition ?? widget.position) : widget.position;
+  double get _displayPosition =>
+      _dragging ? (_dragPosition ?? widget.position) : widget.position;
 
   double _clampedFrac(double pos) {
     if (widget.duration <= 0) return 0;
     return (pos / widget.duration).clamp(0.0, 1.0);
   }
 
-  void _handleTapOrDrag(Offset localPos, double width) {
+  /// Updates local visual position during a tap (no seek fired yet).
+  void _handleTap(Offset localPos, double width) {
     if (widget.duration <= 0) return;
     final frac = (localPos.dx / width).clamp(0.0, 1.0);
-    final secs = frac * widget.duration;
-    setState(() => _dragPosition = secs);
+    setState(() => _dragPosition = frac * widget.duration);
   }
 
+  /// Fires the seek to the current [_dragPosition].
   void _commitSeek() {
     if (widget.duration <= 0) return;
     widget.onSeek(_dragPosition ?? widget.position);
@@ -68,55 +70,54 @@ class _UnifiedScrubBarState extends State<UnifiedScrubBar> {
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
 
-    // Suppress the iOS swipe-back gesture while the user is dragging the
-    // scrub handle — a horizontal drag near the left edge would otherwise
-    // accidentally navigate away.
-    return PopScope(
-      canPop: !_dragging,
-      child: SizedBox(
-        height: 36,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth;
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (d) {
-                setState(() {
-                  _dragging = true;
-                  _dragPosition = _clampedFrac(d.localPosition.dx / width) * widget.duration;
-                });
-                widget.onSeekStart?.call();
-              },
-              onHorizontalDragUpdate: (d) {
-                _handleTapOrDrag(d.localPosition, width);
-              },
-              onHorizontalDragEnd: (_) {
-                _commitSeek();
-                widget.onSeekEnd?.call();
-                setState(() => _dragging = false);
-              },
-              onTapDown: (d) {
-                widget.onSeekStart?.call();
-                _handleTapOrDrag(d.localPosition, width);
-                _commitSeek();
-                widget.onSeekEnd?.call();
-              },
-              child: CustomPaint(
-                size: Size(width, 36),
-                painter: _ScrubBarPainter(
-                  position: _displayPosition,
-                  duration: widget.duration,
-                  segmentBoundaries: widget.segmentBoundaries,
-                  progressColor: primaryColor,
-                  trackColor: theme.colorScheme.surfaceContainerHighest,
-                  thumbColor: primaryColor,
-                  dividerColor: Colors.white.withValues(alpha: 0.6),
-                  isDragging: _dragging,
-                ),
+    return SizedBox(
+      height: 36,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragStart: (d) {
+              setState(() {
+                _dragging = true;
+                _dragPosition =
+                    _clampedFrac(d.localPosition.dx / width) * widget.duration;
+              });
+              widget.onSeekStart?.call();
+            },
+            onHorizontalDragUpdate: (d) {
+              // Update visual position only — seek fires once on drag end.
+              if (widget.duration <= 0) return;
+              final frac = (d.localPosition.dx / width).clamp(0.0, 1.0);
+              setState(() => _dragPosition = frac * widget.duration);
+            },
+            onHorizontalDragEnd: (_) {
+              // Commit the seek at the final drag position.
+              if (_dragPosition != null) widget.onSeek(_dragPosition!);
+              widget.onSeekEnd?.call();
+              setState(() => _dragging = false);
+            },
+            onTapDown: (d) {
+              widget.onSeekStart?.call();
+              _handleTap(d.localPosition, width);
+              _commitSeek();
+              widget.onSeekEnd?.call();
+            },
+            child: CustomPaint(
+              size: Size(width, 36),
+              painter: _ScrubBarPainter(
+                position: _displayPosition,
+                duration: widget.duration,
+                segmentBoundaries: widget.segmentBoundaries,
+                progressColor: primaryColor,
+                trackColor: theme.colorScheme.surfaceContainerHighest,
+                thumbColor: primaryColor,
+                dividerColor: Colors.white.withValues(alpha: 0.6),
+                isDragging: _dragging,
               ),
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -173,7 +174,8 @@ class _ScrubBarPainter extends CustomPainter {
     if (progressWidth > 0) {
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTWH(0, trackY - trackHeight / 2, progressWidth, trackHeight),
+          Rect.fromLTWH(
+              0, trackY - trackHeight / 2, progressWidth, trackHeight),
           const Radius.circular(2),
         ),
         progressPaint,
