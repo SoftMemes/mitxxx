@@ -1,0 +1,232 @@
+// ignore_for_file: uri_has_not_been_generated
+import 'package:emajtee/core/storage/database_provider.dart';
+import 'package:emajtee/features/courses/providers/sequence_provider.dart';
+import 'package:emajtee/features/courses/providers/xblock_provider.dart';
+import 'package:emajtee/features/courses/utils/xblock_parser.dart';
+import 'package:emajtee/features/downloads/utils/resolve_playable_uri.dart';
+import 'package:emajtee/features/player/controllers/lecture_playback_controller.dart';
+import 'package:emajtee/features/player/models/lecture_player_state.dart';
+import 'package:emajtee/features/player/models/vertical_segment.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'lecture_player_provider.g.dart';
+
+/// Async notifier that drives the single-page lecture player.
+///
+/// On first build, loads all verticals for [sequenceId] from the Drift cache,
+/// resolves local vs CDN URIs, sanitizes HTML, and starts the
+/// [LecturePlaybackController]. Subsequent state updates come from the
+/// controller's `ValueNotifier` listener and from explicit method calls
+/// (e.g. [play], [pause], [seekGlobal]).
+@riverpod
+class LecturePlayer extends _$LecturePlayer {
+  LecturePlaybackController? _playbackController;
+
+  /// Maps video-schedule index → segment index in [LecturePlayerState.segments].
+  final List<int> _videoIndexToSegmentIndex = [];
+
+  /// Video-schedule index that was active the last time we processed a
+  /// playback snapshot (used to detect boundary crossings).
+  int _lastVideoIndex = 0;
+
+  // ---------------------------------------------------------------------------
+  // Public accessor for the widget layer
+  // ---------------------------------------------------------------------------
+
+  /// The underlying playback controller. Available once [state] has data.
+  LecturePlaybackController? get playbackController => _playbackController;
+
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
+
+  @override
+  Future<LecturePlayerState> build({
+    required String courseId,
+    required String sequenceId,
+  }) async {
+    // Load sequence metadata.
+    final sequence = await ref.watch(
+      sequenceDetailProvider(blockId: sequenceId).future,
+    );
+
+    if (sequence.items.isEmpty) {
+      return const LecturePlayerState(segments: []);
+    }
+
+    final db = ref.read(appDatabaseProvider);
+
+    // Build VerticalSegment list + video schedule in parallel.
+    final segments = <VerticalSegment>[];
+    final videoSchedule = <VideoScheduleEntry>[];
+    var globalTime = 0.0;
+
+    for (final item in sequence.items) {
+      // Load xblock content (throws if not cached — caller gets AsyncError).
+      final content = await ref.watch(
+        xblockContentProvider(blockId: item.id).future,
+      );
+
+      final video = content.videos.isNotEmpty ? content.videos.first : null;
+      Uri? resolvedUri;
+      double duration = 0;
+
+      if (video != null) {
+        resolvedUri = await resolvePlayableUri(video, db);
+        duration = video.duration;
+      }
+
+      // Sanitize HTML (strips video blocks, problem blocks, scripts etc).
+      final safeHtml = sanitizeXBlockHtml(content.htmlContent);
+
+      // globalStartTime for segments with video is the current running offset.
+      // For no-video segments we use the same offset (they share the boundary
+      // with the nearest preceding video segment, so tapping "play" starts at
+      // the right position).
+      final segGlobalStart = globalTime;
+
+      if (resolvedUri != null) {
+        videoSchedule.add(VideoScheduleEntry(
+          segmentIndex: segments.length,
+          uri: resolvedUri,
+          duration: duration,
+          globalStartTime: globalTime,
+        ));
+        _videoIndexToSegmentIndex.add(segments.length);
+        globalTime += duration;
+      }
+
+      segments.add(VerticalSegment(
+        verticalId: item.id,
+        title: item.pageTitle,
+        videoUrl: resolvedUri,
+        videoDuration: duration,
+        globalStartTime: segGlobalStart,
+        safeHtmlContent: safeHtml,
+      ));
+    }
+
+    // If there are no video segments, return immediately with no controller.
+    if (videoSchedule.isEmpty) {
+      return LecturePlayerState(segments: segments);
+    }
+
+    // Create and initialise the playback controller.
+    final controller = LecturePlaybackController(videoSchedule);
+    _playbackController = controller;
+    ref.onDispose(controller.dispose);
+
+    // Listen for playback updates and mirror them into Riverpod state.
+    void onPlaybackChange() => _handlePlaybackSnapshot(
+          controller.snapshot.value,
+          segments,
+        );
+    controller.snapshot.addListener(onPlaybackChange);
+    ref.onDispose(() => controller.snapshot.removeListener(onPlaybackChange));
+
+    await controller.initialize();
+
+    return LecturePlayerState(
+      segments: segments,
+      activeSegmentIndex: videoSchedule.first.segmentIndex,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public control methods
+  // ---------------------------------------------------------------------------
+
+  Future<void> play() async {
+    await _playbackController?.play();
+  }
+
+  Future<void> pause() async {
+    await _playbackController?.pause();
+  }
+
+  Future<void> seekGlobal(double globalSeconds) async {
+    await _playbackController?.seekGlobal(globalSeconds);
+    // After a seek, clear userOverride.
+    _updateState((s) => s.copyWith(userOverrideActive: false));
+  }
+
+  /// Manually expand a section. Suspends auto-sync until the next video
+  /// boundary is crossed.
+  void selectSegment(int index) {
+    _updateState((s) => s.copyWith(
+          activeSegmentIndex: index,
+          userOverrideActive: true,
+        ));
+  }
+
+  /// Seek the video to the start of [segmentIndex] and start playing.
+  Future<void> playFrom(int segmentIndex) async {
+    if (!state.hasValue) return;
+    final seg = state.requireValue.segments[segmentIndex];
+    await _playbackController?.seekGlobal(seg.globalStartTime);
+    await _playbackController?.play();
+    _updateState((s) => s.copyWith(
+          activeSegmentIndex: segmentIndex,
+          userOverrideActive: false,
+        ));
+  }
+
+  /// Dismiss the error and retry loading the current segment.
+  Future<void> retry() async {
+    // Rebuild the provider, which re-initialises the controller from scratch.
+    ref.invalidateSelf();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internal helpers
+  // ---------------------------------------------------------------------------
+
+  void _handlePlaybackSnapshot(
+    PlaybackSnapshot snap,
+    List<VerticalSegment> segments,
+  ) {
+    if (!state.hasValue) return;
+    final current = state.requireValue;
+
+    var newActiveSegmentIndex = current.activeSegmentIndex;
+    var newUserOverride = current.userOverrideActive;
+
+    final videoIndexChanged = snap.activeVideoIndex != _lastVideoIndex;
+    if (videoIndexChanged) {
+      // The video crossed a boundary — always clear the override and sync.
+      _lastVideoIndex = snap.activeVideoIndex;
+      newUserOverride = false;
+      if (snap.activeVideoIndex < _videoIndexToSegmentIndex.length) {
+        newActiveSegmentIndex =
+            _videoIndexToSegmentIndex[snap.activeVideoIndex];
+      }
+    } else if (!current.userOverrideActive) {
+      // Normal auto-sync.
+      if (snap.activeVideoIndex < _videoIndexToSegmentIndex.length) {
+        newActiveSegmentIndex =
+            _videoIndexToSegmentIndex[snap.activeVideoIndex];
+      }
+    }
+
+    // Surface errors only when there's a new error message.
+    final newError =
+        snap.error != null && snap.error != current.errorMessage
+            ? snap.error
+            : (snap.error == null ? null : current.errorMessage);
+
+    state = AsyncData(current.copyWith(
+      globalPosition: snap.globalPosition,
+      isPlaying: snap.isPlaying,
+      activeSegmentIndex: newActiveSegmentIndex,
+      userOverrideActive: newUserOverride,
+      isComplete: snap.isComplete,
+      errorMessage: newError,
+    ));
+  }
+
+  void _updateState(LecturePlayerState Function(LecturePlayerState) updater) {
+    if (state.hasValue) {
+      state = AsyncData(updater(state.requireValue));
+    }
+  }
+}

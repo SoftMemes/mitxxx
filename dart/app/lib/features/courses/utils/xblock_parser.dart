@@ -56,6 +56,81 @@ String stripVideoBlocks(String html) {
   return doc.documentElement?.outerHtml ?? html;
 }
 
+/// Sanitizes xblock HTML for display in the lecture content list.
+///
+/// Strips:
+/// - Video xblock containers (same as [stripVideoBlocks])
+/// - Problem / assessment xblock containers (Open edX `xblock-*-problem`,
+///   `xblock-*-library_content`, `capa_module`, etc.)
+/// - Unsafe tags: `<script>`, `<style>`, `<iframe>`, `<form>`, `<input>`,
+///   `<button>`, `<select>`, `<textarea>`
+///
+/// Returns sanitized outer HTML. Safe to pass directly to `HtmlBlock`.
+String sanitizeXBlockHtml(String html) {
+  if (html.trim().isEmpty) return html;
+
+  // First strip video xblocks using the existing logic.
+  final stripped = stripVideoBlocks(html);
+
+  final doc = html_parser.parse(stripped);
+
+  // Strip problem/assessment xblocks.
+  final problemToRemove = <dom.Element>{};
+  for (final el in doc.querySelectorAll('.xblock')) {
+    final cls = el.className;
+    if (cls.contains('-problem') ||
+        cls.contains('-library_content') ||
+        el.attributes['data-block-type'] == 'problem' ||
+        el.attributes['data-block-type'] == 'library_content') {
+      problemToRemove.add(el);
+    }
+  }
+  for (final el in doc.querySelectorAll(
+    '[data-block-type="problem"], [data-block-type="library_content"]',
+  )) {
+    problemToRemove.add(el);
+  }
+  // Also strip any element with a class suggesting it is a CAPA problem.
+  for (final el in doc.querySelectorAll('.capa_inputtype, .problem-feedback')) {
+    problemToRemove.add(el);
+  }
+  for (final el in problemToRemove) {
+    var target = el;
+    while (true) {
+      final parent = target.parent;
+      if (parent is! dom.Element) break;
+      final hasOther = parent.nodes.any((n) {
+        if (identical(n, target)) return false;
+        if (n is dom.Text) return n.text.trim().isNotEmpty;
+        return true;
+      });
+      if (hasOther) break;
+      if (parent.localName != 'div') break;
+      target = parent;
+    }
+    target.remove();
+  }
+
+  // Strip unsafe tags entirely (including their children for script/style;
+  // for form elements strip the element but keep inner text where present).
+  const removeWithChildren = {'script', 'style', 'iframe'};
+  const removeTagOnly = {'form', 'input', 'button', 'select', 'textarea'};
+
+  for (final tag in removeWithChildren) {
+    for (final el in List.of(doc.querySelectorAll(tag))) {
+      el.remove();
+    }
+  }
+  for (final tag in removeTagOnly) {
+    for (final el in List.of(doc.querySelectorAll(tag))) {
+      // Unwrap: replace the element with its text content.
+      el.replaceWith(dom.Text(el.text));
+    }
+  }
+
+  return doc.documentElement?.outerHtml ?? stripped;
+}
+
 /// Extracts video metadata from raw xblock HTML.
 /// Port of web/src/lib/proxy/xblock-parser.ts
 List<ParsedVideoBlock> extractVideoMetadata(String html) {

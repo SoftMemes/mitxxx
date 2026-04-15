@@ -1,9 +1,9 @@
 // ignore_for_file: uri_has_not_been_generated
 import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:emajtee/features/auth/screens/login_screen.dart';
-import 'package:emajtee/features/courses/screens/content_screen.dart';
 import 'package:emajtee/features/courses/screens/course_outline_screen.dart';
 import 'package:emajtee/features/courses/screens/home_screen.dart';
+import 'package:emajtee/features/courses/screens/lecture_screen.dart';
 import 'package:emajtee/features/settings/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -65,7 +65,7 @@ GoRouter appRouter(Ref ref) {
       ),
       GoRoute(
         path: '/course/:courseId/sequence/:sequenceId',
-        builder: (context, state) => ContentScreen(
+        builder: (context, state) => LectureScreen(
           courseId: state.pathParameters['courseId']!,
           sequenceId: state.pathParameters['sequenceId']!,
         ),

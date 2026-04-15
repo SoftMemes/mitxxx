@@ -1,7 +1,7 @@
 # Single-Page Lecture Specification
 
 > **Version**: 2.0 (April 2026)
-> **Status**: Ready for Implementation
+> **Status**: Implemented
 > **Last Updated**: 2026-04-15
 
 ## Description
@@ -157,6 +157,31 @@ No special-casing in the player or sync logic. The abstraction is resolved at th
 | `lib/features/player/models/lecture_player_state.dart` | **New** — state model above |
 | `lib/features/courses/screens/content_screen.dart` | **Remove** navigation to per-vertical page; route to LectureScreen |
 | `lib/features/courses/utils/safe_html.dart` | **New or extend** — HTML sanitizer for xblock content |
+
+---
+
+## Implementation Notes
+
+**Implemented**: April 2026
+
+**Key files created**:
+- `dart/app/lib/features/player/models/vertical_segment.dart` — Freezed model
+- `dart/app/lib/features/player/models/lecture_player_state.dart` — Freezed model
+- `dart/app/lib/features/player/controllers/lecture_playback_controller.dart` — video stitching engine
+- `dart/app/lib/features/player/widgets/unified_scrub_bar.dart` — custom scrub bar with segment dividers
+- `dart/app/lib/features/player/widgets/lecture_video_player.dart` — player widget (raw video_player, no Chewie)
+- `dart/app/lib/features/player/providers/lecture_player_provider.dart` — Riverpod AsyncNotifier
+- `dart/app/lib/features/courses/screens/lecture_screen.dart` — main screen
+- `dart/app/lib/features/courses/widgets/vertical_section_tile.dart` — collapsible section row
+- `dart/app/lib/features/downloads/utils/resolve_playable_uri.dart` — local vs CDN URI helper
+
+**Key files modified**:
+- `dart/app/lib/core/router/app_router.dart` — route updated to `LectureScreen`
+- `dart/app/lib/features/courses/utils/xblock_parser.dart` — added `sanitizeXBlockHtml`
+
+**Files deleted**: `content_screen.dart`, `video_block.dart`, `auto_advance_provider.dart`, `problem_block.dart`
+
+**Deviation**: Did not use Chewie in the new player — its tight binding to a single `VideoPlayerController` would require rebuilding the entire Chewie widget on every segment swap. Used raw `video_player` with a small custom overlay instead.
 
 ---
 
