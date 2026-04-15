@@ -165,17 +165,39 @@ class SyncController extends _$SyncController {
     ));
 
     try {
-      // 1. Fetch and cache course outline.
-      final outlineResp = await client.lms.get<dynamic>(
-        '/api/learning_sequences/v1/course_outline/$courseId',
+      // 1. Fetch and cache course outline (conditional request if cached).
+      final cachedOutline = await db.getOutline(courseId);
+      final outlineHeaders = _conditionalHeaders(
+        etag: cachedOutline?.etag,
+        lastModified: cachedOutline?.lastModified,
       );
-      final outlineData = outlineResp.data as Map<String, dynamic>;
-      final outlineSection = outlineData['outline'] as Map<String, dynamic>?;
-      if ((outlineSection?['sections'] as List? ?? []).isNotEmpty) {
-        await db.putOutline(courseId, jsonEncode(outlineData));
+      Map<String, dynamic> outlineData;
+      try {
+        final outlineResp = await client.lms.get<dynamic>(
+          '/api/learning_sequences/v1/course_outline/$courseId',
+          options: outlineHeaders != null ? Options(headers: outlineHeaders) : null,
+        );
+        outlineData = outlineResp.data as Map<String, dynamic>;
+        final outlineSection = outlineData['outline'] as Map<String, dynamic>?;
+        if ((outlineSection?['sections'] as List? ?? []).isNotEmpty) {
+          await db.putOutline(
+            courseId,
+            jsonEncode(outlineData),
+            etag: outlineResp.headers.value('etag'),
+            lastModified: outlineResp.headers.value('last-modified'),
+          );
+        }
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 304 && cachedOutline != null) {
+          // Not modified — reuse cached data.
+          outlineData = jsonDecode(cachedOutline.data) as Map<String, dynamic>;
+        } else {
+          rethrow;
+        }
       }
 
       // 2. Collect all sequence IDs from the outline.
+      final outlineSection = outlineData['outline'] as Map<String, dynamic>?;
       final sections =
           (outlineSection?['sections'] as List? ?? []).cast<dynamic>();
       final sequenceIds = sections
@@ -191,10 +213,31 @@ class SyncController extends _$SyncController {
       final vertQueue = _AsyncQueue<String>();
 
       final seqFuture = _parallelBounded(sequenceIds, 8, (seqId) async {
-        final seqResp =
-            await client.lms.get<dynamic>('/api/courseware/sequence/$seqId');
-        final seqData = seqResp.data as Map<String, dynamic>;
-        await db.putSequence(seqId, jsonEncode(seqData));
+        final cachedSeq = await db.getSequence(seqId);
+        final seqHeaders = _conditionalHeaders(
+          etag: cachedSeq?.etag,
+          lastModified: cachedSeq?.lastModified,
+        );
+        Map<String, dynamic> seqData;
+        try {
+          final seqResp = await client.lms.get<dynamic>(
+            '/api/courseware/sequence/$seqId',
+            options: seqHeaders != null ? Options(headers: seqHeaders) : null,
+          );
+          seqData = seqResp.data as Map<String, dynamic>;
+          await db.putSequence(
+            seqId,
+            jsonEncode(seqData),
+            etag: seqResp.headers.value('etag'),
+            lastModified: seqResp.headers.value('last-modified'),
+          );
+        } on DioException catch (e) {
+          if (e.response?.statusCode == 304 && cachedSeq != null) {
+            seqData = jsonDecode(cachedSeq.data) as Map<String, dynamic>;
+          } else {
+            rethrow;
+          }
+        }
 
         final items =
             ((seqData['items'] as List?) ?? []).cast<Map<String, dynamic>>();
@@ -261,20 +304,38 @@ class SyncController extends _$SyncController {
     bool retry = false,
   }) async {
     try {
-      final resp = await client.lms.get<dynamic>('/xblock/$verticalId');
-      final html =
-          resp.data is String ? resp.data as String : resp.data.toString();
-      final videos = extractVideoMetadata(html);
-      final content = XBlockContent(
-        videos: videos,
-        htmlContent: html,
-        hasContent: html.trim().isNotEmpty,
+      final cachedXblock = await db.getXblock(verticalId);
+      final xblockHeaders = _conditionalHeaders(
+        etag: cachedXblock?.etag,
+        lastModified: cachedXblock?.lastModified,
       );
+      try {
+        final resp = await client.lms.get<dynamic>(
+          '/xblock/$verticalId',
+          options: xblockHeaders != null ? Options(headers: xblockHeaders) : null,
+        );
+        final html =
+            resp.data is String ? resp.data as String : resp.data.toString();
+        final videos = extractVideoMetadata(html);
+        final content = XBlockContent(
+          videos: videos,
+          htmlContent: html,
+          hasContent: html.trim().isNotEmpty,
+        );
 
-      // Detect URL changes: compare old xblock URLs against new ones.
-      await _detectStaleDownloads(db, verticalId, videos);
+        // Detect URL changes: compare old xblock URLs against new ones.
+        await _detectStaleDownloads(db, verticalId, videos);
 
-      await db.putXblock(verticalId, jsonEncode(content.toJson()));
+        await db.putXblock(
+          verticalId,
+          jsonEncode(content.toJson()),
+          etag: resp.headers.value('etag'),
+          lastModified: resp.headers.value('last-modified'),
+        );
+      } on DioException catch (e) {
+        if (e.response?.statusCode != 304) rethrow;
+        // 304 Not Modified — cached xblock is still current, nothing to do.
+      }
     } on Object catch (e, st) {
       if (retry) {
         _log.warning('xblock $verticalId failed, retrying', e, st);
@@ -363,6 +424,19 @@ class SyncController extends _$SyncController {
         }
       }
     }
+  }
+
+  /// Returns a header map with [If-None-Match] and/or [If-Modified-Since] if
+  /// the cached response carried those validators; returns null when no
+  /// validators are available (i.e. first fetch).
+  Map<String, String>? _conditionalHeaders({
+    String? etag,
+    String? lastModified,
+  }) {
+    final headers = <String, String>{};
+    if (etag != null) headers['If-None-Match'] = etag;
+    if (lastModified != null) headers['If-Modified-Since'] = lastModified;
+    return headers.isEmpty ? null : headers;
   }
 
   void _updateCourseState(

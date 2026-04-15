@@ -29,6 +29,8 @@ class CachedOutlines extends Table {
   TextColumn get courseId => text()();
   TextColumn get data => text()();
   DateTimeColumn get cachedAt => dateTime()();
+  TextColumn get etag => text().nullable()();
+  TextColumn get lastModified => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {courseId};
@@ -38,6 +40,8 @@ class CachedSequences extends Table {
   TextColumn get blockId => text()();
   TextColumn get data => text()();
   DateTimeColumn get cachedAt => dateTime()();
+  TextColumn get etag => text().nullable()();
+  TextColumn get lastModified => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {blockId};
@@ -47,6 +51,8 @@ class CachedXblocks extends Table {
   TextColumn get blockId => text()();
   TextColumn get data => text()();
   DateTimeColumn get cachedAt => dateTime()();
+  TextColumn get etag => text().nullable()();
+  TextColumn get lastModified => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {blockId};
@@ -106,7 +112,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -145,64 +151,97 @@ class AppDatabase extends _$AppDatabase {
 
   // --- Outlines (keyed by courseId) ---
 
-  Future<({String data, DateTime cachedAt})?> getOutline(
-    String courseId,
-  ) async {
+  Future<({String data, DateTime cachedAt, String? etag, String? lastModified})?>
+      getOutline(String courseId) async {
     final row = await (select(cachedOutlines)
           ..where((t) => t.courseId.equals(courseId)))
         .getSingleOrNull();
     if (row == null) return null;
-    return (data: row.data, cachedAt: row.cachedAt);
+    return (
+      data: row.data,
+      cachedAt: row.cachedAt,
+      etag: row.etag,
+      lastModified: row.lastModified,
+    );
   }
 
-  Future<void> putOutline(String courseId, String json) =>
+  Future<void> putOutline(
+    String courseId,
+    String json, {
+    String? etag,
+    String? lastModified,
+  }) =>
       into(cachedOutlines).insertOnConflictUpdate(
         CachedOutlinesCompanion.insert(
           courseId: courseId,
           data: json,
           cachedAt: DateTime.now(),
+          etag: Value(etag),
+          lastModified: Value(lastModified),
         ),
       );
 
   // --- Sequences (keyed by blockId) ---
 
-  Future<({String data, DateTime cachedAt})?> getSequence(
-    String blockId,
-  ) async {
+  Future<({String data, DateTime cachedAt, String? etag, String? lastModified})?>
+      getSequence(String blockId) async {
     final row = await (select(cachedSequences)
           ..where((t) => t.blockId.equals(blockId)))
         .getSingleOrNull();
     if (row == null) return null;
-    return (data: row.data, cachedAt: row.cachedAt);
+    return (
+      data: row.data,
+      cachedAt: row.cachedAt,
+      etag: row.etag,
+      lastModified: row.lastModified,
+    );
   }
 
-  Future<void> putSequence(String blockId, String json) =>
+  Future<void> putSequence(
+    String blockId,
+    String json, {
+    String? etag,
+    String? lastModified,
+  }) =>
       into(cachedSequences).insertOnConflictUpdate(
         CachedSequencesCompanion.insert(
           blockId: blockId,
           data: json,
           cachedAt: DateTime.now(),
+          etag: Value(etag),
+          lastModified: Value(lastModified),
         ),
       );
 
   // --- Xblocks (keyed by blockId) ---
 
-  Future<({String data, DateTime cachedAt})?> getXblock(
-    String blockId,
-  ) async {
+  Future<({String data, DateTime cachedAt, String? etag, String? lastModified})?>
+      getXblock(String blockId) async {
     final row = await (select(cachedXblocks)
           ..where((t) => t.blockId.equals(blockId)))
         .getSingleOrNull();
     if (row == null) return null;
-    return (data: row.data, cachedAt: row.cachedAt);
+    return (
+      data: row.data,
+      cachedAt: row.cachedAt,
+      etag: row.etag,
+      lastModified: row.lastModified,
+    );
   }
 
-  Future<void> putXblock(String blockId, String json) =>
+  Future<void> putXblock(
+    String blockId,
+    String json, {
+    String? etag,
+    String? lastModified,
+  }) =>
       into(cachedXblocks).insertOnConflictUpdate(
         CachedXblocksCompanion.insert(
           blockId: blockId,
           data: json,
           cachedAt: DateTime.now(),
+          etag: Value(etag),
+          lastModified: Value(lastModified),
         ),
       );
 
