@@ -64,7 +64,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ref.read(syncControllerProvider.notifier).syncAll(),
               ),
           IconButton(
-            icon: const Icon(Icons.settings_outlined),
+            icon: const Icon(Icons.menu),
             onPressed: () => context.push('/settings'),
           ),
         ],
@@ -95,15 +95,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               return _CourseTile(
                 enrollment: enrollment,
                 syncState: courseSyncState,
-                onTap: courseSyncState?.status == SyncStatus.syncing
-                    ? null
-                    : () {
-                        ref.read(analyticsServiceProvider).logCourseView(
-                          courseId: courseId,
-                          source: kSourceCourseList,
-                        );
-                        context.push('/course/$courseId');
-                      },
+                onTap: () {
+                  ref.read(analyticsServiceProvider).logCourseView(
+                    courseId: courseId,
+                    source: kSourceCourseList,
+                  );
+                  context.push('/course/$courseId');
+                },
               );
             },
           );

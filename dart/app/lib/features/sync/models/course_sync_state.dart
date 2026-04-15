@@ -12,3 +12,16 @@ abstract class CourseSyncState with _$CourseSyncState {
     String? errorMessage,
   }) = _CourseSyncState;
 }
+
+enum SequenceSyncStatus { idle, syncing, synced, error }
+
+@freezed
+abstract class SequenceSyncState with _$SequenceSyncState {
+  const factory SequenceSyncState({
+    @Default(SequenceSyncStatus.idle) SequenceSyncStatus status,
+    @Default(0) int completedTasks,
+    @Default(1) int totalTasks,
+    DateTime? lastSyncedAt,
+    String? errorMessage,
+  }) = _SequenceSyncState;
+}

@@ -1,4 +1,3 @@
-import 'package:emajtee/core/analytics/analytics_preferences.dart';
 import 'package:emajtee/features/auth/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,16 +24,18 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => context.push('/settings/about'),
           ),
           const Divider(),
-          SwitchListTile(
-            secondary: const Icon(Icons.bar_chart_outlined),
-            title: const Text('Share usage analytics'),
-            subtitle: const Text(
-              'Help improve MITxxx by sharing anonymous usage data. '
-              'No course content, names, or emails are ever sent.',
-            ),
-            value: ref.watch(analyticsPreferencesProvider).value ?? true,
-            onChanged: (value) =>
-                ref.read(analyticsPreferencesProvider.notifier).setOptedIn(value),
+          ListTile(
+            leading: const Icon(Icons.tune_outlined),
+            title: const Text('Settings'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/settings/preferences'),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.storage_outlined),
+            title: const Text('Data Usage'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/settings/data-usage'),
           ),
           const Divider(),
           ListTile(

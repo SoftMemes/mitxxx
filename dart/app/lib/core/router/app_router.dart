@@ -8,6 +8,8 @@ import 'package:emajtee/features/courses/screens/lecture_screen.dart';
 import 'package:emajtee/features/onboarding/providers/onboarding_provider.dart';
 import 'package:emajtee/features/onboarding/screens/onboarding_screen.dart';
 import 'package:emajtee/features/settings/screens/about_screen.dart';
+import 'package:emajtee/features/settings/screens/data_usage_screen.dart';
+import 'package:emajtee/features/settings/screens/preferences_screen.dart';
 import 'package:emajtee/features/settings/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -38,6 +40,8 @@ GoRouter appRouter(Ref ref) {
       // If the user somehow lands on /onboarding but is already acknowledged,
       // fall through to the auth redirect which will send them to /login or /home.
       if (!isAcknowledged && isOnboardingRoute) return null;
+      // Acknowledged and still on onboarding — move them forward.
+      if (isAcknowledged && isOnboardingRoute) return '/home';
 
       final authState = ref.read(authProvider);
       final isLoading = authState.isLoading;
@@ -83,6 +87,14 @@ GoRouter appRouter(Ref ref) {
           GoRoute(
             path: 'about',
             builder: (context, state) => const AboutScreen(),
+          ),
+          GoRoute(
+            path: 'preferences',
+            builder: (context, state) => const PreferencesScreen(),
+          ),
+          GoRoute(
+            path: 'data-usage',
+            builder: (context, state) => const DataUsageScreen(),
           ),
         ],
       ),
