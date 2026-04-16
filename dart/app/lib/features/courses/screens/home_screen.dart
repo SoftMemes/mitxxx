@@ -215,6 +215,11 @@ class _CourseTile extends ConsumerWidget {
     // course has at least one successful sync and is meaningfully openable.
     final isReady = lastSynced != null;
 
+    // Material 3 standard disabled opacity. Used for title/subtitle/chevron
+    // when the course hasn't completed a first sync yet, so the "not ready to
+    // open" state reads clearly as disabled rather than as secondary text.
+    final disabledFg = cs.onSurface.withValues(alpha: 0.38);
+
     // Aggregate per-sequence sync state into a course-level progress fraction.
     final progress =
         isSyncing ? _computeCourseProgress(ref, courseId) : 0.0;
@@ -293,7 +298,7 @@ class _CourseTile extends ConsumerWidget {
                       Text(
                         run.title,
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: isReady ? null : cs.onSurfaceVariant,
+                              color: isReady ? null : disabledFg,
                             ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -302,7 +307,9 @@ class _CourseTile extends ConsumerWidget {
                       Text(
                         run.courseNumber,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: cs.onSurface.withValues(alpha: 0.6),
+                              color: isReady
+                                  ? cs.onSurface.withValues(alpha: 0.6)
+                                  : disabledFg,
                             ),
                       ),
                       if (dateRange != null) ...[
@@ -310,7 +317,9 @@ class _CourseTile extends ConsumerWidget {
                         Text(
                           dateRange,
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: cs.onSurface.withValues(alpha: 0.5),
+                                color: isReady
+                                    ? cs.onSurface.withValues(alpha: 0.5)
+                                    : disabledFg,
                               ),
                         ),
                       ],
@@ -342,7 +351,10 @@ class _CourseTile extends ConsumerWidget {
                   ),
                 ),
 
-                Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+                Icon(
+                  Icons.chevron_right,
+                  color: isReady ? cs.onSurfaceVariant : disabledFg,
+                ),
               ],
             ),
           ),

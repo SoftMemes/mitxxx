@@ -379,8 +379,13 @@ class _SequenceTile extends ConsumerWidget {
         ? 0.0
         : (seqState.completedTasks / seqState.totalTasks).clamp(0.0, 1.0);
 
-    // Gray out text for any row that isn't fully synced yet.
-    final titleColor = isSynced ? null : cs.onSurfaceVariant;
+    // Gray out text + leading/trailing icons for any row that isn't fully
+    // synced yet. Uses Material 3's standard disabled opacity (0.38) so the
+    // "not ready to open" state reads clearly as disabled, not just as
+    // secondary text.
+    final disabledFg = cs.onSurface.withValues(alpha: 0.38);
+    final titleColor = isSynced ? null : disabledFg;
+    final iconColor = isSynced ? null : disabledFg;
 
     return Stack(
       children: [
@@ -403,6 +408,7 @@ class _SequenceTile extends ConsumerWidget {
         ListTile(
           leading: IconButton(
             icon: const Icon(Icons.play_circle_outline),
+            color: iconColor,
             tooltip: 'Play from beginning',
             onPressed: () {
               if (isSynced) {
@@ -426,7 +432,7 @@ class _SequenceTile extends ConsumerWidget {
               // point offering video download before we know what videos exist.
               if (isSynced)
                 DownloadButton(courseId: courseId, sequenceId: sequenceId),
-              const Icon(Icons.chevron_right),
+              Icon(Icons.chevron_right, color: iconColor),
             ],
           ),
           onTap: () => _handleTap(context, ref, status),
