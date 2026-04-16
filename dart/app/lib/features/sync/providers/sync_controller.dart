@@ -493,11 +493,21 @@ class SyncController extends _$SyncController {
   Future<void> _runXblock(String vertId, String courseId, String seqId) async {
     final client = ref.read(dioClientProvider);
     final db = ref.read(appDatabaseProvider);
-    await _fetchAndCacheXblock(client, db, vertId, courseId: courseId, retry: true);
+    final tracker = _trackers[seqId];
+    try {
+      await _fetchAndCacheXblock(client, db, vertId, courseId: courseId, retry: true);
+    } on Object catch (e, st) {
+      _log.warning('xblock $vertId failed', e, st);
+      tracker
+        ?..errored = true
+        ..errorMessage = e.toString();
+    }
     ref.invalidate(xblockContentProvider(blockId: vertId));
 
-    final tracker = _trackers[seqId];
     if (tracker == null) return;
+    // Always increment so pendingTasks drains and the sequence can transition
+    // out of syncing — _checkSequenceComplete branches on tracker.errored to
+    // decide between synced and error.
     tracker.completedTasks++;
     _publishSeqProgress(seqId, tracker);
     _checkSequenceComplete(seqId);
@@ -614,35 +624,51 @@ class SyncController extends _$SyncController {
         etag: cachedXblock?.etag,
         lastModified: cachedXblock?.lastModified,
       );
+      final Response<dynamic> resp;
       try {
-        final resp = await client.lms.get<dynamic>(
+        resp = await client.lms.get<dynamic>(
           '/xblock/$verticalId',
           options: xblockHeaders != null ? Options(headers: xblockHeaders) : null,
         );
-        final html =
-            resp.data is String ? resp.data as String : resp.data.toString();
-        final videos = extractVideoMetadata(html);
-        final content = XBlockContent(
-          videos: videos,
-          htmlContent: html,
-          hasContent: html.trim().isNotEmpty,
-        );
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 304) return;
+        rethrow;
+      }
+      final html =
+          resp.data is String ? resp.data as String : resp.data.toString();
+      final videos = extractVideoMetadata(html);
+      final content = XBlockContent(
+        videos: videos,
+        htmlContent: html,
+        hasContent: html.trim().isNotEmpty,
+      );
+      // Stale-download detection is a side effect — don't let it fail the
+      // xblock sync.
+      try {
         await _detectStaleDownloads(db, verticalId, videos);
-        await db.putXblock(
-          verticalId,
-          jsonEncode(content.toJson()),
-          etag: resp.headers.value('etag'),
-          lastModified: resp.headers.value('last-modified'),
-        );
-        // Eagerly populate the sanitized-HTML cache so lecture opens don't
-        // pay the DOM-parse cost on first access.
+      } on Object catch (e, st) {
+        _log.warning('stale-download detection failed for $verticalId', e, st);
+      }
+      // Critical persistence step — must succeed for the vertical to count
+      // as synced. Errors propagate.
+      await db.putXblock(
+        verticalId,
+        jsonEncode(content.toJson()),
+        etag: resp.headers.value('etag'),
+        lastModified: resp.headers.value('last-modified'),
+      );
+      // Eagerly populate the sanitized-HTML cache so lecture opens don't
+      // pay the DOM-parse cost on first access. Non-critical — the xblock
+      // is already cached above; the sanitizer will run lazily on open if
+      // this fails.
+      try {
         await db.putSanitizedXblock(
           blockId: verticalId,
           safeHtml: sanitizeXBlockHtml(html),
           sanitizerVersion: kSanitizerVersion,
         );
-      } on DioException catch (e) {
-        if (e.response?.statusCode != 304) rethrow;
+      } on Object catch (e, st) {
+        _log.warning('sanitized-html cache warmup failed for $verticalId', e, st);
       }
     } on Object catch (e, st) {
       if (retry) {
@@ -650,6 +676,7 @@ class SyncController extends _$SyncController {
         await _fetchAndCacheXblock(client, db, verticalId, courseId: courseId);
       } else {
         _log.warning('xblock $verticalId failed after retry', e, st);
+        rethrow;
       }
     }
   }

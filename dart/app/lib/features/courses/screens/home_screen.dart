@@ -3,6 +3,7 @@ import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/features/auth/providers/auth_provider.dart';
 import 'package:omnilect/features/courses/models/enrollment.dart';
 import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
+import 'package:omnilect/features/courses/providers/outline_provider.dart';
 import 'package:omnilect/features/sync/models/course_sync_state.dart';
 import 'package:omnilect/features/sync/providers/sync_controller.dart';
 import 'package:flutter/material.dart';
@@ -179,7 +180,7 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _CourseTile extends StatelessWidget {
+class _CourseTile extends ConsumerWidget {
   const _CourseTile({
     required this.enrollment,
     required this.syncState,
@@ -191,11 +192,22 @@ class _CourseTile extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final run = enrollment.run;
+    final courseId = run.coursewareId;
     final status = syncState?.status ?? SyncStatus.idle;
     final isSyncing = status == SyncStatus.syncing;
     final hasError = status == SyncStatus.error;
+    final lastSynced = syncState?.lastSyncedAt;
+    final cs = Theme.of(context).colorScheme;
+
+    // "Ready" matches the sequence-tile semantics: ungrayed text indicates the
+    // course has at least one successful sync and is meaningfully openable.
+    final isReady = lastSynced != null;
+
+    // Aggregate per-sequence sync state into a course-level progress fraction.
+    final progress =
+        isSyncing ? _computeCourseProgress(ref, courseId) : 0.0;
 
     String? dateRange;
     if (run.startDate != null || run.endDate != null) {
@@ -210,7 +222,6 @@ class _CourseTile extends StatelessWidget {
       }
     }
 
-    final lastSynced = syncState?.lastSyncedAt;
     final syncLabel = isSyncing
         ? 'Syncing…'
         : hasError
@@ -221,103 +232,148 @@ class _CourseTile extends StatelessWidget {
 
     final imageUrl = run.course?.featureImageSrc;
 
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            // Course artwork.
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: imageUrl != null && imageUrl.isNotEmpty
-                  ? Image.network(
-                      imageUrl,
-                      width: 72,
-                      height: 72,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (_, child, progress) => progress == null
-                          ? child
-                          : _ArtworkPlaceholder(),
-                      errorBuilder: (_, _, _) => _ArtworkPlaceholder(),
-                    )
-                  : _ArtworkPlaceholder(),
+    return Stack(
+      children: [
+        // Full-row background progress fill — only while actively syncing.
+        // Matches _SequenceTile in course_outline_screen.dart.
+        if (isSyncing)
+          Positioned.fill(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: progress),
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              builder: (_, v, _) => FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: v,
+                child: ColoredBox(
+                  color: cs.primaryContainer.withValues(alpha: 0.45),
+                ),
+              ),
             ),
-            const SizedBox(width: 12),
-
-            // Course info.
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    run.title,
-                    style: Theme.of(context).textTheme.titleMedium,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    run.courseNumber,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.6),
-                        ),
-                  ),
-                  if (dateRange != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      dateRange,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withValues(alpha: 0.5),
-                          ),
-                    ),
-                  ],
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      if (hasError)
-                        Icon(Icons.error_outline,
-                            size: 14, color: Theme.of(context).colorScheme.error)
-                      else if (isSyncing)
-                        const SizedBox(
-                          width: 12,
-                          height: 12,
-                          child:
-                              CircularProgressIndicator(strokeWidth: 1.5),
+          ),
+        InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                // Course artwork.
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: imageUrl != null && imageUrl.isNotEmpty
+                      ? Image.network(
+                          imageUrl,
+                          width: 72,
+                          height: 72,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (_, child, progress) => progress == null
+                              ? child
+                              : _ArtworkPlaceholder(),
+                          errorBuilder: (_, _, _) => _ArtworkPlaceholder(),
                         )
-                      else
-                        Icon(Icons.check_circle_outline,
-                            size: 14,
-                            color: lastSynced != null
-                                ? Colors.green
-                                : Theme.of(context).colorScheme.onSurfaceVariant),
-                      const SizedBox(width: 4),
+                      : _ArtworkPlaceholder(),
+                ),
+                const SizedBox(width: 12),
+
+                // Course info.
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        syncLabel,
-                        style:
-                            Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: hasError
-                                      ? Theme.of(context).colorScheme.error
-                                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                                ),
+                        run.title,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              color: isReady ? null : cs.onSurfaceVariant,
+                            ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        run.courseNumber,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: cs.onSurface.withValues(alpha: 0.6),
+                            ),
+                      ),
+                      if (dateRange != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          dateRange,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: cs.onSurface.withValues(alpha: 0.5),
+                              ),
+                        ),
+                      ],
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (hasError)
+                            Icon(Icons.error_outline,
+                                size: 14, color: cs.error)
+                          else
+                            Icon(Icons.check_circle_outline,
+                                size: 14,
+                                color: lastSynced != null
+                                    ? Colors.green
+                                    : cs.onSurfaceVariant),
+                          const SizedBox(width: 4),
+                          Text(
+                            syncLabel,
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: hasError
+                                          ? cs.error
+                                          : cs.onSurfaceVariant,
+                                    ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
+                ),
 
-            Icon(Icons.chevron_right, color: Theme.of(context).colorScheme.onSurfaceVariant),
-          ],
+                Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+              ],
+            ),
+          ),
         ),
-      ),
+      ],
     );
+  }
+
+  /// Aggregates per-sequence sync state into a 0..1 course-level progress
+  /// fraction. Returns 0 when the outline isn't cached yet (sync has just
+  /// started and the sequence list is unknown).
+  double _computeCourseProgress(WidgetRef ref, String courseId) {
+    final outline = ref
+        .watch(courseOutlineProvider(courseId: courseId))
+        .maybeWhen(data: (o) => o, orElse: () => null);
+    if (outline == null) return 0;
+
+    final sequenceIds = <String>[
+      for (final section in outline.outline.sections) ...section.sequenceIds,
+    ];
+    if (sequenceIds.isEmpty) return 0;
+
+    final seqStates = ref.watch(sequenceSyncControllerProvider);
+
+    var sum = 0.0;
+    for (final seqId in sequenceIds) {
+      final s = seqStates[seqId];
+      if (s == null) continue;
+      switch (s.status) {
+        case SequenceSyncStatus.synced:
+          sum += 1;
+        case SequenceSyncStatus.syncing:
+          if (s.totalTasks > 0) {
+            sum += (s.completedTasks / s.totalTasks).clamp(0.0, 1.0);
+          }
+        case SequenceSyncStatus.idle:
+        case SequenceSyncStatus.error:
+          break;
+      }
+    }
+    return (sum / sequenceIds.length).clamp(0.0, 1.0);
   }
 
   String? _formatDate(String? dateStr) {
