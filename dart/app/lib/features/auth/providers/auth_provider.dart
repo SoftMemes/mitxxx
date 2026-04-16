@@ -7,6 +7,7 @@ import 'package:omnilect/core/network/dio_client_provider.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/auth/models/user.dart';
 import 'package:omnilect/features/downloads/providers/video_download_manager.dart';
+import 'package:omnilect/features/sync/providers/sync_controller.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:logging/logging.dart';
 import 'package:mitx_api/mitx_api.dart';
@@ -139,6 +140,11 @@ class Auth extends _$Auth {
 
     // Clear all cached course data (and the now-empty download rows) from Drift.
     await db.clearAll();
+
+    // Reset per-sequence in-memory sync state — otherwise its stale `synced`
+    // entries cause the next sign-in's syncCourse run to skip every sequence
+    // and finalise immediately with nothing actually fetched.
+    ref.invalidate(sequenceSyncControllerProvider);
 
     state = const AsyncData(null);
   }

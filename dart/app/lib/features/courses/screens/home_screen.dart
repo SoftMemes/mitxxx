@@ -75,12 +75,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           : enrollmentsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => _EmptyState(
+          isSyncing: isSyncing,
           onSync: () => ref.read(syncControllerProvider.notifier).syncAll(),
         ),
         data: (enrollments) {
           if (enrollments.isEmpty) {
             return _EmptyState(
               message: 'No enrolled courses found.',
+              isSyncing: isSyncing,
               onSync: () =>
                   ref.read(syncControllerProvider.notifier).syncAll(),
             );
@@ -149,11 +151,13 @@ class _LoggedOutState extends StatelessWidget {
 class _EmptyState extends StatelessWidget {
   const _EmptyState({
     required this.onSync,
+    required this.isSyncing,
     this.message = 'No courses cached yet.\nConnect to sync.',
   });
 
   final String message;
   final VoidCallback onSync;
+  final bool isSyncing;
 
   @override
   Widget build(BuildContext context) {
@@ -170,9 +174,15 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: onSync,
-            icon: const Icon(Icons.sync),
-            label: const Text('Sync now'),
+            onPressed: isSyncing ? null : onSync,
+            icon: isSyncing
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.sync),
+            label: Text(isSyncing ? 'Syncing…' : 'Sync now'),
           ),
         ],
       ),
