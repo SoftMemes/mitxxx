@@ -103,7 +103,7 @@ class LecturePlayer extends _$LecturePlayer {
         if (contents[i].videos.isNotEmpty)
           resolvePlayableUri(contents[i].videos.first, db)
         else
-          Future<Uri?>.value(null),
+          Future<Uri?>.value(),
     ]);
     final safeHtmls = await Future.wait([
       for (var i = 0; i < contents.length; i++)
