@@ -106,7 +106,7 @@ class DownloadButton extends ConsumerWidget {
   }
 }
 
-class _ButtonForState extends StatefulWidget {
+class _ButtonForState extends StatelessWidget {
   const _ButtonForState({
     required this.state,
     required this.iconSize,
@@ -120,45 +120,28 @@ class _ButtonForState extends StatefulWidget {
   final VoidCallback onDelete;
 
   @override
-  State<_ButtonForState> createState() => _ButtonForStateState();
-}
-
-class _ButtonForStateState extends State<_ButtonForState>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _spinController;
-
-  @override
-  void initState() {
-    super.initState();
-    _spinController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _spinController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final iconSize = widget.iconSize;
     final boxSize = iconSize + 8;
 
-    switch (widget.state.status) {
+    switch (state.status) {
+      // All in-flight states render as a tappable spinner so the user can
+      // always see that work is happening and always has a hit target to
+      // cancel. Determinate when aggregate progress > 0, indeterminate
+      // otherwise. (Flutter's CircularProgressIndicator self-animates when
+      // value is null, so no external AnimationController is needed.)
+      case DownloadStatus.pending:
+      case DownloadStatus.queued:
       case DownloadStatus.downloading:
         return IconButton(
           padding: EdgeInsets.zero,
           constraints: BoxConstraints(minWidth: boxSize, minHeight: boxSize),
           tooltip: 'Downloading — tap to cancel',
-          onPressed: widget.onDelete,
+          onPressed: onDelete,
           icon: SizedBox(
             width: iconSize,
             height: iconSize,
             child: CircularProgressIndicator(
-              value: widget.state.progress > 0 ? widget.state.progress : null,
+              value: state.progress > 0 ? state.progress : null,
               strokeWidth: 2,
             ),
           ),
@@ -170,7 +153,7 @@ class _ButtonForStateState extends State<_ButtonForState>
           constraints: BoxConstraints(minWidth: boxSize, minHeight: boxSize),
           icon: Icon(Icons.check_circle, size: iconSize, color: Colors.green),
           tooltip: 'Downloaded — tap to remove',
-          onPressed: widget.onDelete,
+          onPressed: onDelete,
         );
 
       case DownloadStatus.stale:
@@ -183,7 +166,7 @@ class _ButtonForStateState extends State<_ButtonForState>
                   BoxConstraints(minWidth: boxSize, minHeight: boxSize),
               icon: Icon(Icons.download_outlined, size: iconSize),
               tooltip: 'New version available — tap to update',
-              onPressed: widget.onDownload,
+              onPressed: onDownload,
             ),
             Positioned(
               top: 4,
@@ -210,36 +193,7 @@ class _ButtonForStateState extends State<_ButtonForState>
             color: Theme.of(context).colorScheme.error,
           ),
           tooltip: 'Download failed — tap to retry',
-          onPressed: widget.onDownload,
-        );
-
-      case DownloadStatus.pending:
-        return SizedBox(
-          width: boxSize,
-          height: boxSize,
-          child: Center(
-            child: Icon(Icons.hourglass_top_outlined, size: iconSize),
-          ),
-        );
-
-      case DownloadStatus.queued:
-        // Counter-clockwise spinner — in background_downloader holding queue.
-        return SizedBox(
-          width: boxSize,
-          height: boxSize,
-          child: Center(
-            child: RotationTransition(
-              turns: Tween<double>(begin: 0, end: -1).animate(_spinController),
-              child: SizedBox(
-                width: iconSize,
-                height: iconSize,
-                child: const CircularProgressIndicator(
-                  strokeWidth: 2,
-                  value: 0.25,
-                ),
-              ),
-            ),
-          ),
+          onPressed: onDownload,
         );
 
       case DownloadStatus.notDownloaded:
@@ -248,7 +202,7 @@ class _ButtonForStateState extends State<_ButtonForState>
           constraints: BoxConstraints(minWidth: boxSize, minHeight: boxSize),
           icon: Icon(Icons.download_outlined, size: iconSize),
           tooltip: 'Download for offline viewing',
-          onPressed: widget.onDownload,
+          onPressed: onDownload,
         );
     }
   }

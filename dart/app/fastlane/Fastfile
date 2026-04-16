@@ -31,23 +31,31 @@ def app_store_connect_api_key_config
   )
 end
 
+# `bundle exec fastlane` constrains GEM_PATH to gems in our Gemfile, which
+# prevents Flutter's child `pod` invocation from loading its own dependencies
+# ("CocoaPods is installed but broken"). Run flutter outside the bundler env
+# so pod sees the system/rbenv gems it was installed against.
+def sh_unbundled(cmd)
+  Bundler.with_unbundled_env { sh(cmd) }
+end
+
 def flutter_build_apk(flavor:, target:)
   bn = compute_build_number
   UI.message("Build number: #{bn}")
-  sh "fvm flutter build apk --flavor #{flavor} --target #{target} --release --build-number=#{bn}"
+  sh_unbundled "fvm flutter build apk --flavor #{flavor} --target #{target} --release --build-number=#{bn}"
 end
 
 def flutter_build_appbundle(flavor:, target:)
   bn = compute_build_number
   UI.message("Build number: #{bn}")
-  sh "fvm flutter build appbundle --flavor #{flavor} --target #{target} --release --build-number=#{bn}"
+  sh_unbundled "fvm flutter build appbundle --flavor #{flavor} --target #{target} --release --build-number=#{bn}"
 end
 
 def flutter_build_ipa(flavor:, target:, export_options:)
   bn = compute_build_number
   UI.message("Build number: #{bn}")
   plist_abs = File.expand_path("../ios/#{export_options}", __dir__)
-  sh "cd #{File.expand_path('..', __dir__)} && fvm flutter build ipa --flavor #{flavor} --target #{target} --release --build-number=#{bn} --export-options-plist=#{plist_abs}"
+  sh_unbundled "cd #{File.expand_path('..', __dir__)} && fvm flutter build ipa --flavor #{flavor} --target #{target} --release --build-number=#{bn} --export-options-plist=#{plist_abs}"
 end
 
 # ── Lane: setup_match ───────────────────────────────────────────────────────
@@ -90,14 +98,19 @@ lane :setup_match do
 end
 
 # ── Lane: dev_distribute ─────────────────────────────────────────────────────
-# Builds the dev flavor and uploads to Firebase App Distribution (Android + iOS).
+# Builds the dev flavor and uploads to Firebase App Distribution.
 # Prereq: firebase apps registered, firebase_options_dev.dart populated.
+#
+# Lanes:
+#   dev_distribute          — both Android and iOS
+#   dev_distribute_android  — Android only
+#   dev_distribute_ios      — iOS only
 
-lane :dev_distribute do |options|
-  # Compute once so Android + iOS share the same build number within this run.
-  ENV["BUILD_NUMBER"] = compute_build_number.to_s
+def dev_release_notes(options)
+  options[:notes] || "Dev build — #{Time.now.strftime('%Y-%m-%d %H:%M')}"
+end
 
-  # ── Android ──
+def dev_distribute_android_impl(options)
   flutter_build_apk(
     flavor: "dev",
     target: "lib/main_dev.dart",
@@ -106,10 +119,11 @@ lane :dev_distribute do |options|
     app:              ENV.fetch("FIREBASE_ANDROID_DEV_APP_ID"),
     apk_path:         "build/app/outputs/flutter-apk/app-dev-release.apk",
     groups:           "internal",
-    release_notes:    options[:notes] || "Dev build — #{Time.now.strftime('%Y-%m-%d %H:%M')}",
+    release_notes:    dev_release_notes(options),
   )
+end
 
-  # ── iOS ──
+def dev_distribute_ios_impl(options)
   match(
     type:           "adhoc",
     app_identifier: DEV_BUNDLE_ID,
@@ -125,8 +139,25 @@ lane :dev_distribute do |options|
     app:              ENV.fetch("FIREBASE_IOS_DEV_APP_ID"),
     ipa_path:         "build/ios/ipa/MITxxx (dev).ipa",
     groups:           "internal",
-    release_notes:    options[:notes] || "Dev build — #{Time.now.strftime('%Y-%m-%d %H:%M')}",
+    release_notes:    dev_release_notes(options),
   )
+end
+
+lane :dev_distribute do |options|
+  # Compute once so Android + iOS share the same build number within this run.
+  ENV["BUILD_NUMBER"] = compute_build_number.to_s
+  dev_distribute_android_impl(options)
+  dev_distribute_ios_impl(options)
+end
+
+lane :dev_distribute_android do |options|
+  ENV["BUILD_NUMBER"] = compute_build_number.to_s
+  dev_distribute_android_impl(options)
+end
+
+lane :dev_distribute_ios do |options|
+  ENV["BUILD_NUMBER"] = compute_build_number.to_s
+  dev_distribute_ios_impl(options)
 end
 
 # ── Lane: beta ───────────────────────────────────────────────────────────────

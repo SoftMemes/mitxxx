@@ -51,13 +51,16 @@ class ScopeDownloadState {
   double get requestedProgress => requested > 0 ? downloaded / requested : 0.0;
 
   /// Overall UI status for this scope.
+  ///
+  /// Partial states (some videos downloaded, nothing in flight, no errors)
+  /// collapse to [DownloadStatus.notDownloaded] so the UI offers the user a
+  /// way to fetch the remaining videos rather than a dead-end spinner.
   DownloadStatus get status {
     if (isDownloading) return DownloadStatus.downloading;
     if (isPending) return DownloadStatus.pending;
     if (isFullyDownloaded) return DownloadStatus.downloaded;
     if (hasStale) return DownloadStatus.stale;
     if (hasFailed) return DownloadStatus.failed;
-    if (downloaded > 0) return DownloadStatus.queued;
     return DownloadStatus.notDownloaded;
   }
 

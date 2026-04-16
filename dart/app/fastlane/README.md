@@ -29,6 +29,22 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 
 
+### dev_distribute_android
+
+```sh
+[bundle exec] fastlane dev_distribute_android
+```
+
+
+
+### dev_distribute_ios
+
+```sh
+[bundle exec] fastlane dev_distribute_ios
+```
+
+
+
 ### beta
 
 ```sh
