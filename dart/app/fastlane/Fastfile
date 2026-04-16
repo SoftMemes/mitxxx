@@ -7,6 +7,20 @@ PROD_BUNDLE_ID = "app.omnilect"
 
 # ── Shared helpers ──────────────────────────────────────────────────────────
 
+# Seconds since 2020-01-01 UTC. Offsetting from 2020 keeps the value ~200M today
+# vs ~1.78B for raw Unix time, leaving ~60 years before hitting Android's signed
+# int32 versionCode ceiling. The loop halves precision if we ever get close
+# (won't happen until ~2086). Allows override via BUILD_NUMBER env var.
+def compute_build_number
+  return ENV["BUILD_NUMBER"].to_i if ENV["BUILD_NUMBER"] && !ENV["BUILD_NUMBER"].empty?
+
+  epoch_2020 = 1_577_836_800
+  android_max = 2_100_000_000
+  raw = Time.now.to_i - epoch_2020
+  raw /= 10 while raw > android_max
+  raw
+end
+
 def app_store_connect_api_key_config
   app_store_connect_api_key(
     key_id:        ENV.fetch("ASC_KEY_ID"),
@@ -18,15 +32,22 @@ def app_store_connect_api_key_config
 end
 
 def flutter_build_apk(flavor:, target:)
-  sh "fvm flutter build apk --flavor #{flavor} --target #{target} --release"
+  bn = compute_build_number
+  UI.message("Build number: #{bn}")
+  sh "fvm flutter build apk --flavor #{flavor} --target #{target} --release --build-number=#{bn}"
 end
 
 def flutter_build_appbundle(flavor:, target:)
-  sh "fvm flutter build appbundle --flavor #{flavor} --target #{target} --release"
+  bn = compute_build_number
+  UI.message("Build number: #{bn}")
+  sh "fvm flutter build appbundle --flavor #{flavor} --target #{target} --release --build-number=#{bn}"
 end
 
 def flutter_build_ipa(flavor:, target:, export_options:)
-  sh "fvm flutter build ipa --flavor #{flavor} --target #{target} --release --export-options-plist=ios/#{export_options}"
+  bn = compute_build_number
+  UI.message("Build number: #{bn}")
+  plist_abs = File.expand_path("../ios/#{export_options}", __dir__)
+  sh "cd #{File.expand_path('..', __dir__)} && fvm flutter build ipa --flavor #{flavor} --target #{target} --release --build-number=#{bn} --export-options-plist=#{plist_abs}"
 end
 
 # ── Lane: setup_match ───────────────────────────────────────────────────────
@@ -73,6 +94,9 @@ end
 # Prereq: firebase apps registered, firebase_options_dev.dart populated.
 
 lane :dev_distribute do |options|
+  # Compute once so Android + iOS share the same build number within this run.
+  ENV["BUILD_NUMBER"] = compute_build_number.to_s
+
   # ── Android ──
   flutter_build_apk(
     flavor: "dev",
@@ -80,10 +104,9 @@ lane :dev_distribute do |options|
   )
   firebase_app_distribution(
     app:              ENV.fetch("FIREBASE_ANDROID_DEV_APP_ID"),
-    apk_path:         "../build/app/outputs/flutter-apk/app-dev-release.apk",
+    apk_path:         "build/app/outputs/flutter-apk/app-dev-release.apk",
     groups:           "internal",
     release_notes:    options[:notes] || "Dev build — #{Time.now.strftime('%Y-%m-%d %H:%M')}",
-    firebase_cli_path: `which firebase`.strip,
   )
 
   # ── iOS ──
@@ -100,10 +123,9 @@ lane :dev_distribute do |options|
   )
   firebase_app_distribution(
     app:              ENV.fetch("FIREBASE_IOS_DEV_APP_ID"),
-    ipa_path:         "../build/ios/ipa/MITxxx.ipa",
+    ipa_path:         "build/ios/ipa/MITxxx (dev).ipa",
     groups:           "internal",
     release_notes:    options[:notes] || "Dev build — #{Time.now.strftime('%Y-%m-%d %H:%M')}",
-    firebase_cli_path: `which firebase`.strip,
   )
 end
 
@@ -111,6 +133,7 @@ end
 # Builds the prod flavor and uploads to TestFlight (internal) + Play Store internal track.
 
 lane :beta do |options|
+  ENV["BUILD_NUMBER"] = compute_build_number.to_s
   api_key = app_store_connect_api_key_config
 
   # ── Android ──
@@ -120,7 +143,7 @@ lane :beta do |options|
   )
   upload_to_play_store(
     track:         "internal",
-    aab:           "../build/app/outputs/bundle/prodRelease/app-prod-release.aab",
+    aab:           "build/app/outputs/bundle/prodRelease/app-prod-release.aab",
     json_key:      ENV.fetch("PLAY_STORE_JSON_KEY"),
     package_name:  PROD_BUNDLE_ID,
     skip_upload_metadata: true,
@@ -142,7 +165,7 @@ lane :beta do |options|
   )
   upload_to_testflight(
     api_key:          api_key,
-    ipa:              "../build/ios/ipa/MITxxx.ipa",
+    ipa:              "build/ios/ipa/MITxxx.ipa",
     skip_waiting_for_build_processing: true,
   )
 end
@@ -151,6 +174,7 @@ end
 # Submits the prod flavor to App Store + Play Store production.
 
 lane :release do |options|
+  ENV["BUILD_NUMBER"] = compute_build_number.to_s
   api_key = app_store_connect_api_key_config
 
   # ── Android ──
@@ -160,7 +184,7 @@ lane :release do |options|
   )
   upload_to_play_store(
     track:         "production",
-    aab:           "../build/app/outputs/bundle/prodRelease/app-prod-release.aab",
+    aab:           "build/app/outputs/bundle/prodRelease/app-prod-release.aab",
     json_key:      ENV.fetch("PLAY_STORE_JSON_KEY"),
     package_name:  PROD_BUNDLE_ID,
     skip_upload_metadata: true,
@@ -182,7 +206,7 @@ lane :release do |options|
   )
   upload_to_testflight(
     api_key:              api_key,
-    ipa:                  "../build/ios/ipa/MITxxx.ipa",
+    ipa:                  "build/ios/ipa/MITxxx.ipa",
     submit_beta_review:   true,
   )
 end
