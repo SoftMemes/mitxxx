@@ -24,7 +24,7 @@ class ProdFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBunL_ryTPpMSb7Wx8BjE8kf8XO1muth6M',
-    appId: '1:478154015759:android:927c5c829f9197bed54f7a',
+    appId: '1:478154015759:android:9af8e3c95615bca1d54f7a',
     messagingSenderId: '478154015759',
     projectId: 'mitxxx-f8b17',
     storageBucket: 'mitxxx-f8b17.firebasestorage.app',
@@ -32,7 +32,7 @@ class ProdFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDOwXcBvJ8hKte5HddlTJmumUlHnuOhMFU',
-    appId: '1:478154015759:ios:1d84be350debcdd2d54f7a',
+    appId: '1:478154015759:ios:df6d87e03b92f835d54f7a',
     messagingSenderId: '478154015759',
     projectId: 'mitxxx-f8b17',
     storageBucket: 'mitxxx-f8b17.firebasestorage.app',
