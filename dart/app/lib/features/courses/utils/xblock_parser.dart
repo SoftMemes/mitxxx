@@ -1,11 +1,17 @@
 import 'dart:convert';
 
+import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/features/courses/models/xblock_content.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:html_unescape/html_unescape.dart';
 
 final _unescape = HtmlUnescape();
+
+/// Version of the [sanitizeXBlockHtml] logic. Bump this whenever the sanitizer
+/// output changes — rows in `cached_sanitized_xblocks` with a mismatching
+/// version are treated as stale and re-sanitized on next read.
+const int kSanitizerVersion = 1;
 
 /// Removes video xblock containers from the rendered vertical HTML so the
 /// remaining HTML (text, images, problems, etc.) can be rendered in a single
@@ -107,6 +113,28 @@ String sanitizeXBlockHtml(String html) {
   }
 
   return cleanDoc.documentElement?.outerHtml ?? '';
+}
+
+/// Cache-aware wrapper around [sanitizeXBlockHtml]. Returns the cached
+/// sanitized HTML for [blockId] if one exists with the current
+/// [kSanitizerVersion]; otherwise sanitizes [rawHtml], persists the result,
+/// and returns it.
+Future<String> getOrComputeSanitizedXBlockHtml({
+  required AppDatabase db,
+  required String blockId,
+  required String rawHtml,
+}) async {
+  final cached = await db.getSanitizedXblock(blockId);
+  if (cached != null && cached.sanitizerVersion == kSanitizerVersion) {
+    return cached.safeHtml;
+  }
+  final safe = sanitizeXBlockHtml(rawHtml);
+  await db.putSanitizedXblock(
+    blockId: blockId,
+    safeHtml: safe,
+    sanitizerVersion: kSanitizerVersion,
+  );
+  return safe;
 }
 
 /// Extracts video metadata from raw xblock HTML.

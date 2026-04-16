@@ -58,6 +58,20 @@ class CachedXblocks extends Table {
   Set<Column> get primaryKey => {blockId};
 }
 
+/// Derived cache of sanitized HTML computed from [CachedXblocks]. Rebuildable
+/// from the source xblock rows, so we drop this on every schema upgrade.
+/// [sanitizerVersion] lets us invalidate rows whose HTML was produced by a
+/// previous sanitizer revision — see `kSanitizerVersion` in `xblock_parser.dart`.
+class CachedSanitizedXblocks extends Table {
+  TextColumn get blockId => text()();
+  TextColumn get safeHtml => text()();
+  IntColumn get sanitizerVersion => integer()();
+  DateTimeColumn get cachedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {blockId};
+}
+
 /// Persists the last-synced timestamp and last error per course.
 /// The in-memory sync status (idle/syncing) lives in `SyncController` only.
 class CachedCourseSync extends Table {
@@ -97,6 +111,7 @@ const _cacheTables = [
   'cached_outlines',
   'cached_sequences',
   'cached_xblocks',
+  'cached_sanitized_xblocks',
   'cached_course_sync',
 ];
 
@@ -105,6 +120,7 @@ const _cacheTables = [
   CachedOutlines,
   CachedSequences,
   CachedXblocks,
+  CachedSanitizedXblocks,
   CachedCourseSync,
   DownloadedVideos,
 ])
@@ -112,7 +128,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -242,6 +258,27 @@ class AppDatabase extends _$AppDatabase {
           cachedAt: DateTime.now(),
           etag: Value(etag),
           lastModified: Value(lastModified),
+        ),
+      );
+
+  // --- Sanitized Xblocks (keyed by blockId) ---
+
+  Future<CachedSanitizedXblock?> getSanitizedXblock(String blockId) =>
+      (select(cachedSanitizedXblocks)
+            ..where((t) => t.blockId.equals(blockId)))
+          .getSingleOrNull();
+
+  Future<void> putSanitizedXblock({
+    required String blockId,
+    required String safeHtml,
+    required int sanitizerVersion,
+  }) =>
+      into(cachedSanitizedXblocks).insertOnConflictUpdate(
+        CachedSanitizedXblocksCompanion.insert(
+          blockId: blockId,
+          safeHtml: safeHtml,
+          sanitizerVersion: sanitizerVersion,
+          cachedAt: DateTime.now(),
         ),
       );
 
@@ -416,6 +453,7 @@ class AppDatabase extends _$AppDatabase {
     await delete(cachedOutlines).go();
     await delete(cachedSequences).go();
     await delete(cachedXblocks).go();
+    await delete(cachedSanitizedXblocks).go();
   }
 
   // --- Clear all cached data (used on sign-out).
@@ -432,6 +470,7 @@ class AppDatabase extends _$AppDatabase {
     await delete(cachedOutlines).go();
     await delete(cachedSequences).go();
     await delete(cachedXblocks).go();
+    await delete(cachedSanitizedXblocks).go();
     await delete(cachedCourseSync).go();
     return paths;
   }

@@ -87,28 +87,45 @@ class LecturePlayer extends _$LecturePlayer {
 
     final db = ref.read(appDatabaseProvider);
 
-    // Build VerticalSegment list + video schedule in parallel.
+    // Load every vertical's xblock content in parallel. Throws AsyncError if
+    // any are missing from the cache.
+    final contents = await Future.wait(
+      sequence.items.map(
+        (item) => ref.watch(xblockContentProvider(blockId: item.id).future),
+      ),
+    );
+
+    // Resolve playable URIs and sanitized HTML concurrently — the sanitized
+    // path is a single indexed DB read for already-synced lectures, so this
+    // collapses O(n) sequential parsing into one round-trip batch.
+    final resolvedUris = await Future.wait([
+      for (var i = 0; i < contents.length; i++)
+        if (contents[i].videos.isNotEmpty)
+          resolvePlayableUri(contents[i].videos.first, db)
+        else
+          Future<Uri?>.value(null),
+    ]);
+    final safeHtmls = await Future.wait([
+      for (var i = 0; i < contents.length; i++)
+        getOrComputeSanitizedXBlockHtml(
+          db: db,
+          blockId: sequence.items[i].id,
+          rawHtml: contents[i].htmlContent,
+        ),
+    ]);
+
+    // Build VerticalSegment list + video schedule in course order.
     final segments = <VerticalSegment>[];
     final videoSchedule = <VideoScheduleEntry>[];
     var globalTime = 0.0;
 
-    for (final item in sequence.items) {
-      // Load xblock content (throws if not cached — caller gets AsyncError).
-      final content = await ref.watch(
-        xblockContentProvider(blockId: item.id).future,
-      );
-
+    for (var i = 0; i < sequence.items.length; i++) {
+      final item = sequence.items[i];
+      final content = contents[i];
       final video = content.videos.isNotEmpty ? content.videos.first : null;
-      Uri? resolvedUri;
-      double duration = 0;
-
-      if (video != null) {
-        resolvedUri = await resolvePlayableUri(video, db);
-        duration = video.duration;
-      }
-
-      // Sanitize HTML (strips video blocks, problem blocks, scripts etc).
-      final safeHtml = sanitizeXBlockHtml(content.htmlContent);
+      final resolvedUri = resolvedUris[i];
+      final duration = video?.duration ?? 0;
+      final safeHtml = safeHtmls[i];
 
       // globalStartTime for segments with video is the current running offset.
       // For no-video segments we use the same offset (they share the boundary

@@ -634,6 +634,13 @@ class SyncController extends _$SyncController {
           etag: resp.headers.value('etag'),
           lastModified: resp.headers.value('last-modified'),
         );
+        // Eagerly populate the sanitized-HTML cache so lecture opens don't
+        // pay the DOM-parse cost on first access.
+        await db.putSanitizedXblock(
+          blockId: verticalId,
+          safeHtml: sanitizeXBlockHtml(html),
+          sanitizerVersion: kSanitizerVersion,
+        );
       } on DioException catch (e) {
         if (e.response?.statusCode != 304) rethrow;
       }
