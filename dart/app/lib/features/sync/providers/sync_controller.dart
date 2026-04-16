@@ -76,6 +76,7 @@ class _SyncScheduler {
   final List<_SyncTask> _queue = [];
   final Set<String> _prioritisedSeqIds = {};
   int _workers = 0;
+  Completer<void>? _idleCompleter;
 
   void enqueue(_SyncTask task) {
     if (task.sequenceId.isNotEmpty &&
@@ -109,6 +110,21 @@ class _SyncScheduler {
     }
   }
 
+  /// Drops all queued tasks. In-flight workers are not cancelled — pair with
+  /// [waitForIdle] to wait for them to finish their current task.
+  void clearQueue() {
+    _queue.clear();
+    _prioritisedSeqIds.clear();
+  }
+
+  /// Resolves once every worker has finished its current task and the queue
+  /// is empty.
+  Future<void> waitForIdle() async {
+    if (_workers == 0) return;
+    _idleCompleter ??= Completer<void>();
+    return _idleCompleter!.future;
+  }
+
   void _ensureWorkers() {
     while (_workers < concurrency && _queue.isNotEmpty) {
       _workers++;
@@ -126,6 +142,11 @@ class _SyncScheduler {
       }
     }
     _workers--;
+    if (_workers == 0 && _idleCompleter != null) {
+      final c = _idleCompleter!;
+      _idleCompleter = null;
+      c.complete();
+    }
   }
 }
 
@@ -378,6 +399,24 @@ class SyncController extends _$SyncController {
       durationMs: DateTime.now().difference(startedAt).inMilliseconds,
       itemsSynced: context.itemsSynced,
     ));
+  }
+
+  /// Stops all in-progress sync work and waits for in-flight workers to
+  /// finish their current task. After this resolves no sync task will write
+  /// to the DB, so callers can safely clear cached data without risking a
+  /// late write resurrecting rows.
+  Future<void> stopAll() async {
+    _scheduler.clearQueue();
+    // Drop trackers and course contexts so any in-flight task completing
+    // after this line early-returns in _checkSequenceComplete / _finaliseCourse
+    // instead of republishing stale progress.
+    _trackers.clear();
+    for (final ctx in _courses.values) {
+      if (!ctx.completer.isCompleted) ctx.completer.complete();
+    }
+    _courses.clear();
+    state = const {};
+    await _scheduler.waitForIdle();
   }
 
   /// Tap-to-prioritise. Moves every queued task for [sequenceId] to the front

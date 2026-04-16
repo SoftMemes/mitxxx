@@ -199,6 +199,20 @@ class VideoDownloadManager {
     }
   }
 
+  /// Cancels every active/queued background download task. DB rows and files
+  /// are left intact — callers that want to wipe those should call the
+  /// corresponding DB/file delete paths themselves. Pair this with a DB wipe
+  /// when the user asks to delete videos or all data, so a task completing
+  /// mid-wipe can't resurrect a row or write a file to disk.
+  Future<void> cancelAllTasks() async {
+    final all = await _db.getAllDownloadedVideos();
+    final taskIds = all.map((r) => r.taskId).whereType<String>().toList();
+    if (taskIds.isNotEmpty) {
+      await FileDownloader().cancelTasksWithIds(taskIds);
+    }
+    _jobs.clear();
+  }
+
   /// Deletes all downloaded files and their DB rows.
   /// Called during sign-out (the auth provider calls db.clearAll separately).
   Future<void> deleteAllFiles() async {

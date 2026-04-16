@@ -6,9 +6,19 @@ import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
 import 'package:omnilect/features/courses/providers/outline_provider.dart';
 import 'package:omnilect/features/sync/models/course_sync_state.dart';
 import 'package:omnilect/features/sync/providers/sync_controller.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+/// MIT Learn dashboard for managing course enrollments.
+const _kManageCoursesUrl = 'https://learn.mit.edu/dashboard';
+
+Future<void> _openManageCourses() => launchUrl(
+      Uri.parse(_kManageCoursesUrl),
+      mode: LaunchMode.externalApplication,
+    );
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -80,33 +90,45 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
         data: (enrollments) {
           if (enrollments.isEmpty) {
-            return _EmptyState(
-              message: 'No enrolled courses found.',
-              isSyncing: isSyncing,
-              onSync: () =>
-                  ref.read(syncControllerProvider.notifier).syncAll(),
-            );
+            return const _NotEnrolledState();
           }
 
-          return ListView.separated(
-            itemCount: enrollments.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final enrollment = enrollments[index];
-              final courseId = enrollment.run.coursewareId;
-              final courseSyncState = syncState[courseId];
-              return _CourseTile(
-                enrollment: enrollment,
-                syncState: courseSyncState,
-                onTap: () {
-                  ref.read(analyticsServiceProvider).logCourseView(
-                    courseId: courseId,
-                    source: kSourceCourseList,
-                  );
-                  context.push('/course/$courseId');
-                },
-              );
-            },
+          return Column(
+            children: [
+              Expanded(
+                child: ListView.separated(
+                  itemCount: enrollments.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final enrollment = enrollments[index];
+                    final courseId = enrollment.run.coursewareId;
+                    final courseSyncState = syncState[courseId];
+                    return _CourseTile(
+                      enrollment: enrollment,
+                      syncState: courseSyncState,
+                      onTap: () {
+                        ref.read(analyticsServiceProvider).logCourseView(
+                          courseId: courseId,
+                          source: kSourceCourseList,
+                        );
+                        context.push('/course/$courseId');
+                      },
+                    );
+                  },
+                ),
+              ),
+              const Divider(height: 1),
+              const SafeArea(
+                top: false,
+                child: Padding(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  child: _ManageCoursesLink(
+                    prefix: "Can't see your course? Manage courses on",
+                  ),
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -152,10 +174,8 @@ class _EmptyState extends StatelessWidget {
   const _EmptyState({
     required this.onSync,
     required this.isSyncing,
-    this.message = 'No courses cached yet.\nConnect to sync.',
   });
 
-  final String message;
   final VoidCallback onSync;
   final bool isSyncing;
 
@@ -168,7 +188,7 @@ class _EmptyState extends StatelessWidget {
           Icon(Icons.school_outlined, size: 64, color: Theme.of(context).colorScheme.onSurfaceVariant),
           const SizedBox(height: 16),
           Text(
-            message,
+            'Sync to load your courses.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
@@ -186,6 +206,80 @@ class _EmptyState extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Shown when the enrollments list has been synced successfully but the user
+/// isn't enrolled in any courses. Offers a link to MIT Learn to manage
+/// enrollments.
+class _NotEnrolledState extends StatelessWidget {
+  const _NotEnrolledState();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.school_outlined, size: 64, color: cs.onSurfaceVariant),
+            const SizedBox(height: 16),
+            const _ManageCoursesLink(
+              prefix: 'Not enrolled in any courses, manage your courses on',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Inline text ending with a "MIT learn" link that opens the system browser
+/// to the MIT Learn course-management dashboard.
+class _ManageCoursesLink extends StatefulWidget {
+  const _ManageCoursesLink({required this.prefix});
+
+  final String prefix;
+
+  @override
+  State<_ManageCoursesLink> createState() => _ManageCoursesLinkState();
+}
+
+class _ManageCoursesLinkState extends State<_ManageCoursesLink> {
+  late final TapGestureRecognizer _recognizer =
+      TapGestureRecognizer()..onTap = _openManageCourses;
+
+  @override
+  void dispose() {
+    _recognizer.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: '${widget.prefix} '),
+          TextSpan(
+            text: 'MIT learn',
+            style: TextStyle(
+              color: cs.primary,
+              decoration: TextDecoration.underline,
+            ),
+            recognizer: _recognizer,
+          ),
+        ],
+      ),
+      textAlign: TextAlign.center,
+      style: theme.textTheme.bodySmall?.copyWith(
+            color: cs.onSurfaceVariant,
+          ),
     );
   }
 }
@@ -211,13 +305,18 @@ class _CourseTile extends ConsumerWidget {
     final lastSynced = syncState?.lastSyncedAt;
     final cs = Theme.of(context).colorScheme;
 
-    // "Ready" matches the sequence-tile semantics: ungrayed text indicates the
-    // course has at least one successful sync and is meaningfully openable.
-    final isReady = lastSynced != null;
+    // "Ready" means the outline itself has been cached, so tapping the tile
+    // opens a meaningful course overview — even if individual verticals are
+    // still syncing. Per-sequence readiness is shown inside the outline
+    // screen by each sequence tile's own disabled state. The course tile
+    // only goes gray during the initial outline-fetch window.
+    final outlineAsync =
+        ref.watch(courseOutlineProvider(courseId: courseId));
+    final isReady = outlineAsync.hasValue;
 
     // Material 3 standard disabled opacity. Used for title/subtitle/chevron
-    // when the course hasn't completed a first sync yet, so the "not ready to
-    // open" state reads clearly as disabled rather than as secondary text.
+    // while the outline isn't cached yet so the "not ready to open" state
+    // reads clearly as disabled rather than as secondary text.
     final disabledFg = cs.onSurface.withValues(alpha: 0.38);
 
     // Aggregate per-sequence sync state into a course-level progress fraction.

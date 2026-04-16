@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
+import 'package:omnilect/features/downloads/providers/video_download_manager.dart';
 import 'package:omnilect/features/sync/providers/sync_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -64,6 +65,11 @@ class _DataUsageScreenState extends ConsumerState<DataUsageScreen> {
 
     setState(() => _busy = true);
     try {
+      // Cancel any active/queued background downloads first — otherwise a
+      // task completing mid-delete will re-insert a DB row and drop a file
+      // back into the downloads directory after we've wiped them.
+      await ref.read(videoDownloadManagerProvider).cancelAllTasks();
+
       final db = ref.read(appDatabaseProvider);
       final paths = await db.clearDownloadedVideosAndGetPaths();
       for (final path in paths) {
@@ -96,6 +102,13 @@ class _DataUsageScreenState extends ConsumerState<DataUsageScreen> {
 
     setState(() => _busy = true);
     try {
+      // Stop any in-progress sync FIRST and wait for in-flight workers to
+      // drain. Otherwise a task holding an xblock response may call
+      // db.putXblock after we've cleared the tables, leaving orphan rows
+      // behind. Cancel background downloads for the same reason.
+      await ref.read(syncControllerProvider.notifier).stopAll();
+      await ref.read(videoDownloadManagerProvider).cancelAllTasks();
+
       final db = ref.read(appDatabaseProvider);
       final paths = await db.clearAllAndGetDownloadPaths();
       for (final path in paths) {
