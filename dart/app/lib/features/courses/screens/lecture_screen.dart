@@ -279,7 +279,6 @@ class _LectureScreenState extends ConsumerState<LectureScreen> {
                   segment: seg,
                   isExpanded: i == lectureState.activeSegmentIndex,
                   onTap: () => notifier.selectSegment(i),
-                  onPlay: seg.videoUrl != null ? () => notifier.playFrom(i) : null,
                 );
               },
             ),

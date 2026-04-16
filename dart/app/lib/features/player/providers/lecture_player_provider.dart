@@ -288,24 +288,19 @@ class LecturePlayer extends _$LecturePlayer {
     });
   }
 
-  /// Manually expand a section. Suspends auto-sync until the next video
-  /// boundary is crossed.
-  void selectSegment(int index) {
+  /// Manually select a section: seeks the video to the segment's start and
+  /// expands the tile. Play/pause state is preserved — if playback was paused
+  /// it stays paused, if playing it keeps playing from the new position.
+  /// Suspends auto-sync until the next video boundary is crossed so the
+  /// tapped section stays expanded even when the seek lands on a shared
+  /// video boundary.
+  Future<void> selectSegment(int index) async {
+    if (!state.hasValue) return;
+    final seg = state.requireValue.segments[index];
+    await _playbackController?.seekGlobal(seg.globalStartTime);
     _updateState((s) => s.copyWith(
           activeSegmentIndex: index,
           userOverrideActive: true,
-        ));
-  }
-
-  /// Seek the video to the start of [segmentIndex] and start playing.
-  Future<void> playFrom(int segmentIndex) async {
-    if (!state.hasValue) return;
-    final seg = state.requireValue.segments[segmentIndex];
-    await _playbackController?.seekGlobal(seg.globalStartTime);
-    await _playbackController?.play();
-    _updateState((s) => s.copyWith(
-          activeSegmentIndex: segmentIndex,
-          userOverrideActive: false,
         ));
   }
 

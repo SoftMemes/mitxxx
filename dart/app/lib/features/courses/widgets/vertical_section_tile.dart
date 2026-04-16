@@ -4,28 +4,23 @@ import 'package:flutter/material.dart';
 
 /// A collapsible row in the lecture content list representing one vertical.
 ///
-/// The header is always visible and shows the section title, optional video
-/// duration, and an optional play button. Tapping the header expands/collapses
-/// the section. Tapping the play button starts playback from this section's
-/// position (without toggling expansion).
+/// The header is always visible and shows the section title and optional
+/// video duration. Tapping the header seeks the video to this section's
+/// start and expands the tile. Play/pause state is preserved across the
+/// seek (driven by the caller via [onTap]).
 class VerticalSectionTile extends StatelessWidget {
   const VerticalSectionTile({
     required this.segment,
     required this.isExpanded,
     required this.onTap,
     super.key,
-    this.onPlay,
   });
 
   final VerticalSegment segment;
   final bool isExpanded;
 
-  /// Called when the user taps the header row to toggle expansion.
+  /// Called when the user taps the header row.
   final VoidCallback onTap;
-
-  /// Called when the user taps the play button. Null if this segment has no
-  /// video (play button is hidden).
-  final VoidCallback? onPlay;
 
   @override
   Widget build(BuildContext context) {
@@ -71,22 +66,6 @@ class VerticalSectionTile extends StatelessWidget {
                     _formatDuration(segment.videoDuration),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-
-                // Play button (if has video).
-                if (onPlay != null) ...[
-                  const SizedBox(width: 4),
-                  SizedBox(
-                    width: 36,
-                    height: 36,
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: const Icon(Icons.play_circle_outline, size: 26),
-                      color: theme.colorScheme.primary,
-                      tooltip: 'Play from here',
-                      onPressed: onPlay,
                     ),
                   ),
                 ],
