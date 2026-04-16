@@ -1,5 +1,10 @@
 default_platform(:ios)
 
+# ── Bundle identifiers ──────────────────────────────────────────────────────
+
+DEV_BUNDLE_ID  = "app.omnilect.dev"
+PROD_BUNDLE_ID = "app.omnilect"
+
 # ── Shared helpers ──────────────────────────────────────────────────────────
 
 def app_store_connect_api_key_config
@@ -20,8 +25,47 @@ def flutter_build_appbundle(flavor:, target:)
   sh "fvm flutter build appbundle --flavor #{flavor} --target #{target} --release"
 end
 
-def flutter_build_ipa(flavor:, target:)
-  sh "fvm flutter build ipa --flavor #{flavor} --target #{target} --release"
+def flutter_build_ipa(flavor:, target:, export_options:)
+  sh "fvm flutter build ipa --flavor #{flavor} --target #{target} --release --export-options-plist=ios/#{export_options}"
+end
+
+# ── Lane: setup_match ───────────────────────────────────────────────────────
+# One-off bootstrap: creates / fetches all certificates and provisioning
+# profiles needed by both flavors. Run this once per machine, and any time
+# a new device or app identifier is added.
+#
+# CI lanes below call `match` with readonly: true so they never mutate the
+# certificates repo.
+
+lane :setup_match do
+  api_key = app_store_connect_api_key_config
+
+  # Dev flavor — distributed via Firebase App Distribution (ad-hoc) and
+  # also needs a development profile for local debug builds on devices.
+  match(
+    type:           "development",
+    app_identifier: DEV_BUNDLE_ID,
+    api_key:        api_key,
+  )
+  match(
+    type:                    "adhoc",
+    app_identifier:          DEV_BUNDLE_ID,
+    api_key:                 api_key,
+    force_for_new_devices:   true,
+  )
+
+  # Prod flavor — App Store / TestFlight, plus a development profile for
+  # local debug runs against the production bundle id.
+  match(
+    type:           "development",
+    app_identifier: PROD_BUNDLE_ID,
+    api_key:        api_key,
+  )
+  match(
+    type:           "appstore",
+    app_identifier: PROD_BUNDLE_ID,
+    api_key:        api_key,
+  )
 end
 
 # ── Lane: dev_distribute ─────────────────────────────────────────────────────
@@ -43,9 +87,16 @@ lane :dev_distribute do |options|
   )
 
   # ── iOS ──
+  match(
+    type:           "adhoc",
+    app_identifier: DEV_BUNDLE_ID,
+    api_key:        app_store_connect_api_key_config,
+    readonly:       true,
+  )
   flutter_build_ipa(
-    flavor: "dev",
-    target: "lib/main_dev.dart",
+    flavor:         "dev",
+    target:         "lib/main_dev.dart",
+    export_options: "ExportOptions-dev.plist",
   )
   firebase_app_distribution(
     app:              ENV.fetch("FIREBASE_IOS_DEV_APP_ID"),
@@ -71,16 +122,23 @@ lane :beta do |options|
     track:         "internal",
     aab:           "../build/app/outputs/bundle/prodRelease/app-prod-release.aab",
     json_key:      ENV.fetch("PLAY_STORE_JSON_KEY"),
-    package_name:  "app.omnilect",
+    package_name:  PROD_BUNDLE_ID,
     skip_upload_metadata: true,
     skip_upload_images:   true,
     skip_upload_screenshots: true,
   )
 
   # ── iOS ──
+  match(
+    type:           "appstore",
+    app_identifier: PROD_BUNDLE_ID,
+    api_key:        api_key,
+    readonly:       true,
+  )
   flutter_build_ipa(
-    flavor: "prod",
-    target: "lib/main_prod.dart",
+    flavor:         "prod",
+    target:         "lib/main_prod.dart",
+    export_options: "ExportOptions-prod.plist",
   )
   upload_to_testflight(
     api_key:          api_key,
@@ -104,16 +162,23 @@ lane :release do |options|
     track:         "production",
     aab:           "../build/app/outputs/bundle/prodRelease/app-prod-release.aab",
     json_key:      ENV.fetch("PLAY_STORE_JSON_KEY"),
-    package_name:  "app.omnilect",
+    package_name:  PROD_BUNDLE_ID,
     skip_upload_metadata: true,
     skip_upload_images:   true,
     skip_upload_screenshots: true,
   )
 
   # ── iOS ──
+  match(
+    type:           "appstore",
+    app_identifier: PROD_BUNDLE_ID,
+    api_key:        api_key,
+    readonly:       true,
+  )
   flutter_build_ipa(
-    flavor: "prod",
-    target: "lib/main_prod.dart",
+    flavor:         "prod",
+    target:         "lib/main_prod.dart",
+    export_options: "ExportOptions-prod.plist",
   )
   upload_to_testflight(
     api_key:              api_key,

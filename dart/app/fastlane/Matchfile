@@ -1,0 +1,6 @@
+git_url("git@github.com:SoftMemes/omnilect-certificates.git")
+
+storage_mode("git")
+
+# type is intentionally not set here — each lane specifies the right type
+# (development / adhoc / appstore) and app_identifier when calling `match`.

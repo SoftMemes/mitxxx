@@ -3,11 +3,16 @@
 <plist version="1.0">
 <dict>
 	<key>method</key>
-	<string>ad-hoc</string>
+	<string>app-store</string>
 	<key>teamID</key>
 	<string>K83337NAZ8</string>
 	<key>signingStyle</key>
-	<string>automatic</string>
+	<string>manual</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>app.omnilect</key>
+		<string>match AppStore app.omnilect</string>
+	</dict>
 	<key>stripSwiftSymbols</key>
 	<true/>
 	<key>uploadSymbols</key>

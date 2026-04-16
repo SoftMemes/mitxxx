@@ -31,3 +31,10 @@ build/
 credentials.json
 cookies.json
 session.json
+*.p8
+AuthKey_*.p8
+
+# Fastlane runtime artifacts
+**/fastlane/report.xml
+**/fastlane/test_output/
+**/fastlane/README.md.bak
