@@ -78,3 +78,15 @@ Transcripts available via LMS handler:
 - Every tool directory has a `CLAUDE.md` explaining what it does and why
 - Keep tools around even if single-use/throwaway — they document the discovery process
 - Tools share `python-tools/requirements.txt`
+
+## Flutter / Dart commands
+
+Always use `fvm` to run Flutter and Dart commands — this repo pins the Flutter
+version via fvm. There is no global `flutter` on PATH; bare `flutter` invocations
+will fail.
+
+- `fvm flutter analyze` (not `flutter analyze`)
+- `fvm flutter test`
+- `fvm flutter run`
+- `fvm flutter pub get`
+- `fvm dart ...` for any `dart` subcommand
