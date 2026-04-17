@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:logging/logging.dart';
+import 'package:mitx_api/mitx_api.dart';
 import 'package:omnilect/core/analytics/analytics_events.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/core/network/dio_client_provider.dart';
@@ -19,8 +21,6 @@ import 'package:omnilect/features/courses/providers/xblock_provider.dart';
 import 'package:omnilect/features/courses/utils/xblock_parser.dart';
 import 'package:omnilect/features/downloads/models/download_status.dart';
 import 'package:omnilect/features/sync/models/course_sync_state.dart';
-import 'package:logging/logging.dart';
-import 'package:mitx_api/mitx_api.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'sync_controller.g.dart';

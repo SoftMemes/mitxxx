@@ -1,6 +1,6 @@
+import 'package:flutter/material.dart';
 import 'package:omnilect/features/courses/widgets/html_block.dart';
 import 'package:omnilect/features/player/models/vertical_segment.dart';
-import 'package:flutter/material.dart';
 
 /// A collapsible row in the lecture content list representing one vertical.
 ///

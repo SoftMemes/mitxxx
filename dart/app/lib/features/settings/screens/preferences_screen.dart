@@ -1,6 +1,6 @@
-import 'package:omnilect/core/analytics/analytics_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:omnilect/core/analytics/analytics_preferences.dart';
 
 class PreferencesScreen extends ConsumerWidget {
   const PreferencesScreen({super.key});

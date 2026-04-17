@@ -1,10 +1,10 @@
 // ignore_for_file: uri_has_not_been_generated
 import 'dart:async';
 
-import 'package:omnilect/features/cast/models/cast_queue_item.dart';
-import 'package:omnilect/features/cast/models/cast_state.dart';
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import 'package:logging/logging.dart';
+import 'package:omnilect/features/cast/models/cast_queue_item.dart';
+import 'package:omnilect/features/cast/models/cast_state.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'cast_controller.g.dart';

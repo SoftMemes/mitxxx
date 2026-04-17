@@ -1,5 +1,5 @@
-import 'package:omnilect/features/onboarding/disclosure_content.dart';
 import 'package:flutter/material.dart';
+import 'package:omnilect/features/onboarding/disclosure_content.dart';
 
 /// Read-only screen showing the four app-disclosure points.
 ///

@@ -1,14 +1,14 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:logging/logging.dart';
 import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
 import 'package:omnilect/features/downloads/providers/video_download_manager.dart';
 import 'package:omnilect/features/sync/providers/sync_controller.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:logging/logging.dart';
 
 final _log = Logger('data_usage');
 

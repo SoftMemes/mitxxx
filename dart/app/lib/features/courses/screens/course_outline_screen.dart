@@ -1,3 +1,6 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:omnilect/core/analytics/analytics_events.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/features/courses/models/outline.dart';
@@ -6,9 +9,6 @@ import 'package:omnilect/features/downloads/widgets/download_button.dart';
 import 'package:omnilect/features/downloads/widgets/download_progress_bar.dart';
 import 'package:omnilect/features/sync/models/course_sync_state.dart';
 import 'package:omnilect/features/sync/providers/sync_controller.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 // ignore_for_file: uri_has_not_been_generated
 

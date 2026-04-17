@@ -1,8 +1,8 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:omnilect/core/analytics/analytics_preferences.dart';
 import 'package:omnilect/features/onboarding/disclosure_content.dart';
 import 'package:omnilect/features/onboarding/providers/onboarding_provider.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Full-screen onboarding disclaimer shown to every user once, before login.
 ///

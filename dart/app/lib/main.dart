@@ -1,5 +1,11 @@
 import 'dart:async';
 
+import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:omnilect/core/analytics/advertising_id_provider.dart';
 import 'package:omnilect/core/analytics/analytics_preferences.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
@@ -11,12 +17,6 @@ import 'package:omnilect/core/theme/app_theme.dart';
 import 'package:omnilect/firebase_options_dev.dart';
 import 'package:omnilect/firebase_options_prod.dart';
 import 'package:omnilect/flavor_config.dart';
-import 'package:firebase_analytics/firebase_analytics.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> bootstrap() async {

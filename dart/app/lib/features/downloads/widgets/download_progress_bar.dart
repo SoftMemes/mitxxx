@@ -1,7 +1,7 @@
-import 'package:omnilect/features/downloads/models/download_status.dart';
-import 'package:omnilect/features/downloads/providers/scope_download_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:omnilect/features/downloads/models/download_status.dart';
+import 'package:omnilect/features/downloads/providers/scope_download_provider.dart';
 
 /// Inline "3 / 10 lectures  ■■■□□□□" (or "videos") progress bar.
 /// Hidden when there are no videos in scope or when none are downloaded.

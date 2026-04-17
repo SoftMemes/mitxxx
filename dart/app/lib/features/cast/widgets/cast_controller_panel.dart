@@ -1,8 +1,8 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:omnilect/features/cast/models/cast_state.dart';
 import 'package:omnilect/features/cast/providers/cast_controller.dart';
 import 'package:omnilect/features/player/widgets/unified_scrub_bar.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Full-screen cast controller that replaces LectureVideoPlayer while a
 /// cast session is active.

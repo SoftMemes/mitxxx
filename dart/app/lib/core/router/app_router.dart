@@ -1,4 +1,6 @@
 // ignore_for_file: uri_has_not_been_generated
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/features/auth/providers/auth_provider.dart';
 import 'package:omnilect/features/auth/screens/login_screen.dart';
@@ -11,8 +13,6 @@ import 'package:omnilect/features/settings/screens/about_screen.dart';
 import 'package:omnilect/features/settings/screens/data_usage_screen.dart';
 import 'package:omnilect/features/settings/screens/preferences_screen.dart';
 import 'package:omnilect/features/settings/screens/settings_screen.dart';
-import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'app_router.g.dart';

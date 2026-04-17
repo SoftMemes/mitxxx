@@ -1,4 +1,8 @@
 // ignore_for_file: uri_has_not_been_generated
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:omnilect/core/analytics/analytics_events.dart';
 import 'package:omnilect/features/cast/models/cast_state.dart';
 import 'package:omnilect/features/cast/providers/cast_controller.dart';
@@ -11,10 +15,6 @@ import 'package:omnilect/features/player/models/vertical_segment.dart';
 import 'package:omnilect/features/player/providers/lecture_player_provider.dart';
 import 'package:omnilect/features/player/widgets/lecture_video_player.dart';
 import 'package:omnilect/features/sync/providers/sync_controller.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 /// Single-page lecture view.
 ///

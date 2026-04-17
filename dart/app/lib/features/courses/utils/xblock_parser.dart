@@ -1,10 +1,10 @@
 import 'dart:convert';
 
-import 'package:omnilect/core/storage/app_database.dart';
-import 'package:omnilect/features/courses/models/xblock_content.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:html_unescape/html_unescape.dart';
+import 'package:omnilect/core/storage/app_database.dart';
+import 'package:omnilect/features/courses/models/xblock_content.dart';
 
 final _unescape = HtmlUnescape();
 

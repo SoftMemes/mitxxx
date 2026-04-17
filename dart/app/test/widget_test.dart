@@ -1,5 +1,5 @@
-import 'package:omnilect/main.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnilect/main.dart';
 
 void main() {
   testWidgets('App builds without crashing', (WidgetTester tester) async {

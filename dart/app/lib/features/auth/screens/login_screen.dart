@@ -1,13 +1,13 @@
 import 'dart:collection';
 
-import 'package:omnilect/core/network/dio_client_provider.dart';
-import 'package:omnilect/features/auth/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:mitx_api/mitx_api.dart';
+import 'package:omnilect/core/network/dio_client_provider.dart';
+import 'package:omnilect/features/auth/providers/auth_provider.dart';
 
 final _log = Logger('auth.login');
 
