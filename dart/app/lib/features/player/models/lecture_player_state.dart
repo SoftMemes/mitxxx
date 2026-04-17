@@ -31,6 +31,12 @@ abstract class LecturePlayerState with _$LecturePlayerState {
     /// True once the last video segment has finished playing.
     @Default(false) bool isComplete,
 
+    /// True once the underlying `LecturePlaybackController` has finished
+    /// initializing its first segment and (if applicable) resumed the saved
+    /// position. Until then the video area renders its own loading indicator
+    /// while the rest of the page (title, content list) is fully interactive.
+    @Default(false) bool controllerReady,
+
     /// Non-null when a segment has failed to load. Cleared on retry.
     String? errorMessage,
   }) = _LecturePlayerState;

@@ -29,6 +29,9 @@ void main() {
         home.lectureNotesPath,
         '/courses/$_brainSlug/pages/lecture-notes/',
       );
+      expect(home.imageUrl, isNotNull);
+      expect(home.imageUrl, startsWith('https://ocw.mit.edu/'));
+      expect(home.imageUrl, endsWith('MIT9_13S19.jpg'));
     });
 
     test('6.100L detects lists/lecture-notes path (newer OCW template)', () {
@@ -46,6 +49,7 @@ void main() {
         home.videoGalleryPath,
         '/courses/$_pySlug/video_galleries/lecture-videos/',
       );
+      expect(home.imageUrl, 'https://ocw.mit.edu/courses/$_pySlug/mit6_100l_f22.jpeg');
     });
 
     test('linalg fixture has no lecture-notes page', () {
@@ -58,6 +62,8 @@ void main() {
         '/courses/$_linAlgSlug/video_galleries/video-lectures/',
       );
       expect(home.lectureNotesPath, isNull);
+      expect(home.imageUrl, isNotNull);
+      expect(home.imageUrl, endsWith('18-06s10.jpg'));
     });
   });
 

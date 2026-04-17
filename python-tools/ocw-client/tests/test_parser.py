@@ -33,6 +33,9 @@ def test_course_home_brain():
     assert home["description"].startswith("This course surveys the core perceptual")
     assert home["video_gallery_path"] == f"/courses/{BRAIN}/video_galleries/lecture-videos/"
     assert home["lecture_notes_path"] == f"/courses/{BRAIN}/pages/lecture-notes/"
+    assert home["image_url"] is not None
+    assert home["image_url"].endswith("MIT9_13S19.jpg")
+    assert home["image_url"].startswith("https://ocw.mit.edu/")
 
 
 def test_course_home_linalg():
@@ -43,6 +46,9 @@ def test_course_home_linalg():
     assert home["video_gallery_path"] == f"/courses/{LINALG}/video_galleries/video-lectures/"
     # 18.06 has no lecture-notes page
     assert home["lecture_notes_path"] is None
+    assert home["image_url"] is not None
+    assert home["image_url"].endswith("18-06s10.jpg")
+    assert home["image_url"].startswith("https://ocw.mit.edu/")
 
 
 # -----------------------------------------------------------------------------
@@ -115,6 +121,8 @@ def test_build_course_brain_happy_path():
     assert c.id == f"ocw:{BRAIN}"
     assert c.title == "The Human Brain"
     assert c.course_number == "9.13"
+    assert c.image_url is not None
+    assert c.image_url.endswith("MIT9_13S19.jpg")
     assert len(c.sections) == 1
     assert c.sections[0].title == "Video Lectures"
     assert len(c.sections[0].lectures) == 17

@@ -21,6 +21,7 @@ import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
 import 'package:omnilect/features/courses/providers/outline_provider.dart';
 import 'package:omnilect/features/courses/providers/sequence_provider.dart';
 import 'package:omnilect/features/courses/providers/xblock_provider.dart';
+import 'package:omnilect/features/courses/utils/course_image_downloader.dart';
 import 'package:omnilect/features/courses/utils/xblock_parser.dart';
 import 'package:omnilect/features/downloads/models/download_status.dart';
 import 'package:omnilect/features/downloads/providers/video_download_manager.dart';
@@ -258,6 +259,9 @@ class SyncController extends _$SyncController {
           .map((e) => Enrollment.fromJson(e as Map<String, dynamic>))
           .toList();
       ref.invalidate(enrollmentsProvider);
+      // Kick off (in background) the per-course artwork downloads so tiles
+      // can render from disk on the next frame. Reactive via CourseImages.
+      unawaited(_prefetchMitxCourseImages(enrollments));
     } on DioException catch (e, st) {
       final status = e.response?.statusCode;
       final durationMs = DateTime.now().difference(startedAt).inMilliseconds;
@@ -1041,6 +1045,32 @@ class SyncController extends _$SyncController {
         .toList();
   }
 
+  /// Downloads + rescales the MITx feature image for every enrollment whose
+  /// course has one. Dedupes by URL; skipped if already cached on disk.
+  /// Capped concurrency matches the OCW fetcher's politeness setting.
+  Future<void> _prefetchMitxCourseImages(List<Enrollment> enrollments) async {
+    final urls = <String>{
+      for (final e in enrollments)
+        if ((e.run.course?.featureImageSrc ?? '').isNotEmpty)
+          e.run.course!.featureImageSrc!,
+    }.toList();
+    if (urls.isEmpty) return;
+
+    final downloader = ref.read(courseImageDownloaderProvider);
+    const concurrency = 4;
+    var next = 0;
+
+    Future<void> worker() async {
+      while (true) {
+        final idx = next++;
+        if (idx >= urls.length) return;
+        await downloader.ensureDownloaded(urls[idx]);
+      }
+    }
+
+    await Future.wait(List.generate(concurrency, (_) => worker()));
+  }
+
   /// OCW variant of [_fetchOutline]. Walks ocw.mit.edu end-to-end and
   /// persists the full course + lectures + resources in one shot, then
   /// reconciles [DownloadedVideos] refs for dropped MP4 URLs. Returns an
@@ -1055,6 +1085,16 @@ class SyncController extends _$SyncController {
     final oldMp4s = (await db.getOcwLectureMp4Urls(courseId)).toSet();
 
     final course = await fetcher.fetchCourse(courseId: courseId, slug: slug);
+
+    // Fire-and-forget: the UI watches CourseImages reactively, so the tile
+    // will flip to the downloaded artwork as soon as the row lands. Blocking
+    // on this would delay making the outline available.
+    if (course.imageUrl != null && course.imageUrl!.isNotEmpty) {
+      unawaited(
+        ref.read(courseImageDownloaderProvider)
+            .ensureDownloaded(course.imageUrl!),
+      );
+    }
 
     final allLectures = [
       for (final s in course.sections) ...s.lectures,
@@ -1072,6 +1112,7 @@ class SyncController extends _$SyncController {
         title: course.title,
         courseNumber: course.courseNumber,
         description: course.description,
+        imageUrl: Value(course.imageUrl),
         cachedAt: DateTime.now(),
       ),
       lectures: [

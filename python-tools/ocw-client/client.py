@@ -72,6 +72,7 @@ class OcwCourse:
     title: str
     course_number: str
     description: str
+    image_url: Optional[str] = None  # absolute; from <meta property="og:image">
     sections: list[OcwSection] = field(default_factory=list)
     orphan_resources: list[OcwResource] = field(default_factory=list)
 
@@ -91,6 +92,7 @@ def parse_course_home(html: str, slug: str) -> dict:
           "course_number": str,
           "term": Optional[str],
           "description": str,
+          "image_url": Optional[str],            # absolute URL from og:image
           "video_gallery_path": Optional[str],  # absolute path on ocw.mit.edu
           "lecture_notes_path": Optional[str],
         }
@@ -105,6 +107,7 @@ def parse_course_home(html: str, slug: str) -> dict:
 
     course_number, term = _parse_course_header(soup, slug)
     description = _meta_content(soup, "description") or ""
+    image_url = _meta_content(soup, "image")
 
     video_gallery_path: Optional[str] = None
     lecture_notes_path: Optional[str] = None
@@ -125,6 +128,7 @@ def parse_course_home(html: str, slug: str) -> dict:
         "course_number": course_number,
         "term": term,
         "description": description.strip(),
+        "image_url": image_url,
         "video_gallery_path": video_gallery_path,
         "lecture_notes_path": lecture_notes_path,
     }
@@ -432,6 +436,7 @@ class OcwClient:
             title=home["title"],
             course_number=home["course_number"],
             description=home["description"],
+            image_url=home.get("image_url"),
             sections=[section] if lectures else [],
             orphan_resources=orphans,
         )
@@ -495,6 +500,7 @@ def build_course_from_fixtures(slug: str, fixture_dir: str | Path) -> OcwCourse:
         title=home["title"],
         course_number=home["course_number"],
         description=home["description"],
+        image_url=home.get("image_url"),
         sections=[section] if lectures else [],
         orphan_resources=orphans,
     )

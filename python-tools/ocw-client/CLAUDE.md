@@ -53,6 +53,9 @@ Gallery slug varies per course: `lecture-videos` (9.13) or `video-lectures` (18.
 
 - Title: first non-OCW-boilerplate `<h1>` inside `body.course-home-page`.
 - Description: `<meta name="description">` / `<meta property="og:description">`.
+- Course image: `<meta property="og:image">` — the sidebar hero image on the
+  course overview (e.g. `https://ocw.mit.edu/courses/{slug}/mit6_100l_f22.jpeg`).
+  Returned as an absolute URL. Absent only on pages we don't actually parse.
 - Course number + term: parsed from a header span like
   `"9.13 | Spring 2019 | Undergraduate"`. Falls back to deriving the course
   number from the URL slug (`9-13-...` → `9.13`, `8-01sc-...` → `8.01sc`).

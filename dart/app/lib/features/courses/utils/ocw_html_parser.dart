@@ -18,6 +18,7 @@ class OcwCourseHomeInfo {
     required this.courseNumber,
     required this.description,
     this.term,
+    this.imageUrl,
     this.videoGalleryPath,
     this.lectureNotesPath,
   });
@@ -26,6 +27,11 @@ class OcwCourseHomeInfo {
   final String courseNumber;
   final String? term;
   final String description;
+
+  /// Absolute URL to the course hero image shown on the course overview
+  /// sidebar. Sourced from `<meta property="og:image">`.
+  final String? imageUrl;
+
   final String? videoGalleryPath;
   final String? lectureNotesPath;
 }
@@ -66,6 +72,7 @@ OcwCourseHomeInfo parseCourseHome(String html, String slug) {
 
   final header = _parseCourseHeader(doc, slug);
   final description = _metaContent(doc, 'description') ?? '';
+  final imageUrl = _metaContent(doc, 'image');
 
   String? videoGalleryPath;
   String? lectureNotesPath;
@@ -91,6 +98,7 @@ OcwCourseHomeInfo parseCourseHome(String html, String slug) {
     courseNumber: header.courseNumber,
     term: header.term,
     description: description.trim(),
+    imageUrl: imageUrl,
     videoGalleryPath: videoGalleryPath,
     lectureNotesPath: lectureNotesPath,
   );

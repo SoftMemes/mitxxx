@@ -84,6 +84,7 @@ class OcwCourseFetcher {
       title: home.title,
       courseNumber: home.courseNumber,
       description: home.description,
+      imageUrl: home.imageUrl,
       sections: matched.lectures.isEmpty
           ? const []
           : [

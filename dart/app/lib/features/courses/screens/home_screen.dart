@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,7 @@ import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/features/auth/providers/auth_provider.dart';
 import 'package:omnilect/features/courses/models/enrollment.dart';
+import 'package:omnilect/features/courses/providers/course_image_provider.dart';
 import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
 import 'package:omnilect/features/courses/providers/ocw_courses_provider.dart';
 import 'package:omnilect/features/courses/providers/outline_provider.dart';
@@ -498,18 +501,7 @@ class _CourseTile extends ConsumerWidget {
                 // Course artwork.
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: imageUrl != null && imageUrl.isNotEmpty
-                      ? Image.network(
-                          imageUrl,
-                          width: 72,
-                          height: 72,
-                          fit: BoxFit.cover,
-                          loadingBuilder: (_, child, progress) => progress == null
-                              ? child
-                              : _ArtworkPlaceholder(),
-                          errorBuilder: (_, _, _) => _ArtworkPlaceholder(),
-                        )
-                      : _ArtworkPlaceholder(),
+                  child: _CourseArtwork(networkUrl: imageUrl),
                 ),
                 const SizedBox(width: 12),
 
@@ -640,6 +632,50 @@ class _CourseTile extends ConsumerWidget {
   }
 }
 
+/// Course-tile artwork with an offline-first load path.
+///
+/// Resolution order:
+/// 1. Local file in `CourseImages` (downloaded + rescaled at sync time) —
+///    instant, low-memory decode via `cacheWidth: 144`.
+/// 2. `networkUrl` — fallback for the first render after a fresh sync,
+///    while the downloader is still running.
+/// 3. [_ArtworkPlaceholder] — when neither is available.
+class _CourseArtwork extends ConsumerWidget {
+  const _CourseArtwork({this.networkUrl});
+
+  final String? networkUrl;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final url = networkUrl;
+    if (url == null || url.isEmpty) {
+      return _ArtworkPlaceholder();
+    }
+    final localPathAsync = ref.watch(courseImageLocalPathProvider(url));
+    final localPath = localPathAsync.value;
+    if (localPath != null && File(localPath).existsSync()) {
+      return Image.file(
+        File(localPath),
+        width: 72,
+        height: 72,
+        fit: BoxFit.cover,
+        cacheWidth: 144,
+        errorBuilder: (_, _, _) => _ArtworkPlaceholder(),
+      );
+    }
+    return Image.network(
+      url,
+      width: 72,
+      height: 72,
+      fit: BoxFit.cover,
+      cacheWidth: 144,
+      loadingBuilder: (_, child, progress) =>
+          progress == null ? child : _ArtworkPlaceholder(),
+      errorBuilder: (_, _, _) => _ArtworkPlaceholder(),
+    );
+  }
+}
+
 class _ArtworkPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -691,7 +727,7 @@ class _OcwCourseTile extends ConsumerWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: _ArtworkPlaceholder(),
+              child: _CourseArtwork(networkUrl: course.imageUrl),
             ),
             const SizedBox(width: 12),
             Expanded(

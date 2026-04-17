@@ -58,6 +58,10 @@ class LecturePlayer extends _$LecturePlayer {
   /// later.
   bool _wasPlaying = false;
 
+  /// Set by `ref.onDispose` so background controller-init work knows to bail
+  /// out instead of writing to a disposed `state` notifier.
+  bool _buildDisposed = false;
+
   // ---------------------------------------------------------------------------
   // Public accessor for the widget layer
   // ---------------------------------------------------------------------------
@@ -92,6 +96,8 @@ class LecturePlayer extends _$LecturePlayer {
     required String courseId,
     required String sequenceId,
   }) async {
+    ref.onDispose(() => _buildDisposed = true);
+
     // Dispatch by course platform. For OCW courses, `sequenceId` is the
     // lecture slug (e.g. `lecture-1-introduction`) rather than an Open edX
     // block id — we load from `cached_ocw_*` tables and synthesize a
@@ -187,7 +193,11 @@ class LecturePlayer extends _$LecturePlayer {
       return LecturePlayerState(segments: segments);
     }
 
-    // Create and initialise the playback controller.
+    // Create and attach the playback controller, but don't block the page on
+    // its initialization — `_startControllerInitialization` runs in the
+    // background and flips `controllerReady` when the first segment is
+    // loaded. The content list, title, and scrub bar frame appear as soon as
+    // this method returns.
     final controller = LecturePlaybackController(videoSchedule);
     _playbackController = controller;
     ref
@@ -202,15 +212,7 @@ class LecturePlayer extends _$LecturePlayer {
     controller.snapshot.addListener(onPlaybackChange);
     ref.onDispose(() => controller.snapshot.removeListener(onPlaybackChange));
 
-    await controller.initialize();
-
-    // Resume-from-saved-position: seek before the user presses play so the
-    // Continue tile lands the viewer exactly where they left off.
-    final savedPosition = await _readSavedPosition();
-    if (savedPosition > 0 && savedPosition < controller.totalDuration) {
-      await controller.seekGlobal(savedPosition);
-      _lastKnownPosition = savedPosition;
-    }
+    unawaited(_startControllerInitialization(controller));
 
     return LecturePlayerState(
       segments: segments,
@@ -273,7 +275,16 @@ class LecturePlayer extends _$LecturePlayer {
             ))
         .toList();
     final rawHtml = buildOcwResourceHtml(matched);
-    final safeHtml = sanitizeXBlockHtml(rawHtml);
+    // Use the same sanitized-HTML cache MITx uses. The cache is keyed by an
+    // opaque string, and OCW `lectureId` (`ocw:<slug>/<lecture-slug>`) cannot
+    // collide with Open edX `block-v1:...` usage keys. Using the
+    // course-namespaced `lectureId` (not just the slug) keeps entries
+    // distinct across OCW courses.
+    final safeHtml = await getOrComputeSanitizedXBlockHtml(
+      db: db,
+      blockId: lectureId,
+      rawHtml: rawHtml,
+    );
 
     // Resolve local-file-first playback URI. OCW MP4s may be null for
     // YouTube-only / in-class-dissection lectures; we surface that as a
@@ -336,16 +347,36 @@ class LecturePlayer extends _$LecturePlayer {
     controller.snapshot.addListener(onPlaybackChange);
     ref.onDispose(() => controller.snapshot.removeListener(onPlaybackChange));
 
-    await controller.initialize();
+    unawaited(_startControllerInitialization(controller));
 
-    // Resume-from-saved-position: same path as the MITx branch.
-    final savedPosition = await _readSavedPosition();
+    return LecturePlayerState(segments: segments);
+  }
+
+  /// Runs `controller.initialize()` off the critical path of `build()`.
+  ///
+  /// Reads the saved position in parallel with video init, seeks to it after
+  /// init completes, and finally flips `controllerReady` so the video area's
+  /// own spinner is replaced with the first frame. Bails out if the provider
+  /// is disposed mid-flight — writing to a disposed notifier would throw.
+  Future<void> _startControllerInitialization(
+    LecturePlaybackController controller,
+  ) async {
+    final savedFuture = _readSavedPosition();
+
+    await controller.initialize();
+    if (_buildDisposed) return;
+
+    final savedPosition = await savedFuture;
+    if (_buildDisposed) return;
+
     if (savedPosition > 0 && savedPosition < controller.totalDuration) {
       await controller.seekGlobal(savedPosition);
+      if (_buildDisposed) return;
       _lastKnownPosition = savedPosition;
     }
 
-    return LecturePlayerState(segments: segments);
+    if (!state.hasValue) return;
+    state = AsyncData(state.requireValue.copyWith(controllerReady: true));
   }
 
   OcwResourceType _decodeOcwType(String name) {

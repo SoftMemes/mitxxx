@@ -69,6 +69,7 @@ abstract class OcwCourse with _$OcwCourse {
     required String title,
     required String courseNumber,
     required String description,
+    String? imageUrl,
     @Default(<OcwSection>[]) List<OcwSection> sections,
     @Default(<OcwResource>[]) List<OcwResource> orphanResources,
   }) = _OcwCourse;

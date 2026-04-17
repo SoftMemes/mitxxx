@@ -68,6 +68,8 @@ def course(slug: str, as_json: bool, fixture_dir: str | None):
         return
     click.echo(f"\n{c.title}  ({c.course_number})")
     click.echo(f"  id: {c.id}")
+    if c.image_url:
+        click.echo(f"  image_url: {c.image_url}")
     if c.description:
         click.echo(f"  {c.description[:200]}{'…' if len(c.description) > 200 else ''}")
     click.echo()

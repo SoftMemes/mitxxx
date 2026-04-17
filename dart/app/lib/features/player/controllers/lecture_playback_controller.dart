@@ -251,6 +251,15 @@ class LecturePlaybackController {
       }
     }
 
+    // The controller may have been disposed while `vpc.initialize()` was in
+    // flight (e.g. the user popped the lecture page during load). Drop the
+    // freshly-initialized controller instead of wiring it up — wiring into a
+    // disposed snapshot/notifier throws.
+    if (_disposed) {
+      await vpc!.dispose();
+      return;
+    }
+
     _activeVpc?.removeListener(_onControllerUpdate);
     if (_activeVpc != null) {
       _pendingDispose.add(_activeVpc!);
@@ -310,6 +319,13 @@ class LecturePlaybackController {
         }
         return;
       }
+    }
+
+    // Drop the freshly-initialized controller if the player was disposed
+    // mid-flight (mirrors the guard in `_preloadNextSegment`).
+    if (_disposed) {
+      await vpc!.dispose();
+      return;
     }
 
     // Remove listener from old controller before swapping.

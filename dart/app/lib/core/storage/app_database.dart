@@ -148,6 +148,10 @@ class CachedOcwCourses extends Table {
   TextColumn get title => text()();
   TextColumn get courseNumber => text()();
   TextColumn get description => text()();
+
+  /// Absolute URL of the course hero image (from `<meta property="og:image">`).
+  TextColumn get imageUrl => text().nullable()();
+
   DateTimeColumn get cachedAt => dateTime()();
 
   @override
@@ -206,6 +210,18 @@ class CoursePositions extends Table {
   Set<Column> get primaryKey => {courseId};
 }
 
+/// Tracks downloaded + rescaled course artwork files on disk. Keyed by remote
+/// URL so MITx and OCW share one dedup pool (shared URLs → shared file).
+/// User state: preserved across schema upgrades (files on disk).
+class CourseImages extends Table {
+  TextColumn get url => text()();
+  TextColumn get localFilePath => text()();
+  DateTimeColumn get downloadedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {url};
+}
+
 /// Tracks downloaded video files on disk. Primary key is the video URL —
 /// deduplication is URL-keyed so a video shared across courses is only
 /// downloaded once. [courseIds] is a JSON-encoded `List<String>`.
@@ -253,6 +269,7 @@ const _cacheTables = [
   CachedSanitizedXblocks,
   CachedCourseSync,
   DownloadedVideos,
+  CourseImages,
   SelectedLists,
   AvailableLists,
   CourseListMemberships,
@@ -270,7 +287,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -778,6 +795,34 @@ class AppDatabase extends _$AppDatabase {
           await into(cachedOcwResources).insert(res);
         }
       });
+
+  // --- Course images (user state) ---
+
+  Future<CourseImage?> getCourseImage(String url) =>
+      (select(courseImages)..where((t) => t.url.equals(url)))
+          .getSingleOrNull();
+
+  /// Reactive: emits the latest [CourseImage] row for [url] or null when
+  /// missing. Used by the home-screen tiles so artwork renders the instant
+  /// the downloader inserts the row.
+  Stream<CourseImage?> watchCourseImage(String url) =>
+      (select(courseImages)..where((t) => t.url.equals(url)))
+          .watchSingleOrNull();
+
+  Future<void> upsertCourseImage({
+    required String url,
+    required String localFilePath,
+  }) =>
+      into(courseImages).insertOnConflictUpdate(
+        CourseImagesCompanion.insert(
+          url: url,
+          localFilePath: localFilePath,
+          downloadedAt: DateTime.now(),
+        ),
+      );
+
+  Future<void> deleteCourseImage(String url) =>
+      (delete(courseImages)..where((t) => t.url.equals(url))).go();
 
   // --- Course positions (user state) ---
 
