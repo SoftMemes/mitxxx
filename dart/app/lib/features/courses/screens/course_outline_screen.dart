@@ -1,14 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:omnilect/core/analytics/analytics_events.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
+import 'package:omnilect/core/storage/app_database.dart';
+import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/courses/models/outline.dart';
+import 'package:omnilect/features/courses/providers/ocw_courses_provider.dart';
 import 'package:omnilect/features/courses/providers/outline_provider.dart';
 import 'package:omnilect/features/downloads/widgets/download_button.dart';
 import 'package:omnilect/features/downloads/widgets/download_progress_bar.dart';
 import 'package:omnilect/features/sync/models/course_sync_state.dart';
 import 'package:omnilect/features/sync/providers/sync_controller.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // ignore_for_file: uri_has_not_been_generated
 
@@ -19,6 +25,10 @@ class CourseOutlineScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (courseId.startsWith('ocw:')) {
+      return _OcwCourseOutlineView(courseId: courseId);
+    }
+
     final outlineAsync =
         ref.watch(courseOutlineProvider(courseId: courseId));
 
@@ -413,6 +423,190 @@ class _SequenceTile extends ConsumerWidget {
           onTap: () => _handleTap(context, ref, status),
         ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// OCW outline view
+// ---------------------------------------------------------------------------
+
+/// Shares the same visual shell as the MITx outline but sources its data from
+/// `cached_ocw_courses` / `cached_ocw_lectures` / `cached_ocw_resources`.
+/// Only rendered when `courseId` has the `ocw:` prefix.
+class _OcwCourseOutlineView extends ConsumerWidget {
+  const _OcwCourseOutlineView({required this.courseId});
+
+  final String courseId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final courseAsync = ref.watch(ocwCourseProvider(courseId));
+    return Scaffold(
+      appBar: AppBar(
+        title: courseAsync.maybeWhen(
+          data: (c) => Text(c?.title ?? 'Course Outline',
+              overflow: TextOverflow.ellipsis),
+          orElse: () => const Text('Course Outline'),
+        ),
+        actions: [
+          DownloadButton(courseId: courseId),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: courseAsync.when(
+        loading: () => const _CourseOutlineSkeleton(),
+        error: (_, _) => const _CourseOutlineSkeleton(),
+        data: (course) {
+          if (course == null) return const _CourseOutlineSkeleton();
+          return RefreshIndicator(
+            onRefresh: () => ref
+                .read(syncControllerProvider.notifier)
+                .syncCourse(courseId, trigger: kTriggerPullToRefresh),
+            child: _OcwOutlineBody(course: course),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _OcwOutlineBody extends ConsumerWidget {
+  const _OcwOutlineBody({required this.course});
+
+  final CachedOcwCourse course;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final db = ref.read(appDatabaseProvider);
+    return FutureBuilder<_OcwOutlineData>(
+      future: _loadData(db, course.courseId),
+      builder: (context, snapshot) {
+        final data = snapshot.data;
+        if (data == null) return const _CourseOutlineSkeleton();
+        return CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: DownloadProgressBar(
+                courseId: course.courseId,
+                useLectureCount: true,
+              ),
+            ),
+            if (course.description.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    course.description,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              ),
+            SliverToBoxAdapter(
+              child: _SectionHeaderTile(
+                title: data.lectures.isEmpty
+                    ? 'Lectures'
+                    : data.lectures.first.sectionTitle,
+              ),
+            ),
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final lecture = data.lectures[index];
+                  return _OcwLectureTile(
+                    courseId: course.courseId,
+                    lecture: lecture,
+                  );
+                },
+                childCount: data.lectures.length,
+              ),
+            ),
+            if (data.orphans.isNotEmpty) ...[
+              const SliverToBoxAdapter(
+                child: _SectionHeaderTile(title: 'Resources'),
+              ),
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) =>
+                      _OcwOrphanResourceTile(resource: data.orphans[index]),
+                  childCount: data.orphans.length,
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Future<_OcwOutlineData> _loadData(AppDatabase db, String courseId) async {
+    final lectures = await db.getOcwLectures(courseId);
+    final orphans = await db.getOrphanOcwResources(courseId);
+    return _OcwOutlineData(lectures: lectures, orphans: orphans);
+  }
+}
+
+class _OcwOutlineData {
+  const _OcwOutlineData({required this.lectures, required this.orphans});
+  final List<CachedOcwLecture> lectures;
+  final List<CachedOcwResource> orphans;
+}
+
+class _OcwLectureTile extends ConsumerWidget {
+  const _OcwLectureTile({required this.courseId, required this.lecture});
+
+  final String courseId;
+  final CachedOcwLecture lecture;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final hasVideo = lecture.mp4Url != null;
+    final subtitleColor = cs.onSurface.withValues(alpha: 0.6);
+    return ListTile(
+      leading: IconButton(
+        icon: Icon(
+          hasVideo ? Icons.play_circle_outline : Icons.videocam_off_outlined,
+        ),
+        tooltip: hasVideo ? 'Play lecture' : 'Video not available',
+        onPressed: () => _tap(context),
+      ),
+      title: Text(lecture.title),
+      subtitle: hasVideo
+          ? null
+          : Text(
+              'Video not available',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: subtitleColor),
+            ),
+      trailing: Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+      onTap: () => _tap(context),
+    );
+  }
+
+  void _tap(BuildContext context) {
+    context.push('/course/$courseId/ocw-lecture/${lecture.slug}');
+  }
+}
+
+class _OcwOrphanResourceTile extends StatelessWidget {
+  const _OcwOrphanResourceTile({required this.resource});
+
+  final CachedOcwResource resource;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.picture_as_pdf_outlined),
+      title: Text(resource.title),
+      trailing: const Icon(Icons.open_in_new),
+      onTap: () => unawaited(launchUrl(
+        Uri.parse(resource.url),
+        mode: LaunchMode.externalApplication,
+      )),
     );
   }
 }

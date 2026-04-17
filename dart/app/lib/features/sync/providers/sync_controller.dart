@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:logging/logging.dart';
 import 'package:mitx_api/mitx_api.dart';
 import 'package:omnilect/core/analytics/analytics_events.dart';
@@ -14,6 +15,7 @@ import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/auth/providers/reauth_provider.dart';
 import 'package:omnilect/features/courses/models/enrollment.dart';
 import 'package:omnilect/features/courses/models/list_source.dart';
+import 'package:omnilect/features/courses/models/ocw_course.dart';
 import 'package:omnilect/features/courses/models/xblock_content.dart';
 import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
 import 'package:omnilect/features/courses/providers/outline_provider.dart';
@@ -22,6 +24,7 @@ import 'package:omnilect/features/courses/providers/xblock_provider.dart';
 import 'package:omnilect/features/courses/utils/xblock_parser.dart';
 import 'package:omnilect/features/downloads/models/download_status.dart';
 import 'package:omnilect/features/downloads/providers/video_download_manager.dart';
+import 'package:omnilect/features/sync/fetchers/ocw_course_fetcher.dart';
 import 'package:omnilect/features/sync/models/course_sync_state.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -457,6 +460,34 @@ class SyncController extends _$SyncController {
               if (courseId != null && enrolledIds.contains(courseId)) {
                 supported.add(courseId);
               }
+            }
+          } else if (platformCode == 'ocw') {
+            // Extract the OCW URL slug from resource.runs[0].slug. Expected
+            // shape: "courses/9-13-the-human-brain-spring-2019". Courses with
+            // no usable run fall through to the unsupported branch below.
+            final runs = (resource['runs'] as List<dynamic>? ?? [])
+                .cast<Map<String, dynamic>>();
+            String? ocwSlug;
+            for (final run in runs) {
+              final runSlug = run['slug'] as String?;
+              if (runSlug == null) continue;
+              final parsed = _parseOcwSlug(runSlug);
+              if (parsed != null) {
+                ocwSlug = parsed;
+                break;
+              }
+            }
+            if (ocwSlug != null) {
+              supported.add('ocw:$ocwSlug');
+            } else if (readableId.isNotEmpty) {
+              unsupported.add(
+                UnsupportedListItemsCompanion.insert(
+                  courseId: readableId,
+                  listId: listId,
+                  title: title,
+                  platformCode: platformCode,
+                ),
+              );
             }
           } else if (readableId.isNotEmpty) {
             unsupported.add(
@@ -922,7 +953,15 @@ class SyncController extends _$SyncController {
 
   /// Fetches + persists the course outline and returns its sequence IDs in
   /// course order. Throws on network failure.
+  ///
+  /// Dispatches by course-id prefix:
+  ///   - `course-v1:...` → MITx / Open edX path (existing).
+  ///   - `ocw:...`       → [_fetchOcwCourse]; returns an empty list because
+  ///                       OCW has no sequences / xblocks to schedule.
   Future<List<String>> _fetchOutline(String courseId) async {
+    if (courseId.startsWith('ocw:')) {
+      return _fetchOcwCourse(courseId);
+    }
     final client = ref.read(dioClientProvider);
     final db = ref.read(appDatabaseProvider);
 
@@ -963,6 +1002,93 @@ class SyncController extends _$SyncController {
               .cast<String>(),
         )
         .toList();
+  }
+
+  /// OCW variant of [_fetchOutline]. Walks ocw.mit.edu end-to-end and
+  /// persists the full course + lectures + resources in one shot, then
+  /// reconciles [DownloadedVideos] refs for dropped MP4 URLs. Returns an
+  /// empty sequence list so the scheduler skips phase 2.
+  Future<List<String>> _fetchOcwCourse(String courseId) async {
+    final slug = courseId.substring('ocw:'.length);
+    final db = ref.read(appDatabaseProvider);
+    final fetcher = ref.read(ocwCourseFetcherProvider);
+
+    // Snapshot the currently-cached MP4 URLs so we can compute the drop set
+    // AFTER replaceOcwCourse wipes them.
+    final oldMp4s = (await db.getOcwLectureMp4Urls(courseId)).toSet();
+
+    final course = await fetcher.fetchCourse(courseId: courseId, slug: slug);
+
+    final allLectures = [
+      for (final s in course.sections) ...s.lectures,
+    ];
+    final allResources = <OcwResource>[
+      for (final s in course.sections)
+        for (final l in s.lectures) ...l.resources,
+      ...course.orphanResources,
+    ];
+
+    await db.replaceOcwCourse(
+      course: CachedOcwCoursesCompanion.insert(
+        courseId: course.id,
+        slug: course.slug,
+        title: course.title,
+        courseNumber: course.courseNumber,
+        description: course.description,
+        cachedAt: DateTime.now(),
+      ),
+      lectures: [
+        for (final l in allLectures)
+          CachedOcwLecturesCompanion.insert(
+            lectureId: l.id,
+            courseId: course.id,
+            slug: l.slug,
+            title: l.title,
+            sectionTitle: l.sectionTitle,
+            sectionOrder: l.sectionOrder,
+            lectureOrder: l.lectureOrder,
+            mp4Url: Value(l.mp4Url),
+            durationSeconds: Value(l.durationSeconds),
+            cachedAt: DateTime.now(),
+          ),
+      ],
+      resources: [
+        for (final r in allResources)
+          CachedOcwResourcesCompanion.insert(
+            resourceId: r.id,
+            courseId: course.id,
+            lectureId: Value(r.lectureId),
+            type: r.type.name,
+            title: r.title,
+            url: r.url,
+            cachedAt: DateTime.now(),
+          ),
+      ],
+    );
+
+    // Reconcile DownloadedVideos: drop this course's ref from any old MP4
+    // URL that is no longer referenced by the new lecture set. If that was
+    // the last course referencing the URL, the file is deleted from disk.
+    final newMp4s = <String>{
+      for (final l in allLectures)
+        if (l.mp4Url != null) l.mp4Url!,
+    };
+    for (final oldUrl in oldMp4s.difference(newMp4s)) {
+      final path = await db.removeCourseFromDownload(oldUrl, courseId);
+      if (path != null && path.isNotEmpty) {
+        try {
+          File(path).deleteSync();
+          _log.info('Deleted orphaned OCW download: $path');
+        } on Object catch (e) {
+          _log.warning('Could not delete orphaned file $path: $e');
+        }
+      }
+    }
+
+    // Outline is persisted — let the outline screen render immediately.
+    ref.invalidate(courseOutlineProvider(courseId: courseId));
+
+    return const [];
   }
 
   Future<void> _fetchAndCacheXblock(
@@ -1111,6 +1237,22 @@ class SyncController extends _$SyncController {
     if (etag != null) headers['If-None-Match'] = etag;
     if (lastModified != null) headers['If-Modified-Since'] = lastModified;
     return headers.isEmpty ? null : headers;
+  }
+
+  /// Parse an OCW course slug out of a learn.mit.edu `resource.runs[].slug`.
+  /// Expected shape: `"courses/9-13-the-human-brain-spring-2019"` → returns
+  /// `"9-13-the-human-brain-spring-2019"`. Returns null for anything else.
+  static String? _parseOcwSlug(String runSlug) {
+    const prefix = 'courses/';
+    if (!runSlug.startsWith(prefix)) return null;
+    var s = runSlug.substring(prefix.length);
+    while (s.endsWith('/')) {
+      s = s.substring(0, s.length - 1);
+    }
+    // A bare course slug has no more slashes. Deeper paths (e.g.
+    // "courses/.../resources/lecture-1") are lecture children, not courses.
+    if (s.contains('/') || s.isEmpty) return null;
+    return s;
   }
 
   void _updateCourseState(

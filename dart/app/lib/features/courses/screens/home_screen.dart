@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:omnilect/core/analytics/analytics_events.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
+import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/features/auth/providers/auth_provider.dart';
 import 'package:omnilect/features/courses/models/enrollment.dart';
 import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
+import 'package:omnilect/features/courses/providers/ocw_courses_provider.dart';
 import 'package:omnilect/features/courses/providers/outline_provider.dart';
 import 'package:omnilect/features/courses/providers/unsupported_courses_provider.dart';
 import 'package:omnilect/features/sync/models/course_sync_state.dart';
@@ -97,8 +99,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           final unsupported =
               ref.watch(unsupportedCoursesProvider).asData?.value ??
                   const <UnsupportedCourse>[];
+          final ocwCourses =
+              ref.watch(activeOcwCoursesProvider).asData?.value ??
+                  const <CachedOcwCourse>[];
 
-          if (enrollments.isEmpty && unsupported.isEmpty) {
+          if (enrollments.isEmpty && ocwCourses.isEmpty && unsupported.isEmpty) {
             return _PullToSyncWrapper(
               onRefresh: restartSync,
               child: const _NotEnrolledState(),
@@ -106,6 +111,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           }
 
           final totalCount = enrollments.length +
+              ocwCourses.length +
               (unsupported.isNotEmpty ? unsupported.length + 1 : 0);
 
           return Column(
@@ -133,7 +139,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           },
                         );
                       }
-                      final unsupportedIndex = index - enrollments.length;
+                      final afterEnrolled = index - enrollments.length;
+                      if (afterEnrolled < ocwCourses.length) {
+                        final course = ocwCourses[afterEnrolled];
+                        final courseSyncState = syncState[course.courseId];
+                        return _OcwCourseTile(
+                          course: course,
+                          syncState: courseSyncState,
+                          onTap: () {
+                            ref.read(analyticsServiceProvider).logCourseView(
+                                  courseId: course.courseId,
+                                  source: kSourceCourseList,
+                                );
+                            context.push('/course/${course.courseId}');
+                          },
+                        );
+                      }
+                      final unsupportedIndex = afterEnrolled - ocwCourses.length;
                       if (unsupportedIndex == 0) {
                         return const _SectionHeader('Not yet supported');
                       }
@@ -628,4 +650,105 @@ class _ArtworkPlaceholder extends StatelessWidget {
       child: Icon(Icons.school_outlined, color: Theme.of(context).colorScheme.onSurfaceVariant),
     );
   }
+}
+
+/// Visually identical to [_CourseTile] but sources its title + course number
+/// from `cached_ocw_courses` rather than MITx enrollments. OCW courses don't
+/// have a MIT-Learn artwork URL, dates, or a separate "is ready" signal —
+/// presence of the row IS readiness.
+class _OcwCourseTile extends ConsumerWidget {
+  const _OcwCourseTile({
+    required this.course,
+    required this.syncState,
+    required this.onTap,
+  });
+
+  final CachedOcwCourse course;
+  final CourseSyncState? syncState;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status = syncState?.status ?? SyncStatus.idle;
+    final isSyncing = status == SyncStatus.syncing;
+    final hasError = status == SyncStatus.error;
+    final lastSynced = syncState?.lastSyncedAt;
+    final cs = Theme.of(context).colorScheme;
+
+    final syncLabel = isSyncing
+        ? 'Syncing…'
+        : hasError
+            ? 'Sync failed'
+            : lastSynced != null
+                ? 'Synced ${_relativeLabel(lastSynced)}'
+                : 'Not synced';
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: _ArtworkPlaceholder(),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    course.title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    course.courseNumber,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: cs.onSurface.withValues(alpha: 0.6),
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      if (hasError)
+                        Icon(Icons.error_outline, size: 14, color: cs.error)
+                      else
+                        Icon(Icons.check_circle_outline,
+                            size: 14,
+                            color: lastSynced != null
+                                ? Colors.green
+                                : cs.onSurfaceVariant),
+                      const SizedBox(width: 4),
+                      Text(
+                        syncLabel,
+                        style:
+                            Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: hasError
+                                      ? cs.error
+                                      : cs.onSurfaceVariant,
+                                ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _relativeLabel(DateTime dt) {
+  final diff = DateTime.now().difference(dt);
+  if (diff.inMinutes < 1) return 'just now';
+  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+  if (diff.inHours < 24) return '${diff.inHours}h ago';
+  return '${diff.inDays}d ago';
 }

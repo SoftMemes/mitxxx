@@ -1,7 +1,7 @@
 # Opencourseware Support Specification
 
 > **Version**: 2.0 (April 2026)
-> **Status**: Ready for Implementation
+> **Status**: Implemented
 > **Last Updated**: 2026-04-17
 
 ## Description
@@ -486,16 +486,52 @@ Stood up the OCW discovery tool that all downstream Flutter work consumes.
 - **Discovery via direct HTTPS** (per user choice during planning), not mitmproxy captures. Skipped `captures/` additions for this phase since OCW is a public static site with no auth and the committed HTML fixtures serve the same parser-provenance purpose.
 - **`<h1>` vs `<h2>` on lecture pages**: discovered during first test run that `<h1>` on an OCW lecture page is the COURSE title ("The Human Brain") and the LECTURE title is in `<h2>`. `parse_lecture_page` was updated to prefer the `<title>` tag (pipe-split first segment) with an `<h2>` fallback.
 
-**What's next (Phase 2+)**:
-- Flutter data layer (Drift tables, Dart models, HTML parser port).
-- `SyncController` per-course-type dispatch + `OcwCourseFetcher`.
-- Flutter UI (course outline Resources section + description header, `LectureScreen` `mp4Url == null` handling).
-- Flipping the `supported` flag on OCW items inside learn.mit.edu list contents — **blocked on** `course-shortlist-sync`'s learn.mit.edu list-fetch / reconciliation being implemented in code (tables landed; wiring not yet).
-
-**Verification**:
+**Phase 1 verification**:
 ```
 cd python-tools/ocw-client
 python -m pytest tests/ -q                                    # 24 passed
 python cli.py course 9-13-the-human-brain-spring-2019 --fixture-dir fixtures/9-13-the-human-brain-spring-2019
 python cli.py lecture 9-13-the-human-brain-spring-2019 lecture-2-neuroanatomy    # live HTTP → archive.org MP4
+```
+
+---
+
+**Phase 2 (Flutter) — April 2026**
+
+End-to-end OCW support in the Flutter app. OCW courses in selected learn.mit.edu lists now sync, display on the home screen, show an outline with matched lecture notes, play from archive.org (or offline once downloaded), and surface resource PDFs as external-browser links.
+
+**Key files added**:
+- `dart/app/lib/features/courses/models/ocw_course.dart` (+ freezed/json generated) — `OcwCourse`, `OcwSection`, `OcwLecture`, `OcwResource`, `OcwResourceType`.
+- `dart/app/lib/features/courses/utils/ocw_html_parser.dart` — port of the Python parsers (`parseCourseHome`, `parseVideoGallery`, `parseLecturePage`, `parseLectureNotesPage`) using `package:html`.
+- `dart/app/lib/features/courses/utils/ocw_resource_matcher.dart` — port of `extractLectureNumber` + `matchResourcesToLectures` (immutable style, no input mutation).
+- `dart/app/lib/features/courses/utils/ocw_resource_html_builder.dart` — `buildOcwResourceHtml` wraps grouped `<h3>` + `<ul><li><a>` inside `<div data-block-type="html">` so the existing `sanitizeXBlockHtml` allowlist passes it through.
+- `dart/app/lib/features/sync/fetchers/ocw_course_fetcher.dart` — owns its own `Dio` (no cookies), bounded-concurrency lecture fetch, normalises `http://archive.org` → `https://`.
+- `dart/app/lib/features/courses/providers/ocw_courses_provider.dart` — `activeOcwCoursesProvider` (selected OCW courses) + `ocwCourseProvider(courseId)`.
+- `dart/app/lib/features/player/providers/ocw_lecture_player_provider.dart` — `ocwLecturePlayerProvider(OcwLectureArgs)` → single-segment state with resolved URI + sanitized resource HTML.
+- `dart/app/lib/features/courses/screens/ocw_lecture_screen.dart` — dedicated single-video screen (plain `video_player`, no stitching). Renders "Video not available — Open on ocw.mit.edu" inline when `mp4Url == null`.
+- `dart/app/test/features/courses/utils/ocw_html_parser_test.dart`, `ocw_resource_matcher_test.dart`, `ocw_resource_html_builder_test.dart` — 29 new tests, all fixture-based, no network.
+- `dart/app/test/fixtures/ocw/` — committed HTML for 9.13 + 18.06 (copied from `python-tools/ocw-client/fixtures/`).
+
+**Key files modified**:
+- `dart/app/lib/core/storage/app_database.dart` — three new tables (`CachedOcwCourses`, `CachedOcwLectures`, `CachedOcwResources`), schemaVersion 8→9, CRUD + `replaceOcwCourse` transactional helper, `deleteCourseCache` / `clearLmsCache` / `clearAllAndGetDownloadPaths` / `getCoursesNotInSelection` updated to include the new tables.
+- `dart/app/lib/features/sync/providers/sync_controller.dart` — OCW platform branch in `_fetchListCourseIds` (extracts slug from `resource.runs[0].slug` → `ocw:{slug}`); `_fetchOutline` dispatches by `ocw:` prefix; new `_fetchOcwCourse` runs end-to-end fetch + persist + stale-download reconcile, returns `const []` so the sequence scheduler skips phase 2.
+- `dart/app/lib/features/downloads/providers/scope_download_provider.dart` — per-course-type URL enumeration; OCW scopes read from `cached_ocw_lectures.mp4_url`.
+- `dart/app/lib/features/courses/screens/course_outline_screen.dart` — OCW branch renders the shared sticky-section shell + course description header + orphan "Resources" section (taps launch system browser).
+- `dart/app/lib/features/courses/screens/home_screen.dart` — new `_OcwCourseTile` renders OCW cards alongside MITx cards. OCW entries no longer land in `UnsupportedListItems`.
+- `dart/app/lib/core/router/app_router.dart` — `/course/:courseId/ocw-lecture/:lectureSlug` route.
+- `dart/app/analysis_options.yaml` — excludes `**/*.g.dart` from analysis (stops cosmetic lints on json_serializable-generated enum maps from failing the CI gate).
+
+**Deviations from spec**:
+- Used a **separate `OcwLectureScreen`** widget rather than fully reusing `LectureScreen`. `LectureScreen`'s stitched-playback/cast/fullscreen machinery is overkill for a single-video lecture, and `mp4Url == null` required deeper branching than a small insertion. The new screen renders the same `HtmlBlock` for the resource tile, so the sanitizer + MathJax path is shared.
+- OCW courses use a **dedicated `ocw-lecture/:lectureSlug` route** rather than threading OCW through the existing `/sequence/:seqId` route. Cleaner dispatch, no courseId-prefix sniffing inside `LectureScreen`.
+- `ocwCoursesProvider` is a plain `StreamProvider` (not `@riverpod`-generated) — worked around a known build-order bug where `riverpod_generator` can't resolve Drift row classes on a clean build.
+- Pre-existing `test/widget_test.dart` ("App builds without crashing") fails because the harness pumps `OmnilectApp` without a `ProviderScope`. Confirmed unrelated to this change (fails on main with the same error); left untouched.
+
+**Phase 2 verification**:
+```
+cd dart/app
+fvm dart run build_runner build --delete-conflicting-outputs
+fvm flutter analyze                   # No issues found!
+fvm flutter test test/features/ test/course_list_reconciliation_test.dart
+# → All 38 tests passed (14 matcher + 10 parser + 5 html-builder + 9 reconciliation)
 ```

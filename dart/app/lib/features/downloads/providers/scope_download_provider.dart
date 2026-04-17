@@ -191,12 +191,28 @@ Future<List<String>> _collectUrls(
 }) async {
   final urls = <String>{};
 
+  final isOcw = courseId.startsWith('ocw:');
+
   if (verticalId != null) {
-    await _addUrlsForVertical(db, verticalId, urls);
+    if (isOcw) {
+      await _addUrlsForOcwLecture(db, verticalId, urls);
+    } else {
+      await _addUrlsForVertical(db, verticalId, urls);
+    }
   } else if (sequenceId != null) {
-    await _addUrlsForSequence(db, sequenceId, urls);
+    if (isOcw) {
+      // OCW has a single synthetic section per course — sequence scope is
+      // effectively course scope.
+      await _addUrlsForOcwCourse(db, courseId, urls);
+    } else {
+      await _addUrlsForSequence(db, sequenceId, urls);
+    }
   } else {
-    await _addUrlsForCourse(db, courseId, urls);
+    if (isOcw) {
+      await _addUrlsForOcwCourse(db, courseId, urls);
+    } else {
+      await _addUrlsForCourse(db, courseId, urls);
+    }
   }
 
   return urls.toList();
@@ -251,6 +267,13 @@ Future<List<List<String>>> _collectUrlsBySequence(
   AppDatabase db,
   String courseId,
 ) async {
+  if (courseId.startsWith('ocw:')) {
+    // Each OCW lecture is a "sequence" in the progress-bar model.
+    final urls = await db.getOcwLectureMp4Urls(courseId);
+    return [
+      for (final url in urls) [url],
+    ];
+  }
   final row = await db.getOutline(courseId);
   if (row == null) return [];
   final outline =
@@ -265,4 +288,27 @@ Future<List<List<String>>> _collectUrlsBySequence(
     }
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// OCW URL collection helpers
+// ---------------------------------------------------------------------------
+
+Future<void> _addUrlsForOcwLecture(
+  AppDatabase db,
+  String lectureId,
+  Set<String> out,
+) async {
+  final row = await db.getOcwLecture(lectureId);
+  final url = row?.mp4Url;
+  if (url != null) out.add(url);
+}
+
+Future<void> _addUrlsForOcwCourse(
+  AppDatabase db,
+  String courseId,
+  Set<String> out,
+) async {
+  final urls = await db.getOcwLectureMp4Urls(courseId);
+  out.addAll(urls);
 }

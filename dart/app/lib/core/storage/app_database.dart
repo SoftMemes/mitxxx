@@ -123,10 +123,10 @@ class CourseListMemberships extends Table {
   Set<Column> get primaryKey => {courseId, listId};
 }
 
-/// Cache of list items we CAN'T sync (OCW, edX, etc.) but still want to
-/// display on the home screen so the user knows they're in a selected list
-/// even though we can't download them yet. Rebuilt on every reconciliation —
-/// safe to treat as cache.
+/// Cache of list items we CAN'T sync (edX etc.) but still want to display on
+/// the home screen so the user knows they're in a selected list even though
+/// we can't download them yet. Rebuilt on every reconciliation — safe to
+/// treat as cache.
 ///
 /// [courseId] is the resource's `readable_id` (stable-ish across runs) since
 /// unsupported items don't have an Open edX courseware_id.
@@ -138,6 +138,55 @@ class UnsupportedListItems extends Table {
 
   @override
   Set<Column> get primaryKey => {courseId, listId};
+}
+
+/// Cache of OCW course metadata. One row per course.
+/// [courseId] is `"ocw:{slug}"` (see opencourseware-support.md).
+class CachedOcwCourses extends Table {
+  TextColumn get courseId => text()();
+  TextColumn get slug => text()();
+  TextColumn get title => text()();
+  TextColumn get courseNumber => text()();
+  TextColumn get description => text()();
+  DateTimeColumn get cachedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {courseId};
+}
+
+/// Cache of OCW lectures. Each lecture belongs to a course and (in v1) a single
+/// synthetic "Video Lectures" section. [mp4Url] is null for YouTube-only
+/// lectures and "in-class dissection" entries that have no downloadable video.
+class CachedOcwLectures extends Table {
+  TextColumn get lectureId => text()();
+  TextColumn get courseId => text()();
+  TextColumn get slug => text()();
+  TextColumn get title => text()();
+  TextColumn get sectionTitle => text()();
+  IntColumn get sectionOrder => integer()();
+  IntColumn get lectureOrder => integer()();
+  TextColumn get mp4Url => text().nullable()();
+  IntColumn get durationSeconds => integer().nullable()();
+  DateTimeColumn get cachedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {lectureId};
+}
+
+/// Cache of OCW downloadable resources (PDF lecture notes / slides).
+/// [lectureId] null means this resource couldn't be matched to a lecture and
+/// is surfaced at course level.
+class CachedOcwResources extends Table {
+  TextColumn get resourceId => text()();
+  TextColumn get courseId => text()();
+  TextColumn get lectureId => text().nullable()();
+  TextColumn get type => text()(); // OcwResourceType enum name
+  TextColumn get title => text()();
+  TextColumn get url => text()();
+  DateTimeColumn get cachedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {resourceId};
 }
 
 /// Tracks downloaded video files on disk. Primary key is the video URL —
@@ -174,6 +223,9 @@ const _cacheTables = [
   'cached_course_sync',
   'available_lists',
   'unsupported_list_items',
+  'cached_ocw_courses',
+  'cached_ocw_lectures',
+  'cached_ocw_resources',
 ];
 
 @DriftDatabase(tables: [
@@ -188,6 +240,9 @@ const _cacheTables = [
   AvailableLists,
   CourseListMemberships,
   UnsupportedListItems,
+  CachedOcwCourses,
+  CachedOcwLectures,
+  CachedOcwResources,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -197,7 +252,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -592,6 +647,12 @@ class AppDatabase extends _$AppDatabase {
     for (final r in syncRows) {
       known.add(r.read(cachedCourseSync.courseId)!);
     }
+    final ocwRows = await (selectOnly(cachedOcwCourses)
+          ..addColumns([cachedOcwCourses.courseId]))
+        .get();
+    for (final r in ocwRows) {
+      known.add(r.read(cachedOcwCourses.courseId)!);
+    }
 
     return known.difference(inSelection);
   }
@@ -614,6 +675,87 @@ class AppDatabase extends _$AppDatabase {
         await (delete(courseListMemberships)
               ..where((t) => t.courseId.equals(courseId)))
             .go();
+        // OCW cache tables are courseId-keyed so we can clean them eagerly.
+        // For non-OCW courseIds these deletes are no-ops.
+        await (delete(cachedOcwCourses)
+              ..where((t) => t.courseId.equals(courseId)))
+            .go();
+        await (delete(cachedOcwLectures)
+              ..where((t) => t.courseId.equals(courseId)))
+            .go();
+        await (delete(cachedOcwResources)
+              ..where((t) => t.courseId.equals(courseId)))
+            .go();
+      });
+
+  // --- OCW course cache ---
+
+  Future<CachedOcwCourse?> getOcwCourse(String courseId) =>
+      (select(cachedOcwCourses)..where((t) => t.courseId.equals(courseId)))
+          .getSingleOrNull();
+
+  Stream<CachedOcwCourse?> watchOcwCourse(String courseId) =>
+      (select(cachedOcwCourses)..where((t) => t.courseId.equals(courseId)))
+          .watchSingleOrNull();
+
+  Future<List<CachedOcwLecture>> getOcwLectures(String courseId) =>
+      (select(cachedOcwLectures)
+            ..where((t) => t.courseId.equals(courseId))
+            ..orderBy([
+              (t) => OrderingTerm(expression: t.sectionOrder),
+              (t) => OrderingTerm(expression: t.lectureOrder),
+            ]))
+          .get();
+
+  Future<CachedOcwLecture?> getOcwLecture(String lectureId) =>
+      (select(cachedOcwLectures)..where((t) => t.lectureId.equals(lectureId)))
+          .getSingleOrNull();
+
+  Future<List<CachedOcwResource>> getOcwResources(String courseId) =>
+      (select(cachedOcwResources)
+            ..where((t) => t.courseId.equals(courseId)))
+          .get();
+
+  Future<List<CachedOcwResource>> getOrphanOcwResources(String courseId) =>
+      (select(cachedOcwResources)
+            ..where((t) =>
+                t.courseId.equals(courseId) & t.lectureId.isNull()))
+          .get();
+
+  Future<List<String>> getOcwLectureMp4Urls(String courseId) async {
+    final rows = await (selectOnly(cachedOcwLectures)
+          ..addColumns([cachedOcwLectures.mp4Url])
+          ..where(cachedOcwLectures.courseId.equals(courseId) &
+              cachedOcwLectures.mp4Url.isNotNull()))
+        .get();
+    return rows
+        .map((r) => r.read(cachedOcwLectures.mp4Url))
+        .whereType<String>()
+        .toList();
+  }
+
+  /// Transactional full-replace of an OCW course and its lectures + resources.
+  /// Removes any rows for this courseId that aren't in the new set.
+  Future<void> replaceOcwCourse({
+    required CachedOcwCoursesCompanion course,
+    required List<CachedOcwLecturesCompanion> lectures,
+    required List<CachedOcwResourcesCompanion> resources,
+  }) =>
+      transaction(() async {
+        final courseId = course.courseId.value;
+        await (delete(cachedOcwResources)
+              ..where((t) => t.courseId.equals(courseId)))
+            .go();
+        await (delete(cachedOcwLectures)
+              ..where((t) => t.courseId.equals(courseId)))
+            .go();
+        await into(cachedOcwCourses).insertOnConflictUpdate(course);
+        for (final lec in lectures) {
+          await into(cachedOcwLectures).insert(lec);
+        }
+        for (final res in resources) {
+          await into(cachedOcwResources).insert(res);
+        }
       });
 
   // --- Data-usage helpers ---
@@ -655,6 +797,9 @@ class AppDatabase extends _$AppDatabase {
     await delete(cachedSequences).go();
     await delete(cachedXblocks).go();
     await delete(cachedSanitizedXblocks).go();
+    await delete(cachedOcwCourses).go();
+    await delete(cachedOcwLectures).go();
+    await delete(cachedOcwResources).go();
   }
 
   // --- Clear all cached data (used on sign-out).
@@ -677,6 +822,9 @@ class AppDatabase extends _$AppDatabase {
     await delete(availableLists).go();
     await delete(courseListMemberships).go();
     await delete(unsupportedListItems).go();
+    await delete(cachedOcwCourses).go();
+    await delete(cachedOcwLectures).go();
+    await delete(cachedOcwResources).go();
     return paths;
   }
 
