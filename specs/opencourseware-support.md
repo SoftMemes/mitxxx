@@ -463,3 +463,39 @@ Paths are best-effort; structure may shift during implementation.
 - Course-run grouping UI — each run is its own course.
 - Rich OCW metadata (instructor photos, citation blocks, etc.) beyond title + course number + short description.
 - Migration prompts / banners for existing shortlist-sync users.
+
+---
+
+## Implementation Notes
+
+**Phase 1 (python-tools/ocw-client/) — April 2026**
+
+Stood up the OCW discovery tool that all downstream Flutter work consumes.
+
+**Key files added**:
+- `python-tools/ocw-client/client.py` — `OcwClient` + pure parsers (`parse_course_home`, `parse_video_gallery`, `parse_lecture_page`, `parse_lecture_notes_page`) + resource-to-lecture matcher + dataclass models (`OcwCourse`, `OcwSection`, `OcwLecture`, `OcwResource`, `OcwResourceType`). Includes `build_course_from_fixtures` for offline orchestration.
+- `python-tools/ocw-client/cli.py` — Click CLI with `course`, `lecture`, `resources`, `match` subcommands. All support `--json` and `--fixture-dir`.
+- `python-tools/ocw-client/CLAUDE.md` — documents URL patterns, extraction rules, matching algorithm, known quirks, reference courses.
+- `python-tools/ocw-client/fixtures/9-13-the-human-brain-spring-2019/` — committed HTML for course home, video gallery, lecture notes, lecture 1. Happy path fixture (clean 1:1 video↔notes matches).
+- `python-tools/ocw-client/fixtures/18-06-linear-algebra-spring-2010/` — committed HTML for course home, video gallery, lecture 1. No-notes variant (35 MP4 lectures, no `/pages/lecture-notes/` page).
+- `python-tools/ocw-client/tests/test_parser.py` + `test_matcher.py` — 24 tests covering lecture-number extraction (including "Recitation N" negative case, `_l{NN}` URL extraction, off-by-one collisions), fixture-based parser tests, and an end-to-end network-isolation guard.
+
+**Dependencies**: No new packages. Uses the existing `python-tools/requirements.txt` (`requests`, `click`, `beautifulsoup4`) + `pytest` for tests.
+
+**Deviations from plan**:
+- **Discovery via direct HTTPS** (per user choice during planning), not mitmproxy captures. Skipped `captures/` additions for this phase since OCW is a public static site with no auth and the committed HTML fixtures serve the same parser-provenance purpose.
+- **`<h1>` vs `<h2>` on lecture pages**: discovered during first test run that `<h1>` on an OCW lecture page is the COURSE title ("The Human Brain") and the LECTURE title is in `<h2>`. `parse_lecture_page` was updated to prefer the `<title>` tag (pipe-split first segment) with an `<h2>` fallback.
+
+**What's next (Phase 2+)**:
+- Flutter data layer (Drift tables, Dart models, HTML parser port).
+- `SyncController` per-course-type dispatch + `OcwCourseFetcher`.
+- Flutter UI (course outline Resources section + description header, `LectureScreen` `mp4Url == null` handling).
+- Flipping the `supported` flag on OCW items inside learn.mit.edu list contents — **blocked on** `course-shortlist-sync`'s learn.mit.edu list-fetch / reconciliation being implemented in code (tables landed; wiring not yet).
+
+**Verification**:
+```
+cd python-tools/ocw-client
+python -m pytest tests/ -q                                    # 24 passed
+python cli.py course 9-13-the-human-brain-spring-2019 --fixture-dir fixtures/9-13-the-human-brain-spring-2019
+python cli.py lecture 9-13-the-human-brain-spring-2019 lecture-2-neuroanatomy    # live HTTP → archive.org MP4
+```
