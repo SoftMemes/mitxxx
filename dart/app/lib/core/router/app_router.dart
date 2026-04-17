@@ -22,6 +22,12 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'app_router.g.dart';
 
+/// Shared root-navigator key. Used by [appRouter] as GoRouter's navigatorKey
+/// so widgets installed above the Router (e.g. `ReauthGate` in
+/// `MaterialApp.router.builder`) can still reach the Navigator via
+/// `rootNavigatorKey.currentContext`.
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
 @Riverpod(keepAlive: true)
 GoRouter appRouter(Ref ref) {
   // Notifies GoRouter whenever auth, onboarding, or reauth state changes so
@@ -42,6 +48,7 @@ GoRouter appRouter(Ref ref) {
 
   return GoRouter(
     initialLocation: '/',
+    navigatorKey: rootNavigatorKey,
     refreshListenable: notifier,
     observers: [ref.read(analyticsServiceProvider).observer],
     redirect: (context, state) {

@@ -61,8 +61,23 @@ Future<void> _onWebViewAuthComplete() async {
 
       // If this login was prompted by a stale-session modal, clear the
       // pending request and let the reauth controller re-run the halted
-      // sync operation.
+      // sync operation. The retry is kicked off unawaited so the rest of
+      // the flow (and the rest of this screen's teardown) can proceed
+      // immediately — the sync progress appears on whatever screen we
+      // return to via its usual observers.
       ref.read(reauthControllerProvider.notifier).onLoginSucceeded();
+
+      if (!mounted) return;
+      // Pop back to the route that pushed `/login` (the screen the user
+      // was on when the stale-session modal fired). If `/login` was the
+      // initial destination — e.g. the "Log in to sync" button on home
+      // used `context.go('/login')` so nothing is beneath it — fall back
+      // to `/home`.
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/home');
+      }
     } on Object catch (e, st) {
       _log.severe('_onWebViewAuthComplete failed', e, st);
       if (mounted) {

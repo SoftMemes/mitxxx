@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:omnilect/core/router/app_router.dart';
 import 'package:omnilect/features/auth/providers/reauth_provider.dart';
 
 /// Listens to [reauthControllerProvider] and surfaces a dismissible "session
@@ -34,8 +35,19 @@ class _ReauthGateState extends ConsumerState<ReauthGate> {
 
   Future<void> _showPrompt() async {
     _dialogOpen = true;
+    // ReauthGate is installed in MaterialApp.router's `builder`, which means
+    // its `context` is an ANCESTOR of the router's Navigator AND of the
+    // GoRouter InheritedWidget. `showDialog(context: context)` and
+    // `GoRouter.of(context)` both fail here. Use the shared root-navigator
+    // key (set on GoRouter in app_router.dart) — its currentContext is a
+    // descendant of the Navigator.
+    final navCtx = rootNavigatorKey.currentContext;
+    if (navCtx == null) {
+      _dialogOpen = false;
+      return;
+    }
     final action = await showDialog<_ReauthAction>(
-      context: context,
+      context: navCtx,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('Session expired'),
@@ -63,7 +75,15 @@ class _ReauthGateState extends ConsumerState<ReauthGate> {
     switch (action) {
       case _ReauthAction.login:
         notifier.beginLogin();
-        unawaited(GoRouter.of(context).push('/login'));
+        // Same context trap as above — go through the router's navigator
+        // context, which IS a descendant of the GoRouter InheritedWidget.
+        final routeCtx = rootNavigatorKey.currentContext;
+        if (routeCtx != null) {
+          // routeCtx is freshly obtained from the root navigator key after
+          // the dialog closed — it is NOT a stored pre-await context.
+          // ignore: use_build_context_synchronously
+          unawaited(GoRouter.of(routeCtx).push('/login'));
+        }
       case _ReauthAction.dismiss:
       case null:
         notifier.dismiss();
