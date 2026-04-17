@@ -185,6 +185,11 @@ def beta_android_impl
   )
 end
 
+def testflight_changelog
+  sha = (sh("git rev-parse --short HEAD").strip rescue "unknown")
+  "Build #{ENV['BUILD_NUMBER']} (#{sha}) — #{Time.now.strftime('%Y-%m-%d %H:%M')}"
+end
+
 def beta_ios_impl
   api_key = app_store_connect_api_key_config
   match(
@@ -202,7 +207,9 @@ def beta_ios_impl
     api_key:          api_key,
     app_identifier:   PROD_BUNDLE_ID,
     ipa:              "build/ios/ipa/MITxxx.ipa",
-    skip_waiting_for_build_processing: true,
+    groups:           ["internal"],
+    changelog:        testflight_changelog,
+    skip_waiting_for_build_processing: false,
   )
 end
 
@@ -263,6 +270,8 @@ def release_ios_impl
     api_key:              api_key,
     app_identifier:       PROD_BUNDLE_ID,
     ipa:                  "build/ios/ipa/MITxxx.ipa",
+    groups:               ["internal"],
+    changelog:            testflight_changelog,
     submit_beta_review:   true,
   )
 end
