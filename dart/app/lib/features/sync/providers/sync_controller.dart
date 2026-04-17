@@ -415,7 +415,7 @@ class SyncController extends _$SyncController {
   }) async {
     switch (source) {
       case ListSource.enrolled:
-        // "All enrolled" — every enrollment is in this list's membership.
+        // "Enrolled" — every enrollment is in this list's membership.
         return enrolledIds;
       case ListSource.learnMyList:
         await client.ensureLearnApiSession();

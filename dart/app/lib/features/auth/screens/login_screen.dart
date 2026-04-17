@@ -9,6 +9,7 @@ import 'package:mitx_api/mitx_api.dart';
 import 'package:omnilect/core/network/dio_client_provider.dart';
 import 'package:omnilect/features/auth/providers/auth_provider.dart';
 import 'package:omnilect/features/auth/providers/reauth_provider.dart';
+import 'package:omnilect/features/auth/utils/webview_cookie_sync.dart';
 
 final _log = Logger('auth.login');
 
@@ -78,33 +79,14 @@ Future<void> _onWebViewAuthComplete() async {
 
   Future<void> _syncWebViewCookiesToDio() async {
     final client = ref.read(dioClientProvider);
-    final cookieManager = CookieManager.instance();
-
-    // Also grab sso.ol.mit.edu so the Keycloak identity cookies (KEYCLOAK_IDENTITY,
-    // KEYCLOAK_SESSION) land in the Dio store — without them, server-side OAuth
-    // redirect chains (establishLmsSession, establishLearnApiSession) bounce to
-    // the SSO login page instead of completing silently.
-    const ssoBaseUrl = 'https://sso.ol.mit.edu';
-    for (final baseUrl in [kMitxOnlineBaseUrl, kLmsBaseUrl, ssoBaseUrl]) {
-      final host = Uri.parse(baseUrl).host;
-      final webCookies = await cookieManager.getCookies(
-        url: WebUri(baseUrl),
-      );
-      _log.info('cookies from native store for $baseUrl: ${webCookies.length} total');
-      for (final c in webCookies) {
-        _log.fine('  cookie: name=${c.name} domain=${c.domain} httpOnly=${c.isHttpOnly} secure=${c.isSecure}');
-      }
-
-      if (webCookies.isEmpty) continue;
-
-      // Save raw name→value pairs directly — no dart:io Cookie parsing.
-      final raw = <String, String>{
-        for (final c in webCookies)
-          c.name: c.value as String,
-      };
-      await client.saveCookies(host, raw);
-      _log.info('saved ${raw.length} cookies for $host');
-    }
+    // Include sso.ol.mit.edu so Keycloak identity cookies land in the Dio
+    // store — without them, server-side OAuth redirect chains bounce to the
+    // SSO login page instead of completing silently.
+    await syncWebViewCookiesToDio(client, const [
+      'mitxonline.mit.edu',
+      'courses.learn.mit.edu',
+      'sso.ol.mit.edu',
+    ]);
   }
 
   @override
