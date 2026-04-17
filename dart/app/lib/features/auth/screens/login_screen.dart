@@ -139,16 +139,18 @@ Future<void> _onWebViewAuthComplete() async {
             // writes to, so Keycloak session cookies are visible cross-host.
             sharedCookiesEnabled: true,
           ),
-          // iOS auto-zooms on <input> focus when font-size < 16px (Keycloak's
-          // default). Clamp maximum-scale at document start to prevent this.
+          // iOS auto-zooms on <input> focus when the input's font-size is
+          // below 16px (Keycloak's default). Force inputs to 16px via an
+          // injected stylesheet — more accessibility-friendly than disabling
+          // user-scalable on the viewport.
           initialUserScripts: UnmodifiableListView([
             UserScript(
               source: """
-                var _m = document.querySelector('meta[name=viewport]');
-                if (!_m) { _m = document.createElement('meta'); _m.name = 'viewport'; document.head.appendChild(_m); }
-                _m.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+                var _s = document.createElement('style');
+                _s.textContent = 'input, textarea, select { font-size: 16px !important; }';
+                (document.head || document.documentElement).appendChild(_s);
               """,
-              injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+              injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
             ),
           ]),
           shouldOverrideUrlLoading: (controller, navigationAction) async {
