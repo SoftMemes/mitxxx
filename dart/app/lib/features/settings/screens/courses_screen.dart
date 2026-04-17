@@ -79,8 +79,12 @@ class _CoursesScreenState extends ConsumerState<CoursesScreen> {
     // immediately — existing in-flight work is cancelled first.
     final syncController = ref.read(syncControllerProvider.notifier);
     unawaited(() async {
-      await syncController.stopAll();
-      await syncController.syncAll();
+      try {
+        await syncController.stopAll();
+        await syncController.syncAll();
+      } on Object catch (e, st) {
+        debugPrint('courses apply: sync kickoff failed: $e\n$st');
+      }
     }());
 
     if (!mounted) return;

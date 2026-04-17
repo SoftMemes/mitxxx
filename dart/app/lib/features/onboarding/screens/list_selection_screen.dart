@@ -8,6 +8,7 @@ import 'package:omnilect/features/courses/models/list_source.dart';
 import 'package:omnilect/features/courses/providers/available_lists_provider.dart';
 import 'package:omnilect/features/courses/providers/selected_lists_provider.dart';
 import 'package:omnilect/features/courses/widgets/list_picker.dart';
+import 'package:omnilect/features/sync/providers/sync_controller.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const String _kManageListsUrl = 'https://learn.mit.edu/dashboard/my-lists';
@@ -62,6 +63,22 @@ class _ListSelectionScreenState extends ConsumerState<ListSelectionScreen> {
             availableCount: available.length,
           ),
     );
+
+    // Kick off the initial sync immediately so the user sees progress on
+    // the home screen instead of an empty list that only starts populating
+    // after a pull-to-refresh. Matches the settings Courses `_apply` flow.
+    final syncController = ref.read(syncControllerProvider.notifier);
+    unawaited(() async {
+      try {
+        await syncController.stopAll();
+        await syncController.syncAll();
+      } on Object catch (e, st) {
+        // Swallow: sync errors surface via the sync state UI or the reauth
+        // flow. We just don't want them to crash the onboarding transition.
+        debugPrint('onboarding: sync kickoff failed: $e\n$st');
+      }
+    }());
+
     if (!mounted) return;
     context.go('/home');
   }
