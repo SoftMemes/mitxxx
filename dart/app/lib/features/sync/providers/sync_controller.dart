@@ -13,6 +13,8 @@ import 'package:omnilect/core/network/dio_client_provider.dart';
 import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/auth/providers/reauth_provider.dart';
+import 'package:omnilect/features/auth/utils/learn_api_session_bootstrap.dart'
+    as learn_bootstrap;
 import 'package:omnilect/features/courses/models/enrollment.dart';
 import 'package:omnilect/features/courses/models/list_source.dart';
 import 'package:omnilect/features/courses/models/ocw_course.dart';
@@ -435,7 +437,13 @@ class SyncController extends _$SyncController {
           unsupported: const [],
         );
       case ListSource.learnMyList:
-        await client.ensureLearnApiSession();
+        // The Dio-only handshake (`client.ensureLearnApiSession`) fails when
+        // HttpOnly Keycloak identity cookies are only in the WebView jar —
+        // which is the state we end up in after any login WebView that
+        // didn't specifically visit api.learn.mit.edu. Use the WebView-
+        // backed helper: it syncs cookies, probes /users/me/, and runs the
+        // headless-WebView bootstrap if the session is actually stale.
+        await learn_bootstrap.ensureLearnApiSession(client);
         final resp = await client.learnApi.get<dynamic>(
           '/api/v1/userlists/$listId/items/',
           queryParameters: {'limit': 1000},

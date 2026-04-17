@@ -7,7 +7,6 @@ import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/auth/providers/reauth_provider.dart';
 import 'package:omnilect/features/auth/utils/learn_api_session_bootstrap.dart';
-import 'package:omnilect/features/auth/utils/webview_cookie_sync.dart';
 import 'package:omnilect/features/courses/models/list_source.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -52,52 +51,12 @@ class AvailableListsController extends _$AvailableListsController {
     final now = DateTime.now();
     final companions = <AvailableListsCompanion>[];
 
-    // Lift cookies from the webview's persistent jar (the webview is the
-    // authoritative cookie store after login). `session_mitlearn` /
-    // `learn_csrftoken` are set there during the login flow's redirect chain;
-    // pulling them into Dio here is enough for userlists to authenticate
-    // correctly, and avoids a separate server-side OAuth hop that was prone
-    // to long chains on slow networks.
-    try {
-      await syncWebViewCookiesToDio(client, const [
-        'sso.ol.mit.edu',
-        'mitxonline.mit.edu',
-        'courses.learn.mit.edu',
-        'api.learn.mit.edu',
-        'learn.mit.edu',
-      ]);
-    } on Object catch (e, st) {
-      _log.warning('refresh: webview cookie sync failed', e, st);
-    }
-
-    // Check whether api.learn.mit.edu sees us as authenticated. A silently-
-    // stale `session_mitlearn` returns 200 with `is_authenticated: false` and
-    // makes userlists come back empty. If so, run the HeadlessWebView-backed
-    // bootstrap to complete SSO against api.learn.mit.edu before we fetch
-    // userlists.
-    var learnAuthenticated = false;
-    try {
-      final me = await client.learnApi.get<dynamic>('/api/v0/users/me/');
-      final body = me.data as Map<String, dynamic>;
-      learnAuthenticated = body['is_authenticated'] == true;
-      _log.info(
-        'refresh: learnApi users/me is_authenticated=$learnAuthenticated '
-        'username=${body['username']}',
-      );
-    } on Object catch (e, st) {
-      _log.warning('refresh: learnApi users/me failed', e, st);
-    }
-
-    if (!learnAuthenticated) {
-      _log.info(
-        'refresh: learn-api session stale — bootstrapping via WebView',
-      );
-      try {
-        await bootstrapLearnApiSession(client);
-      } on Object catch (e, st) {
-        _log.warning('refresh: learn-api bootstrap failed', e, st);
-      }
-    }
+    // Make sure the api.learn.mit.edu session is authenticated before the
+    // userlist fetch — lifts WebView cookies into Dio, probes /users/me/,
+    // and runs the headless-WebView bootstrap if `session_mitlearn` is stale
+    // or missing. Shared with the sync path so both code paths behave the
+    // same way on a silently-stale session.
+    await ensureLearnApiSession(client);
 
     // "All enrolled" — from mitxonline. Dio is configured with a JSON
     // Accept header, so `.data` comes back already decoded; we request

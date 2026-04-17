@@ -10,6 +10,8 @@ import 'package:omnilect/core/network/dio_client_provider.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/auth/models/user.dart';
 import 'package:omnilect/features/auth/providers/reauth_provider.dart';
+import 'package:omnilect/features/auth/utils/learn_api_session_bootstrap.dart'
+    as learn_bootstrap;
 import 'package:omnilect/features/downloads/providers/video_download_manager.dart';
 import 'package:omnilect/features/sync/providers/sync_controller.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -108,12 +110,13 @@ class Auth extends _$Auth {
       await _establishLmsSession(client);
 
       // Refresh the MIT Learn API session too so the first userlist fetch
-      // doesn't pay a silent-stale cookie penalty.
-      try {
-        await client.ensureLearnApiSession(force: true);
-      } on Object catch (e, st) {
-        _log.warning('onLoginComplete: learn api session refresh failed', e, st);
-      }
+      // doesn't pay a silent-stale cookie penalty. The Dio-only handshake
+      // (`client.ensureLearnApiSession`) can't complete the SSO redirect
+      // chain when the HttpOnly Keycloak identity cookies live only in the
+      // WebView's jar — which is exactly the state we're in after this
+      // login WebView finished on mitxonline.mit.edu without ever visiting
+      // api.learn.mit.edu. Use the WebView-backed bootstrap helper instead.
+      await learn_bootstrap.ensureLearnApiSession(client);
 
       // Flush any LMS content cached while unauthenticated.
       final db = ref.read(appDatabaseProvider);
