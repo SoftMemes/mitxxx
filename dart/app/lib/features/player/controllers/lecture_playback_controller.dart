@@ -72,12 +72,30 @@ class VideoScheduleEntry {
 class LecturePlaybackController {
   LecturePlaybackController(this.schedule)
       : assert(schedule.isNotEmpty, 'schedule must not be empty'),
-        totalDuration = schedule.fold(0, (sum, e) => sum + e.duration);
+        _scheduledTotalDuration =
+            schedule.fold(0, (sum, e) => sum + e.duration);
 
   final List<VideoScheduleEntry> schedule;
 
-  /// Total duration of all segments combined (seconds, from metadata).
-  final double totalDuration;
+  /// Metadata-provided total duration (seconds). For MITx lectures this is
+  /// reliable — all segments have durations in the xblock metadata. OCW
+  /// pages don't surface duration, so OCW schedules arrive with entries
+  /// whose `duration` is 0 and this sum is 0.
+  final double _scheduledTotalDuration;
+
+  /// Total duration of the lecture in seconds. Uses the schedule sum when
+  /// available (>0); otherwise back-fills from the active
+  /// [VideoPlayerController]'s loaded duration once it initializes. This
+  /// makes the scrub bar seekable for OCW lectures where metadata duration
+  /// is unknown.
+  double get totalDuration {
+    if (_scheduledTotalDuration > 0) return _scheduledTotalDuration;
+    final actual = _activeVpc?.value.duration;
+    if (actual != null && actual.inMilliseconds > 0) {
+      return actual.inMilliseconds / 1000.0;
+    }
+    return 0;
+  }
 
   /// Current playback state. UI widgets should listen to this.
   final ValueNotifier<PlaybackSnapshot> snapshot = ValueNotifier(
