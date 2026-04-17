@@ -1,7 +1,7 @@
 # App Website Specification
 
 > **Version**: 1.0 (April 2026)
-> **Status**: Ready for Implementation
+> **Status**: Implemented
 > **Last Updated**: 2026-04-17
 
 ## Goals
@@ -300,9 +300,27 @@ Files updated:
 
 ## Open TODOs (fill in before/at launch)
 
-- App Store URL.
-- Google Play URL.
-- GitHub repository URL (footer + FAQ).
-- App icon copied to `web/public/src/assets/` (plus derived `favicon.ico`, `apple-touch-icon.png`).
+- App Store URL → `web/public/src/config.ts` → `appStoreUrl`.
+- Google Play URL → `web/public/src/config.ts` → `playStoreUrl`.
+- GitHub repository URL → `web/public/src/config.ts` → `githubUrl` (surfaces in footer).
 - Cloudflare Pages project created and `www.omnilect.app` + apex domain attached.
+- Cloudflare Web Analytics token → `web/public/src/config.ts` → `cloudflareAnalyticsToken` (beacon only renders when set).
 - DNS: `contact@omnilect.app` forwarding configured (Cloudflare Email Routing).
+
+## Implementation Notes
+
+**Implemented**: April 2026
+
+**Key Changes:**
+- Moved the existing Next.js app from `web/*` to `web/app/*` using `git mv` (history preserved).
+- Scaffolded Astro 5 static site at `web/public/` — manually (no `npm create astro@latest`) to keep it non-interactive and minimal. No UI framework, no Tailwind, hand-written CSS with a shared tokens file.
+- Created `web/public/src/` with `layouts/Base.astro`, `pages/{index,privacy}.astro`, `components/{Hero,Features,FAQ,Footer}.astro`, `styles/tokens.css`, `config.ts`, `assets/app-icon.png`.
+- Generated `web/public/public/{favicon.ico, apple-touch-icon.png, robots.txt, sitemap.xml}`. Icons derived from `dart/app/assets/icons/app_icon.png` via ImageMagick (`favicon.ico` multi-size 16/32/48/64) and `sips` (`apple-touch-icon.png` 180×180).
+- Updated stale reference `dart/app/lib/features/courses/utils/xblock_parser.dart:141` to point at `web/app/src/lib/proxy/xblock-parser.ts`.
+- Updated repo-root `CLAUDE.md` Project Structure block to list `web/app/` and `web/public/`.
+- `npm run build` from `web/public/` produces `dist/` with `index.html`, `privacy/index.html`, sitemap, robots, favicons, and an optimized `_astro/app-icon.webp` (~1 kB). Two pages built in ~1 s. Zero JS shipped.
+
+**Deviations from Spec:**
+- `specs/app-bootstrapping.md` lines 62 and 174 were flagged during refinement as needing updates but on inspection they reference the Flutter `dart/app/web/` platform directory (Flutter web entry), **not** the repo-root `web/`. No change was made there.
+- Cloudflare Web Analytics beacon is gated on `siteConfig.cloudflareAnalyticsToken` being non-empty — avoids shipping a `TODO_` placeholder into live HTML. Populate in `config.ts` after the Pages project is created.
+- Store CTAs render as `aria-disabled` "Coming soon" spans when their URL is empty, so the site is safe to deploy before the store listings are live.

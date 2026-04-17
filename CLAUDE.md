@@ -11,6 +11,9 @@ python-tools/       Python discovery tools, API clients, utilities
   requirements.txt  shared Python dependencies
   flow-analyzer/    parse + dump mitmproxy flow files
   mitx-client/      core API client + CLI for MITx
+web/
+  app/              Next.js app (development/testing web client)
+  public/           Astro static marketing site (omnilect.app)
 ```
 
 ## Platform Overview
