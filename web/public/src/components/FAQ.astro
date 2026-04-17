@@ -1,0 +1,97 @@
+---
+const faq = [
+  {
+    q: 'Is this an official app?',
+    a: 'No. MITxxx is built by an independent developer and is not affiliated with MIT.',
+  },
+  {
+    q: 'Which courses work?',
+    a: 'Courses on mitxonline.mit.edu and courses.learn.mit.edu (Open edX). You sign in with your existing account.',
+  },
+  {
+    q: 'Is my login safe?',
+    a: 'Yes. Your credentials are sent directly to the course provider\u2019s servers from your device. The app developer never sees them.',
+  },
+  {
+    q: 'Do you track what I study?',
+    a: 'No. The app collects anonymous usage metrics (app opens, crashes, device info) but does not record which courses, lectures, or problems you view.',
+  },
+  {
+    q: 'Where do I report bugs?',
+    a: 'Via GitHub \u2014 link in the footer.',
+  },
+];
+---
+
+<section class="faq">
+  <div class="container">
+    <h2>Frequently asked</h2>
+    <div class="items">
+      {
+        faq.map((item) => (
+          <details>
+            <summary>{item.q}</summary>
+            <p>{item.a}</p>
+          </details>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .faq {
+    padding: 56px 0;
+  }
+
+  h2 {
+    font-size: 1.75rem;
+    margin-bottom: 24px;
+    text-align: center;
+  }
+
+  .items {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  details {
+    border-top: 1px solid var(--border);
+    padding: 16px 0;
+  }
+
+  details:last-child {
+    border-bottom: 1px solid var(--border);
+  }
+
+  summary {
+    cursor: pointer;
+    font-weight: 600;
+    list-style: none;
+    padding-right: 24px;
+    position: relative;
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
+  }
+
+  summary::after {
+    content: '+';
+    position: absolute;
+    right: 0;
+    top: 0;
+    color: var(--ink-muted);
+    font-size: 1.25rem;
+    line-height: 1;
+  }
+
+  details[open] summary::after {
+    content: '\2013';
+  }
+
+  details p {
+    color: var(--ink-muted);
+    margin: 8px 0 0;
+  }
+</style>

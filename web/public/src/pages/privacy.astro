@@ -1,0 +1,139 @@
+---
+import Base from '../layouts/Base.astro';
+import Footer from '../components/Footer.astro';
+import { siteConfig } from '../config';
+
+const { contactEmail } = siteConfig;
+---
+
+<Base
+  title="Privacy Policy — MITxxx"
+  description="Privacy policy for the MITxxx mobile app — what we collect, how it is used, and your choices."
+  path="/privacy"
+>
+  <main class="policy">
+    <div class="container">
+      <h1>Privacy Policy</h1>
+      <p class="updated"><em>Last updated: April 17, 2026</em></p>
+
+      <p>
+        This privacy policy explains what information the MITxxx mobile app
+        (&ldquo;the app&rdquo;) collects, how it is used, and your choices.
+      </p>
+
+      <h2>What we collect</h2>
+      <p>
+        The app uses <strong>Firebase Analytics</strong> and{' '}
+        <strong>Firebase Crashlytics</strong>, provided by Google, to
+        understand how the app is used and to fix bugs. The data collected
+        is limited to:
+      </p>
+      <ul>
+        <li>
+          <strong>Basic usage analytics</strong> &mdash; app opens, screen
+          views, session duration, and counts of in-app events (for example,
+          &ldquo;a download started&rdquo;).
+        </li>
+        <li>
+          <strong>Device and OS information</strong> &mdash; device model,
+          operating system version, app version, and locale. No personal
+          identifiers.
+        </li>
+        <li>
+          <strong>Crash reports</strong> &mdash; stack traces and device
+          context captured when the app crashes.
+        </li>
+        <li>
+          <strong>Anonymous installation identifier</strong> &mdash; a
+          randomly generated ID that lets us count unique installs without
+          linking to your identity.
+        </li>
+      </ul>
+      <p>
+        We do <strong>not</strong> collect your name, email, phone number,
+        physical address, precise location, advertising ID, or contact list.
+        We do not record which courses, lectures, or problems you view.
+      </p>
+
+      <h2>Your course account credentials</h2>
+      <p>
+        The app connects directly to the course provider&rsquo;s servers to
+        sign you in and fetch your course content. Your username, password,
+        and session cookies{' '}
+        <strong>never pass through any servers run by the app developer</strong>.
+      </p>
+
+      <h2>What we do with this information</h2>
+      <p>
+        The analytics and crash data described above are used only to
+        operate and improve the app &mdash; to see which features are used,
+        to identify bugs, and to prioritize fixes. We do not sell this
+        information, and we do not share it with advertisers.
+      </p>
+
+      <h2>Third-party services</h2>
+      <p>
+        The app&rsquo;s analytics and crash reporting rely on{' '}
+        <strong>Firebase</strong> (Google). Their handling of the data is
+        governed by Google&rsquo;s privacy policy:{' '}
+        <a href="https://policies.google.com/privacy"
+          >https://policies.google.com/privacy</a
+        >.
+      </p>
+
+      <h2>Children</h2>
+      <p>
+        The app is not directed to children under 13 and does not knowingly
+        collect data from children.
+      </p>
+
+      <h2>Changes to this policy</h2>
+      <p>
+        If we change this policy, the &ldquo;Last updated&rdquo; date at the
+        top of this page will be updated.
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        Questions about this policy can be sent to{' '}
+        <a href={`mailto:${contactEmail}`}>{contactEmail}</a>.
+      </p>
+    </div>
+  </main>
+  <Footer />
+</Base>
+
+<style>
+  .policy {
+    padding: 56px 0 72px;
+  }
+
+  .policy h1 {
+    font-size: 2rem;
+    margin-bottom: 4px;
+  }
+
+  .policy .updated {
+    color: var(--ink-muted);
+    margin: 0 0 32px;
+  }
+
+  .policy h2 {
+    font-size: 1.25rem;
+    margin-top: 32px;
+    margin-bottom: 8px;
+  }
+
+  .policy p,
+  .policy ul {
+    color: var(--ink);
+  }
+
+  .policy ul {
+    padding-left: 22px;
+  }
+
+  .policy li {
+    margin-bottom: 8px;
+  }
+</style>

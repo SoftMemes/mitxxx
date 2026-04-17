@@ -1,0 +1,111 @@
+---
+import { Image } from 'astro:assets';
+import appIcon from '../assets/app-icon.png';
+import { siteConfig } from '../config';
+
+const appStore = siteConfig.appStoreUrl;
+const playStore = siteConfig.playStoreUrl;
+---
+
+<section class="hero">
+  <div class="container">
+    <Image
+      src={appIcon}
+      alt="MITxxx app icon"
+      width={96}
+      height={96}
+      class="icon"
+    />
+    <h1>MITxxx</h1>
+    <p class="tagline">
+      Take your MITx / MIT OpenLearning courses with you — download once,
+      watch anywhere.
+    </p>
+    <div class="ctas">
+      {
+        appStore ? (
+          <a class="cta" href={appStore}>
+            Download on the App Store
+          </a>
+        ) : (
+          <span class="cta cta-disabled" aria-disabled="true">
+            App Store — Coming soon
+          </span>
+        )
+      }
+      {
+        playStore ? (
+          <a class="cta" href={playStore}>
+            Get it on Google Play
+          </a>
+        ) : (
+          <span class="cta cta-disabled" aria-disabled="true">
+            Google Play — Coming soon
+          </span>
+        )
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero {
+    padding: 72px 0 56px;
+    text-align: center;
+    background: var(--bg);
+  }
+
+  .icon {
+    margin: 0 auto 20px;
+    border-radius: 22px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  h1 {
+    font-size: clamp(2.25rem, 5vw, 3rem);
+    margin-bottom: 12px;
+  }
+
+  .tagline {
+    color: var(--ink-muted);
+    font-size: 1.125rem;
+    max-width: 38ch;
+    margin: 0 auto 32px;
+  }
+
+  .ctas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+  }
+
+  .cta {
+    display: inline-block;
+    padding: 12px 22px;
+    border-radius: var(--radius);
+    background: var(--brand);
+    color: var(--brand-ink);
+    font-weight: 600;
+    text-decoration: none;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .cta:hover {
+    filter: brightness(1.08);
+  }
+
+  .cta-disabled {
+    background: var(--bg-muted);
+    color: var(--ink-muted);
+    cursor: not-allowed;
+    box-shadow: none;
+    border: 1px solid var(--border);
+  }
+
+  @media (min-width: 768px) {
+    .hero {
+      padding: 112px 0 80px;
+    }
+  }
+</style>

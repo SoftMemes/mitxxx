@@ -1,0 +1,80 @@
+---
+const features = [
+  {
+    title: 'Offline course access',
+    body: 'Download videos, transcripts, and problems for fully offline playback.',
+  },
+  {
+    title: 'Cast & AirPlay',
+    body: 'Send lectures to a TV with Google Cast or AirPlay.',
+  },
+  {
+    title: 'Clean, fast, native',
+    body: 'Built in Flutter. No ads. Your course content is yours.',
+  },
+];
+---
+
+<section class="features">
+  <div class="container">
+    <h2>Features</h2>
+    <ul class="grid">
+      {
+        features.map((f) => (
+          <li class="card">
+            <h3>{f.title}</h3>
+            <p>{f.body}</p>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>
+
+<style>
+  .features {
+    padding: 56px 0;
+    background: var(--bg-muted);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  h2 {
+    font-size: 1.75rem;
+    margin-bottom: 28px;
+    text-align: center;
+  }
+
+  .grid {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .card {
+    background: var(--bg);
+    padding: 24px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+
+  .card h3 {
+    font-size: 1.125rem;
+    margin-bottom: 8px;
+  }
+
+  .card p {
+    color: var(--ink-muted);
+    margin: 0;
+  }
+
+  @media (min-width: 768px) {
+    .grid {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+  }
+</style>
