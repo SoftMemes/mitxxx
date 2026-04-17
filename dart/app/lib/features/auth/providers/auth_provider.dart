@@ -89,6 +89,12 @@ class Auth extends _$Auth {
       // Best-effort LMS session refresh in background so that the first
       // sync is more likely to succeed immediately.
       unawaited(_establishLmsSession(client));
+      // learnApi cookies (`session_mitlearn` / `learn_csrftoken`) are set
+      // on `api.learn.mit.edu` — a host the login WebView never visits,
+      // so they're often absent on cold launch even when the rest of the
+      // session is valid. Warm them up in the background now so the first
+      // pull-to-refresh doesn't pay a 1–5s bootstrap stall.
+      _maybeWarmupLearnApiInBackground(client);
       return _kCachedUser;
     }
 
@@ -287,11 +293,14 @@ class Auth extends _$Auth {
       // Trigger LMS OAuth handshake — sets session + JWT cookies on the LMS.
       await _establishLmsSession(client);
 
-      // api.learn.mit.edu session is NOT warmed up here. The first learnApi
-      // call (userlists, etc.) will route through the 401/403 interceptor
-      // installed in `_attachLearnApiAuthInterceptor`, which silently runs
-      // `bootstrapLearnApiSession` and retries. Keeping it reactive avoids
-      // blocking login completion on a headless WebView that may time out.
+      // Kick off the api.learn.mit.edu cookie warm-up in the background.
+      // The login WebView only visits mitxonline, so `session_mitlearn` and
+      // `learn_csrftoken` are missing from Dio's jar at this point — a
+      // first pull-to-refresh would otherwise stall on the interceptor's
+      // on-demand bootstrap. Unawaited here so login completion isn't
+      // blocked; if the user triggers a refresh before warm-up finishes,
+      // the interceptor's single-flight gate makes it join this Future.
+      _maybeWarmupLearnApiInBackground(client);
 
       // Flush any LMS content cached while unauthenticated.
       final db = ref.read(appDatabaseProvider);
