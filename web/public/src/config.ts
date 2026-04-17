@@ -7,7 +7,5 @@ export const siteConfig = {
   appStoreUrl: '',
   playStoreUrl: '',
   githubUrl: '',
-
-  // From Cloudflare Web Analytics dashboard once the Pages project is attached.
-  cloudflareAnalyticsToken: '',
+  cloudflareAnalyticsToken: 'f589b0ee6a5a4fa288ac7e7bc6df0646',
 } as const;
