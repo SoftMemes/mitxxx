@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
@@ -87,8 +88,8 @@ class CourseImageDownloader {
     return resp.data;
   }
 
-  List<int>? _resizeJpeg(List<int> bytes) {
-    final decoded = img.decodeImage(bytes);
+  Uint8List? _resizeJpeg(List<int> bytes) {
+    final decoded = img.decodeImage(Uint8List.fromList(bytes));
     if (decoded == null) return null;
     final width = decoded.width <= targetWidth ? decoded.width : targetWidth;
     final resized = img.copyResize(decoded, width: width);

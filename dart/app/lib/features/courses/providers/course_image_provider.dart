@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
