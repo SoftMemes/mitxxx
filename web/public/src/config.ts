@@ -5,7 +5,7 @@ export const siteConfig = {
 
   // Fill in before launch. Empty strings render "Coming soon" aria-disabled CTAs.
   appStoreUrl: '',
-  playStoreUrl: '',
+  playStoreUrl: 'https://play.google.com/store/apps/details?id=app.omnilect',
   githubUrl: '',
   cloudflareAnalyticsToken: 'f589b0ee6a5a4fa288ac7e7bc6df0646',
 } as const;

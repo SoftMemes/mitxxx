@@ -35,8 +35,14 @@ const playStore = siteConfig.playStoreUrl;
       }
       {
         playStore ? (
-          <a class="cta" href={playStore}>
-            Get it on Google Play
+          <a class="badge-link" href={playStore} aria-label="Get it on Google Play">
+            <img
+              src="/google-play-badge.png"
+              alt="Get it on Google Play"
+              class="badge-img"
+              width="180"
+              height="70"
+            />
           </a>
         ) : (
           <span class="cta cta-disabled" aria-disabled="true">
@@ -101,6 +107,26 @@ const playStore = siteConfig.playStoreUrl;
     cursor: not-allowed;
     box-shadow: none;
     border: 1px solid var(--border);
+  }
+
+  .badge-link {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    line-height: 0;
+  }
+
+  .badge-link:hover {
+    filter: brightness(1.05);
+  }
+
+  .badge-img {
+    height: 48px;
+    width: auto;
+  }
+
+  .ctas {
+    align-items: center;
   }
 
   @media (min-width: 768px) {

@@ -173,12 +173,13 @@ lane :beta do |options|
     target: "lib/main_prod.dart",
   )
   upload_to_play_store(
-    track:         "internal",
-    aab:           "build/app/outputs/bundle/prodRelease/app-prod-release.aab",
-    json_key:      ENV.fetch("PLAY_STORE_JSON_KEY"),
-    package_name:  PROD_BUNDLE_ID,
-    skip_upload_metadata: true,
-    skip_upload_images:   true,
+    track:          "internal",
+    release_status: "draft",
+    aab:            "build/app/outputs/bundle/prodRelease/app-prod-release.aab",
+    json_key:       ENV.fetch("PLAY_STORE_JSON_KEY"),
+    package_name:   PROD_BUNDLE_ID,
+    skip_upload_metadata:    true,
+    skip_upload_images:      true,
     skip_upload_screenshots: true,
   )
 
