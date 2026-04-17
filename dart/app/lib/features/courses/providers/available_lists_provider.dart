@@ -1,9 +1,11 @@
 // ignore_for_file: uri_has_not_been_generated
+import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:logging/logging.dart';
 import 'package:omnilect/core/network/dio_client_provider.dart';
 import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
+import 'package:omnilect/features/auth/providers/reauth_provider.dart';
 import 'package:omnilect/features/courses/models/list_source.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -48,22 +50,45 @@ class AvailableListsController extends _$AvailableListsController {
     final now = DateTime.now();
     final companions = <AvailableListsCompanion>[];
 
-    // "All enrolled" — from mitxonline.
+    // Refresh SSO state serially before hitting either API. The LMS OAuth
+    // chain walks mitxonline → sso.ol.mit.edu → LMS, refreshing all three
+    // session cookies at once. Running the learn-api handshake afterwards
+    // ensures sso.ol.mit.edu recognizes the fresh Keycloak identity and
+    // redirects back to api.learn.mit.edu with `session_mitlearn`.
     try {
-      final resp = await client.mitxOnline
-          .get<List<dynamic>>('/api/v1/enrollments/');
-      final count = resp.data?.length ?? 0;
+      await client.establishLmsSession();
+    } on Object catch (e, st) {
+      _log.warning('refresh: LMS session refresh failed, proceeding anyway',
+          e, st);
+    }
+    try {
+      await client.ensureLearnApiSession(force: true);
+    } on Object catch (e, st) {
+      _log.warning('refresh: learn-api session refresh failed', e, st);
+    }
+
+    // "All enrolled" — from mitxonline. Dio is configured with a JSON
+    // Accept header, so `.data` comes back already decoded; we request
+    // `<dynamic>` and cast rather than using `<List<dynamic>>` because the
+    // latter can trip over Dio's generic dispatch on some SDK versions.
+    var authFailed = false;
+    try {
+      final resp =
+          await client.mitxOnline.get<dynamic>('/api/v1/enrollments/');
+      final list = resp.data as List<dynamic>;
       companions.add(
         AvailableListsCompanion.insert(
           listId: kAllEnrolledListId,
           source: ListSource.enrolled.storageValue,
           name: kAllEnrolledDisplayName,
-          totalCourseCount: count,
+          totalCourseCount: list.length,
           fetchedAt: now,
         ),
       );
-    } on Object catch (e, st) {
+    } on DioException catch (e, st) {
       _log.warning('refresh: enrollments fetch failed', e, st);
+      final status = e.response?.statusCode;
+      if (status == 401 || status == 403) authFailed = true;
       final existing = await (db.select(db.availableLists)
             ..where((t) => t.listId.equals(kAllEnrolledListId)))
           .getSingleOrNull();
@@ -78,17 +103,19 @@ class AvailableListsController extends _$AvailableListsController {
           ),
         );
       }
+    } on Object catch (e, st) {
+      _log.warning('refresh: enrollments fetch failed (non-http)', e, st);
     }
 
     // Custom lists from learn.mit.edu.
     try {
-      await client.ensureLearnApiSession();
-      final resp = await client.learnApi.get<Map<String, dynamic>>(
+      final resp = await client.learnApi.get<dynamic>(
         '/api/v1/userlists/',
         queryParameters: {'limit': 100},
       );
-      final results = (resp.data?['results'] as List<dynamic>? ?? [])
-          .cast<Map<String, dynamic>>();
+      final body = resp.data as Map<String, dynamic>;
+      final results =
+          (body['results'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
       for (final lst in results) {
         companions.add(
           AvailableListsCompanion.insert(
@@ -119,5 +146,14 @@ class AvailableListsController extends _$AvailableListsController {
     }
 
     await db.replaceAvailableLists(companions);
+
+    // If the session looked stale, surface the re-auth prompt so the user can
+    // sign back in. We reuse the sync controller's "sync all" operation as the
+    // resume target — after reauth, sync runs and refreshes lists again.
+    if (authFailed) {
+      ref
+          .read(reauthControllerProvider.notifier)
+          .request(const SyncAllOperation());
+    }
   }
 }

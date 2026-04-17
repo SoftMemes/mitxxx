@@ -80,7 +80,12 @@ Future<void> _onWebViewAuthComplete() async {
     final client = ref.read(dioClientProvider);
     final cookieManager = CookieManager.instance();
 
-    for (final baseUrl in [kMitxOnlineBaseUrl, kLmsBaseUrl]) {
+    // Also grab sso.ol.mit.edu so the Keycloak identity cookies (KEYCLOAK_IDENTITY,
+    // KEYCLOAK_SESSION) land in the Dio store — without them, server-side OAuth
+    // redirect chains (establishLmsSession, establishLearnApiSession) bounce to
+    // the SSO login page instead of completing silently.
+    const ssoBaseUrl = 'https://sso.ol.mit.edu';
+    for (final baseUrl in [kMitxOnlineBaseUrl, kLmsBaseUrl, ssoBaseUrl]) {
       final host = Uri.parse(baseUrl).host;
       final webCookies = await cookieManager.getCookies(
         url: WebUri(baseUrl),
