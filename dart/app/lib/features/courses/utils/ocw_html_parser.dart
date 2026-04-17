@@ -75,9 +75,13 @@ OcwCourseHomeInfo parseCourseHome(String html, String slug) {
     if (href.contains('/courses/$slug/video_galleries/') &&
         videoGalleryPath == null) {
       videoGalleryPath = href;
-    } else if (href.contains('/courses/$slug/pages/lecture-notes') &&
+    } else if (href.contains('/courses/$slug/') &&
+        href.toLowerCase().contains('/lecture-notes') &&
         (text == 'lecture notes' || text == 'lecture-notes') &&
         lectureNotesPath == null) {
+      // Accept either /pages/lecture-notes/ (9.13 / classic template) or
+      // /lists/lecture-notes/ (6.100L / newer template). The sidebar link
+      // text is canonical; we anchor on that.
       lectureNotesPath = href;
     }
   }
@@ -96,6 +100,9 @@ OcwCourseHomeInfo parseCourseHome(String html, String slug) {
 // parse_video_gallery
 // -----------------------------------------------------------------------------
 
+final RegExp _videoLectureTitleRe =
+    RegExp(r'^(lecture|lec)\s*\d+\b', caseSensitive: false);
+
 List<OcwLectureRef> parseVideoGallery(String html, String slug) {
   final doc = html_parser.parse(html);
   final prefix = '/courses/$slug/resources/';
@@ -104,18 +111,21 @@ List<OcwLectureRef> parseVideoGallery(String html, String slug) {
   for (final a in doc.querySelectorAll('a[href]')) {
     final href = a.attributes['href'] ?? '';
     if (!href.startsWith(prefix)) continue;
+    // Filter by LINK TEXT, not URL path — some courses use custom slugs
+    // (e.g. 6.100L's "6100l-lecture-1-version-2_mp4") where the lecture
+    // number isn't at the start of the URL segment. The gallery's own
+    // link text is consistently "Lecture N: …".
+    final text = a.text.trim();
+    if (!_videoLectureTitleRe.hasMatch(text)) continue;
     final lectureSlug =
         href.substring(prefix.length).split('/').firstWhere(
               (s) => s.isNotEmpty,
               orElse: () => '',
             );
-    if (lectureSlug.isEmpty ||
-        !lectureSlug.toLowerCase().startsWith('lecture')) {
-      continue;
-    }
+    if (lectureSlug.isEmpty) continue;
     if (seen.contains(lectureSlug)) continue;
     seen.add(lectureSlug);
-    out.add(OcwLectureRef(slug: lectureSlug, title: a.text.trim()));
+    out.add(OcwLectureRef(slug: lectureSlug, title: text));
   }
   return out;
 }
@@ -155,7 +165,10 @@ OcwLectureInfo parseLecturePage(String html) {
     if (!normText.contains('download video')) continue;
     final href = a.attributes['href'] ?? '';
     if (href.contains('archive.org') || href.toLowerCase().endsWith('.mp4')) {
-      mp4Url = href;
+      // Some courses (e.g. 6.100L) host the MP4 directly on ocw.mit.edu and
+      // use a relative href like `/courses/{slug}/..._360p_16_9.mp4`.
+      // Absolutise so the download pipeline (URL-as-PK) stores a full URL.
+      mp4Url = href.startsWith('http') ? href : _urlJoin(ocwBase, href);
       break;
     }
   }
@@ -177,27 +190,46 @@ List<OcwResource> parseLectureNotesPage(
   String baseUrl = ocwBase,
 }) {
   final doc = html_parser.parse(html);
-  final resourcePrefix = '/courses/$slug/resources/';
+  final coursePrefix = '/courses/$slug/';
   final out = <OcwResource>[];
   final seen = <String>{};
+
+  // Newer OCW template (e.g. 6.100L) wraps each row in a `.resource-item`
+  // and exposes the human-readable title via `<a class="resource-list-title">`.
+  // When present we prefer it — the sibling `.resource-thumbnail` link only
+  // has "pdf 832 kB" as its visible text.
+  final titleLinks = doc.querySelectorAll('a.resource-list-title[href]');
+  if (titleLinks.isNotEmpty) {
+    for (final a in titleLinks) {
+      final href = a.attributes['href'] ?? '';
+      if (!href.startsWith(coursePrefix)) continue;
+      if (!href.toLowerCase().endsWith('.pdf')) continue;
+      if (seen.contains(href)) continue;
+      seen.add(href);
+      final absolute = _urlJoin(baseUrl, href);
+      out.add(OcwResource(
+        id: _synthResourceId(courseId, absolute),
+        type: OcwResourceType.lectureNotes,
+        title: a.text.trim(),
+        url: absolute,
+      ));
+    }
+    return out;
+  }
+
+  // Classic template (e.g. 9.13): PDF rows are `<a href=/courses/{slug}/resources/{slug}/>`
+  // with visible text "Lecture N: Title (PDF - X.YMB)". We detect by the
+  // "(PDF" marker in the text.
   for (final a in doc.querySelectorAll('a[href]')) {
     final href = a.attributes['href'] ?? '';
     final text = a.text.trim();
     if (text.isEmpty) continue;
-    // OCW marks downloadable files with "(PDF" in the link text.
-    if (!text.toUpperCase().contains('(PDF') &&
-        !href.toLowerCase().endsWith('.pdf')) {
-      continue;
-    }
-    if (!href.startsWith(resourcePrefix) &&
-        !href.toLowerCase().endsWith('.pdf')) {
-      continue;
-    }
+    if (!href.startsWith(coursePrefix)) continue;
+    final endsInPdf = href.toLowerCase().endsWith('.pdf');
+    if (!text.toUpperCase().contains('(PDF') && !endsInPdf) continue;
     if (seen.contains(href)) continue;
     seen.add(href);
-    final absolute = href.startsWith('http')
-        ? href
-        : _urlJoin(baseUrl, href);
+    final absolute = _urlJoin(baseUrl, href);
     out.add(OcwResource(
       id: _synthResourceId(courseId, absolute),
       type: OcwResourceType.lectureNotes,
