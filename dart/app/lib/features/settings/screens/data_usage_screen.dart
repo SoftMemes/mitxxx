@@ -211,6 +211,7 @@ class _DataUsageScreenState extends ConsumerState<DataUsageScreen> {
 }
 
 String _formatBytes(int bytes) {
+  if (bytes == 0) return '0 KB';
   if (bytes < 1024 * 1024) {
     final kb = (bytes / 1024).ceil();
     return '${kb < 1 ? 1 : kb} KB';

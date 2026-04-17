@@ -860,13 +860,30 @@ class AppDatabase extends _$AppDatabase {
     return p.join(dbFolder.path, 'emajtee.db');
   }
 
-  /// Sum of bytesDownloaded for all rows with status = 'downloaded'.
+  /// Sum of the on-disk size of every file for a `downloaded` row.
+  ///
+  /// We stat the files directly rather than trusting the `bytes_downloaded`
+  /// column: `background_downloader` only populates that column from progress
+  /// callbacks, which rely on the server advertising `Content-Length`. When
+  /// the CDN omits that header (or the final progress tick reports
+  /// `expectedFileSize <= 0`) the column stays at 0 even though the file
+  /// downloaded fine, making the data-usage screen report ~1 KB for users
+  /// who had gigabytes of video cached.
   Future<int> getTotalDownloadedBytes() async {
-    final result = await customSelect(
-      'SELECT COALESCE(SUM(bytes_downloaded), 0) AS total '
-      "FROM downloaded_videos WHERE status = 'downloaded'",
-    ).getSingle();
-    return result.read<int>('total');
+    final rows = await (select(downloadedVideos)
+          ..where((t) => t.status.equals('downloaded')))
+        .get();
+    var total = 0;
+    for (final row in rows) {
+      if (row.localFilePath.isEmpty) continue;
+      try {
+        final file = File(row.localFilePath);
+        if (file.existsSync()) total += await file.length();
+      } on Object catch (_) {
+        // Missing/unreadable file — skip it.
+      }
+    }
+    return total;
   }
 
   /// Clears only the [DownloadedVideos] table and returns the local file paths

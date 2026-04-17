@@ -162,18 +162,34 @@ class Auth extends _$Auth {
     client.learnApi.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          // One-shot warm-up: if api.learn.mit.edu's own session cookies
-          // aren't in Dio's jar yet, run the headless-WebView bootstrap
-          // once so the SSO handshake on api.learn.mit.edu/login sets
-          // them. Gated by `client.hasCookies` so we don't spin up a
-          // bootstrap when the user isn't logged in (it would fail anyway
-          // and the 401/403 path handles that cleanly).
-          if (client.hasCookies && !_learnWarmupAttempted) {
+          // If a bootstrap is already in flight (e.g. the background
+          // warm-up kicked off from `AuthProvider.build()` or
+          // `onLoginComplete()`), join it — don't race it. The
+          // single-flight `_pendingLearnBootstrap` Future is the
+          // authoritative "cookies not ready yet" signal; awaiting it is
+          // what guarantees this request doesn't fire with a half-written
+          // cookie jar. Note: we check this BEFORE the `_learnWarmupAttempted`
+          // flag because the flag is set synchronously at warm-up kickoff
+          // while the bootstrap itself is still in progress.
+          final pending = _pendingLearnBootstrap;
+          if (pending != null) {
+            try {
+              await pending;
+            } on Object {
+              // Ignore — we'll let the request proceed with whatever
+              // cookies it has. If they're bad, the 401/403 interceptor
+              // handles it downstream.
+            }
+          } else if (client.hasCookies && !_learnWarmupAttempted) {
+            // No in-flight bootstrap and we haven't attempted one yet —
+            // check whether we need one. Gated by `client.hasCookies` so
+            // we don't spin up a bootstrap when the user isn't logged in
+            // (it would fail anyway and the 401/403 path handles that).
             final cookies = client.cookiesForHost(options.uri.host);
             final missingLearn = cookies['session_mitlearn'] == null ||
                 cookies['learn_csrftoken'] == null;
+            _learnWarmupAttempted = true;
             if (missingLearn) {
-              _learnWarmupAttempted = true;
               try {
                 await _bootstrapLearnApiOnce(client);
               } on Object catch (e, st) {
@@ -183,19 +199,15 @@ class Auth extends _$Auth {
                   st,
                 );
               }
-            } else {
-              _learnWarmupAttempted = true;
             }
           }
 
-          // Re-serialize the `Cookie` header from the current jar. Dio's
-          // built-in cookie interceptor (attached in `DioClient._buildDio`)
-          // runs BEFORE this one and already set the header from the
-          // pre-bootstrap jar; if we just ran the warm-up, those freshly
-          // acquired cookies won't be on the request yet. Overwriting with
-          // the current state guarantees `session_mitlearn` /
-          // `learn_csrftoken` (and any other refreshed cookie) are sent on
-          // this first request, not just subsequent ones.
+          // Re-serialize the `Cookie` header from the (possibly just-
+          // refreshed) jar. Dio's built-in cookie interceptor runs BEFORE
+          // this one and already set the header from the pre-bootstrap
+          // state — so overwriting here is what guarantees
+          // `session_mitlearn` / `learn_csrftoken` are on THIS request,
+          // not just subsequent ones.
           final refreshed = client.cookiesForHost(options.uri.host);
           if (refreshed.isNotEmpty) {
             options.headers['cookie'] = refreshed.entries
