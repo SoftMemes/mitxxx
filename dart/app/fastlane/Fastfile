@@ -162,12 +162,13 @@ end
 
 # ── Lane: beta ───────────────────────────────────────────────────────────────
 # Builds the prod flavor and uploads to TestFlight (internal) + Play Store internal track.
+#
+# Lanes:
+#   beta          — both Android and iOS
+#   beta_android  — Android only
+#   beta_ios      — iOS only
 
-lane :beta do |options|
-  ENV["BUILD_NUMBER"] = compute_build_number.to_s
-  api_key = app_store_connect_api_key_config
-
-  # ── Android ──
+def beta_android_impl
   flutter_build_appbundle(
     flavor: "prod",
     target: "lib/main_prod.dart",
@@ -182,8 +183,10 @@ lane :beta do |options|
     skip_upload_images:      true,
     skip_upload_screenshots: true,
   )
+end
 
-  # ── iOS ──
+def beta_ios_impl
+  api_key = app_store_connect_api_key_config
   match(
     type:           "appstore",
     app_identifier: PROD_BUNDLE_ID,
@@ -197,19 +200,37 @@ lane :beta do |options|
   )
   upload_to_testflight(
     api_key:          api_key,
+    app_identifier:   PROD_BUNDLE_ID,
     ipa:              "build/ios/ipa/MITxxx.ipa",
     skip_waiting_for_build_processing: true,
   )
 end
 
+lane :beta do
+  ENV["BUILD_NUMBER"] = compute_build_number.to_s
+  beta_android_impl
+  beta_ios_impl
+end
+
+lane :beta_android do
+  ENV["BUILD_NUMBER"] = compute_build_number.to_s
+  beta_android_impl
+end
+
+lane :beta_ios do
+  ENV["BUILD_NUMBER"] = compute_build_number.to_s
+  beta_ios_impl
+end
+
 # ── Lane: release ─────────────────────────────────────────────────────────────
 # Submits the prod flavor to App Store + Play Store production.
+#
+# Lanes:
+#   release          — both Android and iOS
+#   release_android  — Android only
+#   release_ios      — iOS only
 
-lane :release do |options|
-  ENV["BUILD_NUMBER"] = compute_build_number.to_s
-  api_key = app_store_connect_api_key_config
-
-  # ── Android ──
+def release_android_impl
   flutter_build_appbundle(
     flavor: "prod",
     target: "lib/main_prod.dart",
@@ -223,8 +244,10 @@ lane :release do |options|
     skip_upload_images:   true,
     skip_upload_screenshots: true,
   )
+end
 
-  # ── iOS ──
+def release_ios_impl
+  api_key = app_store_connect_api_key_config
   match(
     type:           "appstore",
     app_identifier: PROD_BUNDLE_ID,
@@ -238,7 +261,24 @@ lane :release do |options|
   )
   upload_to_testflight(
     api_key:              api_key,
+    app_identifier:       PROD_BUNDLE_ID,
     ipa:                  "build/ios/ipa/MITxxx.ipa",
     submit_beta_review:   true,
   )
+end
+
+lane :release do
+  ENV["BUILD_NUMBER"] = compute_build_number.to_s
+  release_android_impl
+  release_ios_impl
+end
+
+lane :release_android do
+  ENV["BUILD_NUMBER"] = compute_build_number.to_s
+  release_android_impl
+end
+
+lane :release_ios do
+  ENV["BUILD_NUMBER"] = compute_build_number.to_s
+  release_ios_impl
 end
