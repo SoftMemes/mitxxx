@@ -1,4 +1,5 @@
 // ignore_for_file: uri_has_not_been_generated
+import 'package:omnilect/core/analytics/analytics_events.dart';
 import 'package:omnilect/features/cast/models/cast_state.dart';
 import 'package:omnilect/features/cast/providers/cast_controller.dart';
 import 'package:omnilect/features/cast/widgets/cast_controller_panel.dart';
@@ -9,6 +10,7 @@ import 'package:omnilect/features/player/models/lecture_player_state.dart';
 import 'package:omnilect/features/player/models/vertical_segment.dart';
 import 'package:omnilect/features/player/providers/lecture_player_provider.dart';
 import 'package:omnilect/features/player/widgets/lecture_video_player.dart';
+import 'package:omnilect/features/sync/providers/sync_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -62,6 +64,14 @@ class _LectureScreenState extends ConsumerState<LectureScreen> {
       SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     }
   }
+
+  Future<void> _syncSequence() => ref
+      .read(syncControllerProvider.notifier)
+      .syncSequence(
+        widget.courseId,
+        widget.sequenceId,
+        trigger: kTriggerPullToRefresh,
+      );
 
   void _scrollToActive(int index) {
     if (index < 0 || index >= _tileKeys.length) return;
@@ -213,6 +223,7 @@ class _LectureScreenState extends ConsumerState<LectureScreen> {
         tileKeys: _tileKeys,
         activeIndex: lectureState.activeSegmentIndex,
         onTileTap: notifier.selectSegment,
+        onRefresh: _syncSequence,
       );
     }
 
@@ -269,18 +280,22 @@ class _LectureScreenState extends ConsumerState<LectureScreen> {
         // Content list — hidden in fullscreen.
         if (!_isFullScreen) ...[
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              itemCount: lectureState.segments.length,
-              itemBuilder: (context, i) {
-                final seg = lectureState.segments[i];
-                return VerticalSectionTile(
-                  key: _tileKeys[i],
-                  segment: seg,
-                  isExpanded: i == lectureState.activeSegmentIndex,
-                  onTap: () => notifier.selectSegment(i),
-                );
-              },
+            child: RefreshIndicator(
+              onRefresh: _syncSequence,
+              child: ListView.builder(
+                controller: _scrollController,
+                physics: const AlwaysScrollableScrollPhysics(),
+                itemCount: lectureState.segments.length,
+                itemBuilder: (context, i) {
+                  final seg = lectureState.segments[i];
+                  return VerticalSectionTile(
+                    key: _tileKeys[i],
+                    segment: seg,
+                    isExpanded: i == lectureState.activeSegmentIndex,
+                    onTap: () => notifier.selectSegment(i),
+                  );
+                },
+              ),
             ),
           ),
 
@@ -304,22 +319,28 @@ class _NoVideoBody extends StatelessWidget {
     required this.tileKeys,
     required this.activeIndex,
     required this.onTileTap,
+    required this.onRefresh,
   });
 
   final List<VerticalSegment> segments;
   final List<GlobalKey> tileKeys;
   final int activeIndex;
   final void Function(int) onTileTap;
+  final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      itemCount: segments.length,
-      itemBuilder: (context, i) => VerticalSectionTile(
-        key: tileKeys[i],
-        segment: segments[i],
-        isExpanded: i == activeIndex,
-        onTap: () => onTileTap(i),
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: segments.length,
+        itemBuilder: (context, i) => VerticalSectionTile(
+          key: tileKeys[i],
+          segment: segments[i],
+          isExpanded: i == activeIndex,
+          onTap: () => onTileTap(i),
+        ),
       ),
     );
   }

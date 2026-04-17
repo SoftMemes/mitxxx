@@ -1,3 +1,4 @@
+import 'package:omnilect/core/analytics/analytics_events.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/features/courses/models/outline.dart';
 import 'package:omnilect/features/courses/providers/outline_provider.dart';
@@ -31,33 +32,6 @@ class CourseOutlineScreen extends ConsumerWidget {
           orElse: () => const Text('Course Outline'),
         ),
         actions: [
-          // Per-course refresh button.
-          Builder(builder: (context) {
-            final syncStatus = ref.watch(syncControllerProvider
-                .select((s) => s[courseId]?.status ?? SyncStatus.idle));
-            final isSyncing = syncStatus == SyncStatus.syncing;
-            final hasError = syncStatus == SyncStatus.error;
-            if (isSyncing) {
-              return const Padding(
-                padding: EdgeInsets.all(14),
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              );
-            }
-            return IconButton(
-              icon: Icon(
-                Icons.sync,
-                color: hasError ? Theme.of(context).colorScheme.error : null,
-              ),
-              tooltip: 'Refresh course',
-              onPressed: () => ref
-                  .read(syncControllerProvider.notifier)
-                  .syncCourse(courseId),
-            );
-          }),
           // Course-level download button.
           DownloadButton(courseId: courseId),
           const SizedBox(width: 8),
@@ -69,8 +43,9 @@ class CourseOutlineScreen extends ConsumerWidget {
         data: (outline) {
           final sections = outline.outline.sections;
           return RefreshIndicator(
-            onRefresh: () async =>
-                ref.invalidate(courseOutlineProvider(courseId: courseId)),
+            onRefresh: () => ref
+                .read(syncControllerProvider.notifier)
+                .syncCourse(courseId, trigger: kTriggerPullToRefresh),
             child: CustomScrollView(
               slivers: [
                 SliverToBoxAdapter(

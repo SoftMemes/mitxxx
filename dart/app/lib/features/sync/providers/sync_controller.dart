@@ -401,6 +401,86 @@ class SyncController extends _$SyncController {
     ));
   }
 
+  // ── syncSequence ───────────────────────────────────────────────────────────
+
+  /// Force re-syncs a single sequence (its metadata + every vertical's xblock
+  /// content). Unlike [prioritiseSequence] — which is a "tap-to-queue" helper
+  /// that no-ops when already synced — this always re-fetches.
+  ///
+  /// - If a full course sync is already running for [courseId]: prioritise
+  ///   this sequence and await the course sync to finish.
+  /// - Otherwise: schedule the sequence standalone (no `_CourseContext`, so
+  ///   [_finaliseCourse]'s cleanup pass — which would over-prune downloads
+  ///   from sequences it doesn't know about — is skipped) and await its
+  ///   terminal state via [sequenceSyncControllerProvider].
+  Future<void> syncSequence(
+    String courseId,
+    String sequenceId, {
+    String trigger = kTriggerManual,
+  }) async {
+    final analytics = ref.read(analyticsServiceProvider);
+    final startedAt = DateTime.now();
+
+    unawaited(analytics.logSyncStart(
+      scope: kScopeSection,
+      courseId: courseId,
+      trigger: trigger,
+    ));
+
+    final courseCtx = _courses[courseId];
+    if (courseCtx != null) {
+      _scheduler.prioritise(sequenceId);
+      await courseCtx.completer.future;
+      unawaited(analytics.logSyncComplete(
+        scope: kScopeSection,
+        courseId: courseId,
+        durationMs: DateTime.now().difference(startedAt).inMilliseconds,
+        itemsSynced: 1,
+      ));
+      return;
+    }
+
+    if (!_trackers.containsKey(sequenceId)) {
+      _scheduleSequence(sequenceId, courseId, order: 0);
+    }
+    _scheduler.prioritise(sequenceId);
+
+    final terminalCompleter = Completer<SequenceSyncStatus>();
+    final sub = ref.listen<Map<String, SequenceSyncState>>(
+      sequenceSyncControllerProvider,
+      (prev, next) {
+        final status = next[sequenceId]?.status;
+        if (status == SequenceSyncStatus.synced ||
+            status == SequenceSyncStatus.error) {
+          if (!terminalCompleter.isCompleted) terminalCompleter.complete(status);
+        }
+      },
+    );
+
+    try {
+      final terminal = await terminalCompleter.future;
+      final durationMs = DateTime.now().difference(startedAt).inMilliseconds;
+      if (terminal == SequenceSyncStatus.synced) {
+        unawaited(analytics.logSyncComplete(
+          scope: kScopeSection,
+          courseId: courseId,
+          durationMs: durationMs,
+          itemsSynced: 1,
+        ));
+      } else {
+        unawaited(analytics.logSyncFailure(
+          scope: kScopeSection,
+          courseId: courseId,
+          durationMs: durationMs,
+          stage: 'sequence',
+          errorKind: 'unknown',
+        ));
+      }
+    } finally {
+      sub.close();
+    }
+  }
+
   /// Stops all in-progress sync work and waits for in-flight workers to
   /// finish their current task. After this resolves no sync task will write
   /// to the DB, so callers can safely clear cached data without risking a

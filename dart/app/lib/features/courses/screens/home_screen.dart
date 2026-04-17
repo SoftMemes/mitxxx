@@ -55,25 +55,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: const Text('My Courses'),
         actions: [
-          // Global refresh button — spins while any course is syncing.
-          // Hidden when logged out (nothing to refresh).
-          if (isAuthenticated)
-            if (isSyncing)
-              const Padding(
-                padding: EdgeInsets.all(14),
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            else
-              IconButton(
-                icon: const Icon(Icons.sync),
-                tooltip: 'Refresh courses',
-                onPressed: () =>
-                    ref.read(syncControllerProvider.notifier).syncAll(),
-              ),
           IconButton(
             icon: const Icon(Icons.menu),
             onPressed: () => context.push('/settings'),
@@ -96,25 +77,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           return Column(
             children: [
               Expanded(
-                child: ListView.separated(
-                  itemCount: enrollments.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final enrollment = enrollments[index];
-                    final courseId = enrollment.run.coursewareId;
-                    final courseSyncState = syncState[courseId];
-                    return _CourseTile(
-                      enrollment: enrollment,
-                      syncState: courseSyncState,
-                      onTap: () {
-                        ref.read(analyticsServiceProvider).logCourseView(
-                          courseId: courseId,
-                          source: kSourceCourseList,
-                        );
-                        context.push('/course/$courseId');
-                      },
-                    );
-                  },
+                child: RefreshIndicator(
+                  onRefresh: () => ref
+                      .read(syncControllerProvider.notifier)
+                      .syncAll(trigger: kTriggerPullToRefresh),
+                  child: ListView.separated(
+                    itemCount: enrollments.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final enrollment = enrollments[index];
+                      final courseId = enrollment.run.coursewareId;
+                      final courseSyncState = syncState[courseId];
+                      return _CourseTile(
+                        enrollment: enrollment,
+                        syncState: courseSyncState,
+                        onTap: () {
+                          ref.read(analyticsServiceProvider).logCourseView(
+                            courseId: courseId,
+                            source: kSourceCourseList,
+                          );
+                          context.push('/course/$courseId');
+                        },
+                      );
+                    },
+                  ),
                 ),
               ),
               const Divider(height: 1),
