@@ -39,6 +39,18 @@ class Auth extends _$Auth {
   /// `DioClient` for the LMS interceptor.
   bool _learnAuthInterceptorAttached = false;
 
+  /// Guard so the learnApi headers interceptor is attached at most once.
+  bool _learnHeadersInterceptorAttached = false;
+
+  /// One-shot flag: have we attempted to warm up api.learn.mit.edu's own
+  /// cookies this session? After a fresh mitxonline login the WebView
+  /// never visits api.learn.mit.edu, so Dio has no `session_mitlearn` /
+  /// `learn_csrftoken` — the first learnApi call would otherwise get 200
+  /// with anonymous-empty results instead of any auth error our 401/403
+  /// interceptor could catch. We run bootstrap ONCE (not per-operation) to
+  /// populate them. Reset on sign-out so the next login re-warms.
+  bool _learnWarmupAttempted = false;
+
   /// Single-flight gate for the learnApi bootstrap. Concurrent 401/403s on
   /// `client.learnApi` (e.g. `available_lists_provider.refresh` racing with
   /// `SyncController._reconcileMembership`'s userlist-items fetches) would
@@ -61,6 +73,11 @@ class Auth extends _$Auth {
               .request(const SyncAllOperation());
         }),
       );
+    // Order matters: attach the headers interceptor BEFORE the auth one so
+    // its onRequest runs first. Dio runs request interceptors in attach
+    // order, and we want Origin/Referer/X-CSRFToken set on the retried
+    // request as well.
+    _attachLearnApiHeadersInterceptor(client);
     _attachLearnApiAuthInterceptor(client);
 
     // Offline-first: if we have persisted cookies, treat the user as
@@ -87,6 +104,84 @@ class Auth extends _$Auth {
     } on Object catch (e, st) {
       _log.warning('_establishLmsSession failed', e, st);
     }
+  }
+
+  /// Installs a request-side interceptor on `client.learnApi` that always
+  /// sets the three headers the api.learn.mit.edu backend uses to decide
+  /// "is this request from an authenticated SPA at learn.mit.edu":
+  ///
+  /// - `Origin: https://learn.mit.edu` + `Referer: https://learn.mit.edu/` —
+  ///   DRF's `SessionAuthentication` + Django CSRF middleware reject
+  ///   session cookies on requests that don't declare a trusted origin;
+  ///   instead of 401/403 they silently fall back to anonymous auth, which
+  ///   returns `{"count":0,"results":[]}` for userlists even when the user
+  ///   has lists. That's the "sometimes returns no results" behavior.
+  /// - `X-CSRFToken: <learn_csrftoken>` — Django's double-submit CSRF
+  ///   check. Sourced fresh from the cookie jar on every request so a
+  ///   post-bootstrap cookie refresh is picked up immediately.
+  ///
+  /// Observed against the browser: a curl with these three headers plus
+  /// `session_mitlearn` + `learn_csrftoken` cookies returns real data; the
+  /// same curl minus any one of the three can silently return anonymous
+  /// results. Matching the browser gets us out of the silent-anonymous
+  /// fallback.
+  void _attachLearnApiHeadersInterceptor(DioClient client) {
+    if (_learnHeadersInterceptorAttached) return;
+    _learnHeadersInterceptorAttached = true;
+    client.learnApi.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          // One-shot warm-up: if api.learn.mit.edu's own session cookies
+          // aren't in Dio's jar yet, run the headless-WebView bootstrap
+          // once so the SSO handshake on api.learn.mit.edu/login sets
+          // them. Gated by `client.hasCookies` so we don't spin up a
+          // bootstrap when the user isn't logged in (it would fail anyway
+          // and the 401/403 path handles that cleanly).
+          if (client.hasCookies && !_learnWarmupAttempted) {
+            final cookies = client.cookiesForHost(options.uri.host);
+            final missingLearn = cookies['session_mitlearn'] == null ||
+                cookies['learn_csrftoken'] == null;
+            if (missingLearn) {
+              _learnWarmupAttempted = true;
+              try {
+                await _bootstrapLearnApiOnce(client);
+              } on Object catch (e, st) {
+                _log.warning(
+                  '_attachLearnApiHeadersInterceptor: warm-up bootstrap failed',
+                  e,
+                  st,
+                );
+              }
+            } else {
+              _learnWarmupAttempted = true;
+            }
+          }
+
+          // Re-serialize the `Cookie` header from the current jar. Dio's
+          // built-in cookie interceptor (attached in `DioClient._buildDio`)
+          // runs BEFORE this one and already set the header from the
+          // pre-bootstrap jar; if we just ran the warm-up, those freshly
+          // acquired cookies won't be on the request yet. Overwriting with
+          // the current state guarantees `session_mitlearn` /
+          // `learn_csrftoken` (and any other refreshed cookie) are sent on
+          // this first request, not just subsequent ones.
+          final refreshed = client.cookiesForHost(options.uri.host);
+          if (refreshed.isNotEmpty) {
+            options.headers['cookie'] = refreshed.entries
+                .map((e) => '${e.key}=${e.value}')
+                .join('; ');
+          }
+
+          options.headers['Origin'] = 'https://learn.mit.edu';
+          options.headers['Referer'] = 'https://learn.mit.edu/';
+          final csrf = refreshed['learn_csrftoken'];
+          if (csrf != null) {
+            options.headers['X-CSRFToken'] = csrf;
+          }
+          handler.next(options);
+        },
+      ),
+    );
   }
 
   /// Runs the headless-WebView learnApi bootstrap, single-flighting
@@ -228,6 +323,9 @@ class Auth extends _$Auth {
 
     // Clear Dio cookie store (also wipes the SecureCookieStore entry).
     await client.clearCookies();
+    // Reset the learnApi warm-up gate so the next sign-in re-runs the
+    // bootstrap once `session_mitlearn` is missing again.
+    _learnWarmupAttempted = false;
 
     // Clear the native WebView cookie store so re-opening login doesn't
     // auto-reauthenticate via a persisted Keycloak SSO cookie.
