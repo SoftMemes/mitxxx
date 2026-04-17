@@ -6,6 +6,7 @@ import 'package:omnilect/core/network/dio_client_provider.dart';
 import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/auth/providers/reauth_provider.dart';
+import 'package:omnilect/features/auth/utils/webview_cookie_sync.dart';
 import 'package:omnilect/features/courses/models/list_source.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -49,6 +50,20 @@ class AvailableListsController extends _$AvailableListsController {
     final db = ref.read(appDatabaseProvider);
     final now = DateTime.now();
     final companions = <AvailableListsCompanion>[];
+
+    // Lift Keycloak identity cookies from the webview's persistent jar into
+    // Dio's store. Users on pre-fix installs never had sso.ol.mit.edu cookies
+    // captured during login; without them, the OAuth chain below bounces to
+    // the SSO login page instead of completing silently.
+    try {
+      await syncWebViewCookiesToDio(client, const [
+        'sso.ol.mit.edu',
+        'mitxonline.mit.edu',
+        'courses.learn.mit.edu',
+      ]);
+    } on Object catch (e, st) {
+      _log.warning('refresh: webview cookie sync failed', e, st);
+    }
 
     // Refresh SSO state serially before hitting either API. The LMS OAuth
     // chain walks mitxonline → sso.ol.mit.edu → LMS, refreshing all three
