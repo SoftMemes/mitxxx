@@ -112,6 +112,31 @@ class Auth extends _$Auth {
     }
   }
 
+  /// Fire-and-forget learnApi warm-up, sharing `_learnWarmupAttempted` and
+  /// `_bootstrapLearnApiOnce` with the request-time interceptor path. Called
+  /// from cold-start (`build()` with existing cookies) and post-login so the
+  /// first pull-to-refresh doesn't stall on a just-in-time bootstrap.
+  ///
+  /// If the user later triggers a learnApi call before the bootstrap
+  /// finishes, the interceptor's `_bootstrapLearnApiOnce` single-flight gate
+  /// makes it `await` this same Future rather than spawning a second
+  /// `HeadlessInAppWebView`.
+  void _maybeWarmupLearnApiInBackground(DioClient client) {
+    if (_learnWarmupAttempted) return;
+    if (!client.hasCookies) return;
+    final cookies = client.cookiesForHost('api.learn.mit.edu');
+    final missing = cookies['session_mitlearn'] == null ||
+        cookies['learn_csrftoken'] == null;
+    if (!missing) {
+      _learnWarmupAttempted = true;
+      return;
+    }
+    _learnWarmupAttempted = true;
+    unawaited(_bootstrapLearnApiOnce(client).catchError((Object e, StackTrace st) {
+      _log.warning('background learnApi warm-up failed', e, st);
+    }));
+  }
+
   /// Installs a request-side interceptor on `client.learnApi` that always
   /// sets the three headers the api.learn.mit.edu backend uses to decide
   /// "is this request from an authenticated SPA at learn.mit.edu":
