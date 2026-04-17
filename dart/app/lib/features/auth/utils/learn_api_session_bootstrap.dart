@@ -68,10 +68,15 @@ Future<void> ensureLearnApiSession(DioClient client) async {
 /// those cookies to complete SSO, lands back on api.learn.mit.edu with
 /// `session_mitlearn` set, and we then pull those cookies into Dio.
 ///
-/// Times out after [timeout] (default 15s) and cleans up regardless.
+/// Times out after [timeout] (default 5s) and cleans up regardless. A healthy
+/// SSO handshake completes in well under a second; a longer wait means
+/// Keycloak is itself dead (no `KEYCLOAK_IDENTITY` cookie) and is waiting for
+/// credentials on its login page — which a headless WebView can't provide.
+/// In that state the caller will see a stale-session error and surface the
+/// reauth prompt instead; there's no point blocking on the bootstrap.
 Future<void> bootstrapLearnApiSession(
   DioClient client, {
-  Duration timeout = const Duration(seconds: 15),
+  Duration timeout = const Duration(seconds: 5),
 }) async {
   final completer = Completer<void>();
   HeadlessInAppWebView? webView;
