@@ -100,8 +100,12 @@ OcwCourseHomeInfo parseCourseHome(String html, String slug) {
 // parse_video_gallery
 // -----------------------------------------------------------------------------
 
+// Deliberately no trailing `\b` — some OCW titles use "Lecture 24b" where
+// the letter is part of the number (sublecture). We only require the prefix
+// to look like "Lecture N" / "Lec N" and trust the upstream link-filter to
+// keep non-lecture resources out (see the `/resources/` href prefix below).
 final RegExp _videoLectureTitleRe =
-    RegExp(r'^(lecture|lec)\s*\d+\b', caseSensitive: false);
+    RegExp(r'^(lecture|lec)\s*\d+', caseSensitive: false);
 
 List<OcwLectureRef> parseVideoGallery(String html, String slug) {
   final doc = html_parser.parse(html);
@@ -194,27 +198,38 @@ List<OcwResource> parseLectureNotesPage(
   final out = <OcwResource>[];
   final seen = <String>{};
 
-  // Newer OCW template (e.g. 6.100L) wraps each row in a `.resource-item`
-  // and exposes the human-readable title via `<a class="resource-list-title">`.
-  // When present we prefer it — the sibling `.resource-thumbnail` link only
-  // has "pdf 832 kB" as its visible text.
-  final titleLinks = doc.querySelectorAll('a.resource-list-title[href]');
-  if (titleLinks.isNotEmpty) {
-    for (final a in titleLinks) {
-      final href = a.attributes['href'] ?? '';
+  // Newer OCW template (e.g. 6.100L) wraps each PDF in a `.resource-item`
+  // with two sibling links:
+  //   - `<a class="resource-thumbnail" href=".../lec01.pdf">pdf 832 kB</a>`
+  //     — direct download URL.
+  //   - `<a class="resource-list-title" href=".../resources/lec01_pdf/">
+  //       Lecture 1: Introduction</a>` — wrapper page; link text is the
+  //     readable title but its href is NOT the PDF.
+  // Prefer this template when present: the thumbnail gives the actual URL,
+  // the title link gives the label.
+  final items = doc.querySelectorAll('.resource-item');
+  if (items.isNotEmpty) {
+    for (final item in items) {
+      final thumb = item.querySelector('a.resource-thumbnail[href]');
+      final titleLink = item.querySelector('a.resource-list-title');
+      if (thumb == null) continue;
+      final href = thumb.attributes['href'] ?? '';
       if (!href.startsWith(coursePrefix)) continue;
       if (!href.toLowerCase().endsWith('.pdf')) continue;
       if (seen.contains(href)) continue;
       seen.add(href);
       final absolute = _urlJoin(baseUrl, href);
+      final title = (titleLink?.text.trim().isNotEmpty ?? false)
+          ? titleLink!.text.trim()
+          : _cleanResourceTitle(item.text.trim());
       out.add(OcwResource(
         id: _synthResourceId(courseId, absolute),
         type: OcwResourceType.lectureNotes,
-        title: a.text.trim(),
+        title: title,
         url: absolute,
       ));
     }
-    return out;
+    if (out.isNotEmpty) return out;
   }
 
   // Classic template (e.g. 9.13): PDF rows are `<a href=/courses/{slug}/resources/{slug}/>`

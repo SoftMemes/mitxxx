@@ -34,7 +34,8 @@ void main() {
     test('6.100L detects lists/lecture-notes path (newer OCW template)', () {
       final home = parseCourseHome(_read(_pySlug, 'course_home.html'), _pySlug);
       expect(home.title, contains('Introduction to CS and Programming'));
-      expect(home.courseNumber, '6.100l');
+      // OCW writes "6.100L" on the page (capital L suffix for labs).
+      expect(home.courseNumber, '6.100L');
       // Newer courses ship lecture notes under /lists/lecture-notes/, not
       // /pages/lecture-notes/. parseCourseHome must pick it up anyway.
       expect(
