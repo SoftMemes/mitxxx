@@ -107,10 +107,20 @@ Future<void> _onWebViewAuthComplete() async {
     // Include sso.ol.mit.edu so Keycloak identity cookies land in the Dio
     // store — without them, server-side OAuth redirect chains bounce to the
     // SSO login page instead of completing silently.
+    // All five hosts that can carry an auth-relevant cookie after a fresh
+    // login. This is the ONLY place `syncWebViewCookiesToDio` runs post-
+    // login — subsequent operations trust Dio's cookie jar. Adding
+    // api.learn.mit.edu + learn.mit.edu here means the next userlist call
+    // uses whatever the WebView captured for them (typically nothing fresh
+    // unless the Keycloak redirect chain happened to visit them). For
+    // silently-stale `session_mitlearn` the `client.learnApi` 401/403
+    // interceptor reactively runs `bootstrapLearnApiSession`.
     await syncWebViewCookiesToDio(client, const [
       'mitxonline.mit.edu',
       'courses.learn.mit.edu',
       'sso.ol.mit.edu',
+      'api.learn.mit.edu',
+      'learn.mit.edu',
     ]);
   }
 

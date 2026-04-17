@@ -6,7 +6,6 @@ import 'package:omnilect/core/network/dio_client_provider.dart';
 import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/auth/providers/reauth_provider.dart';
-import 'package:omnilect/features/auth/utils/learn_api_session_bootstrap.dart';
 import 'package:omnilect/features/courses/models/list_source.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -51,12 +50,12 @@ class AvailableListsController extends _$AvailableListsController {
     final now = DateTime.now();
     final companions = <AvailableListsCompanion>[];
 
-    // Make sure the api.learn.mit.edu session is authenticated before the
-    // userlist fetch — lifts WebView cookies into Dio, probes /users/me/,
-    // and runs the headless-WebView bootstrap if `session_mitlearn` is stale
-    // or missing. Shared with the sync path so both code paths behave the
-    // same way on a silently-stale session.
-    await ensureLearnApiSession(client);
+    // No proactive session warm-up. The api.learn.mit.edu userlist call
+    // below goes through the 401/403 interceptor on `client.learnApi`
+    // (installed in `_attachLearnApiAuthInterceptor`) which silently
+    // bootstraps and retries on stale-session errors, and the mitxonline
+    // enrollments call either works with current cookies or surfaces
+    // the reauth prompt via the `authFailed` branch below.
 
     // "All enrolled" — from mitxonline. Dio is configured with a JSON
     // Accept header, so `.data` comes back already decoded; we request

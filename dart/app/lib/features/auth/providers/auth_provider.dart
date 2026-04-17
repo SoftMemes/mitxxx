@@ -34,6 +34,19 @@ const _kCachedUser = User(
 
 @Riverpod(keepAlive: true)
 class Auth extends _$Auth {
+  /// Guard so the learnApi interceptor is attached at most once even if the
+  /// provider rebuilds. Mirrors the `_authInterceptorAttached` pattern on
+  /// `DioClient` for the LMS interceptor.
+  bool _learnAuthInterceptorAttached = false;
+
+  /// Single-flight gate for the learnApi bootstrap. Concurrent 401/403s on
+  /// `client.learnApi` (e.g. `available_lists_provider.refresh` racing with
+  /// `SyncController._reconcileMembership`'s userlist-items fetches) would
+  /// otherwise each spawn their own `HeadlessInAppWebView` instance,
+  /// competing on the shared cookie jar and producing inconsistent
+  /// sessions. Instead, all concurrent callers await the same Future.
+  Future<void>? _pendingLearnBootstrap;
+
   @override
   Future<User?> build() async {
     final client = ref.read(dioClientProvider)
@@ -48,6 +61,7 @@ class Auth extends _$Auth {
               .request(const SyncAllOperation());
         }),
       );
+    _attachLearnApiAuthInterceptor(client);
 
     // Offline-first: if we have persisted cookies, treat the user as
     // authenticated without hitting the network. The LMS session will be
@@ -73,6 +87,75 @@ class Auth extends _$Auth {
     } on Object catch (e, st) {
       _log.warning('_establishLmsSession failed', e, st);
     }
+  }
+
+  /// Runs the headless-WebView learnApi bootstrap, single-flighting
+  /// concurrent callers onto the same Future. A second 401/403 that arrives
+  /// while a bootstrap is already in flight doesn't spawn a second
+  /// `HeadlessInAppWebView` — it just awaits the in-progress one, retries,
+  /// and benefits from the refreshed cookies.
+  Future<void> _bootstrapLearnApiOnce(DioClient client) {
+    final pending = _pendingLearnBootstrap;
+    if (pending != null) return pending;
+    final future = learn_bootstrap
+        .bootstrapLearnApiSession(client)
+        .whenComplete(() => _pendingLearnBootstrap = null);
+    _pendingLearnBootstrap = future;
+    return future;
+  }
+
+  /// Installs a 401/403 interceptor on the api.learn.mit.edu Dio so that a
+  /// silently-stale `session_mitlearn` cookie is transparently refreshed via
+  /// [learn_bootstrap.bootstrapLearnApiSession] before the original request
+  /// is retried. This is the only recovery path we run for learnApi —
+  /// there's no proactive "refresh before every operation" anywhere else.
+  ///
+  /// Failure modes:
+  ///   - Bootstrap succeeds + retry succeeds → caller sees the response,
+  ///     no reauth, no user-visible anything.
+  ///   - Bootstrap fails OR retry still 401/403 → we surface the reauth
+  ///     modal (via `SyncAllOperation`) and let the original error
+  ///     propagate to the caller.
+  void _attachLearnApiAuthInterceptor(DioClient client) {
+    if (_learnAuthInterceptorAttached) return;
+    _learnAuthInterceptorAttached = true;
+    client.learnApi.interceptors.add(
+      InterceptorsWrapper(
+        onError: (err, handler) async {
+          final status = err.response?.statusCode;
+          if (status != 401 && status != 403) {
+            return handler.next(err);
+          }
+          // Don't attempt recovery if the original request was itself the
+          // retry — avoids infinite loops when the bootstrap succeeded but
+          // cookies still aren't accepted (e.g. full Keycloak expiry).
+          if (err.requestOptions.extra['learnApiRetried'] == true) {
+            return handler.next(err);
+          }
+          err.requestOptions.extra['learnApiRetried'] = true;
+          try {
+            await _bootstrapLearnApiOnce(client);
+            final retry =
+                await client.learnApi.fetch<dynamic>(err.requestOptions);
+            return handler.resolve(retry);
+          } on Object catch (e, st) {
+            _log.warning(
+              'learnApi auth-retry failed — surfacing reauth',
+              e,
+              st,
+            );
+            // Defer the reauth notification so we don't run it inside the
+            // interceptor handler (matches the LMS interceptor pattern).
+            Future<void>.delayed(Duration.zero, () {
+              ref
+                  .read(reauthControllerProvider.notifier)
+                  .request(const SyncAllOperation());
+            });
+            return handler.next(err);
+          }
+        },
+      ),
+    );
   }
 
   /// Called after the WebView OAuth flow completes and cookies are injected
@@ -109,14 +192,11 @@ class Auth extends _$Auth {
       // Trigger LMS OAuth handshake — sets session + JWT cookies on the LMS.
       await _establishLmsSession(client);
 
-      // Refresh the MIT Learn API session too so the first userlist fetch
-      // doesn't pay a silent-stale cookie penalty. The Dio-only handshake
-      // (`client.ensureLearnApiSession`) can't complete the SSO redirect
-      // chain when the HttpOnly Keycloak identity cookies live only in the
-      // WebView's jar — which is exactly the state we're in after this
-      // login WebView finished on mitxonline.mit.edu without ever visiting
-      // api.learn.mit.edu. Use the WebView-backed bootstrap helper instead.
-      await learn_bootstrap.ensureLearnApiSession(client);
+      // api.learn.mit.edu session is NOT warmed up here. The first learnApi
+      // call (userlists, etc.) will route through the 401/403 interceptor
+      // installed in `_attachLearnApiAuthInterceptor`, which silently runs
+      // `bootstrapLearnApiSession` and retries. Keeping it reactive avoids
+      // blocking login completion on a headless WebView that may time out.
 
       // Flush any LMS content cached while unauthenticated.
       final db = ref.read(appDatabaseProvider);

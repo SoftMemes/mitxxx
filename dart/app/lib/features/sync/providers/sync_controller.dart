@@ -13,8 +13,6 @@ import 'package:omnilect/core/network/dio_client_provider.dart';
 import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/auth/providers/reauth_provider.dart';
-import 'package:omnilect/features/auth/utils/learn_api_session_bootstrap.dart'
-    as learn_bootstrap;
 import 'package:omnilect/features/courses/models/enrollment.dart';
 import 'package:omnilect/features/courses/models/list_source.dart';
 import 'package:omnilect/features/courses/models/ocw_course.dart';
@@ -243,11 +241,12 @@ class SyncController extends _$SyncController {
       trigger: trigger,
     ));
 
-    try {
-      await client.establishLmsSession();
-    } on Object catch (e, st) {
-      _log.warning('syncAll: LMS session refresh failed, proceeding anyway', e, st);
-    }
+    // No proactive LMS session refresh here — the 401 interceptor on
+    // `client.lms` (see `DioClient.addAuthInterceptor`) silently re-runs
+    // `establishLmsSession` and retries the failed request on demand. The
+    // proactive version regressed freshly-written mitxonline cookies by
+    // racing with the login-time WebView sync; removing it is what lets
+    // pull-to-refresh complete in tens of milliseconds instead of seconds.
 
     List<Enrollment> enrollments;
     try {
@@ -296,7 +295,7 @@ class SyncController extends _$SyncController {
     // and compute the target course set. Drop courses no longer referenced.
     final Set<String> targetCourseIds;
     try {
-      targetCourseIds = await _reconcileMembership(enrollments);
+      targetCourseIds = await _reconcileMembership(enrollments, trigger: trigger);
     } on Object catch (e, st) {
       _log.warning('syncAll: reconciliation failed', e, st);
       unawaited(analytics.logSyncFailure(
@@ -350,7 +349,10 @@ class SyncController extends _$SyncController {
   /// filtered to supported (mitxonline) platforms. As a side effect, rebuilds
   /// `course_list_memberships` for each selected list and deletes any course
   /// that's fallen out of every selection.
-  Future<Set<String>> _reconcileMembership(List<Enrollment> enrollments) async {
+  Future<Set<String>> _reconcileMembership(
+    List<Enrollment> enrollments, {
+    String trigger = kTriggerManual,
+  }) async {
     final client = ref.read(dioClientProvider);
     final db = ref.read(appDatabaseProvider);
     final selection = await db.getSelectedLists();
@@ -372,9 +374,25 @@ class SyncController extends _$SyncController {
           source: source,
           enrolledIds: enrolledIds,
         );
-      } on Object catch (e, st) {
-        // Skip this list on failure — keep its existing memberships so
+      } on DioException catch (e, st) {
+        final status = e.response?.statusCode;
+        if (status == 401 || status == 403) {
+          // Auth failure on a userlist fetch means every remaining list
+          // would fail the same way. Bail reconciliation entirely and
+          // surface the reauth prompt so the user can recover — don't
+          // silently render empty lists.
+          _log.warning(
+            '_reconcileMembership: list $listId auth failed ($status) — reauth',
+            e,
+            st,
+          );
+          _notifyStaleSession(SyncAllOperation(trigger: trigger));
+          return const <String>{};
+        }
+        // Non-auth error — keep this list's existing memberships so
         // courses aren't spuriously dropped when a single list fetch fails.
+        _log.warning('_reconcileMembership: list $listId fetch failed', e, st);
+      } on Object catch (e, st) {
         _log.warning('_reconcileMembership: list $listId fetch failed', e, st);
       }
 
@@ -438,13 +456,10 @@ class SyncController extends _$SyncController {
           unsupported: const [],
         );
       case ListSource.learnMyList:
-        // The Dio-only handshake (`client.ensureLearnApiSession`) fails when
-        // HttpOnly Keycloak identity cookies are only in the WebView jar —
-        // which is the state we end up in after any login WebView that
-        // didn't specifically visit api.learn.mit.edu. Use the WebView-
-        // backed helper: it syncs cookies, probes /users/me/, and runs the
-        // headless-WebView bootstrap if the session is actually stale.
-        await learn_bootstrap.ensureLearnApiSession(client);
+        // No proactive session refresh. If `session_mitlearn` is stale, the
+        // interceptor on `client.learnApi` (see
+        // `_attachLearnApiAuthInterceptor` in auth_provider.dart) transparently
+        // runs the headless-WebView bootstrap and retries this request once.
         final resp = await client.learnApi.get<dynamic>(
           '/api/v1/userlists/$listId/items/',
           queryParameters: {'limit': 1000},
