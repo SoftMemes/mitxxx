@@ -172,13 +172,32 @@ class _LectureVideoPlayerState extends ConsumerState<LectureVideoPlayer> {
           );
         }
 
-        // Loading state.
+        // Loading state. In inline mode we reserve the scrub-bar row below
+        // the 16:9 placeholder so the layout doesn't jump when the first
+        // frame arrives — the bar is drawn with duration=0 (empty track,
+        // thumb pinned at the start). In fullscreen the bar is an
+        // auto-hiding overlay, so no extra row is needed.
         if (vpc == null || !vpc.value.isInitialized) {
-          return const AspectRatio(
+          const placeholder = AspectRatio(
             aspectRatio: 16 / 9,
             child: ColoredBox(
               color: Colors.black,
-              child: Center(child: CircularProgressIndicator(color: Colors.white)),
+              child: Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+            ),
+          );
+          if (widget.isFullScreen) {
+            return placeholder;
+          }
+          return ColoredBox(
+            color: Colors.black,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                placeholder,
+                _buildScrubBar(snap, forOverlay: false),
+              ],
             ),
           );
         }

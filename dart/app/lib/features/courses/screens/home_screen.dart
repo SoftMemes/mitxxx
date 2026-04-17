@@ -8,6 +8,7 @@ import 'package:omnilect/core/analytics/analytics_events.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/features/auth/providers/auth_provider.dart';
+import 'package:omnilect/features/auth/screens/login_screen.dart';
 import 'package:omnilect/features/courses/models/enrollment.dart';
 import 'package:omnilect/features/courses/providers/course_image_provider.dart';
 import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
@@ -74,7 +75,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             : null,
       ),
       body: !isAuthenticated
-          ? _LoggedOutState(onLogin: () => context.go('/login'))
+          ? _LoggedOutState(onLogin: () => showLoginSheet(context))
           : enrollmentsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => _PullToSyncWrapper(

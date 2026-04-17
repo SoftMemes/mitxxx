@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:omnilect/core/router/app_router.dart';
 import 'package:omnilect/features/auth/providers/reauth_provider.dart';
+import 'package:omnilect/features/auth/screens/login_screen.dart';
 
 /// Listens to [reauthControllerProvider] and surfaces a dismissible "session
 /// expired" modal whenever the sync layer flags a stale session. The modal
@@ -75,14 +75,16 @@ class _ReauthGateState extends ConsumerState<ReauthGate> {
     switch (action) {
       case _ReauthAction.login:
         notifier.beginLogin();
-        // Same context trap as above — go through the router's navigator
-        // context, which IS a descendant of the GoRouter InheritedWidget.
-        final routeCtx = rootNavigatorKey.currentContext;
-        if (routeCtx != null) {
-          // routeCtx is freshly obtained from the root navigator key after
-          // the dialog closed — it is NOT a stored pre-await context.
+        // Show the login WebView as a modal bottom sheet over the current
+        // screen (rather than pushing a full-screen route). Uses the root
+        // navigator key's context since ReauthGate itself sits above the
+        // Navigator in the widget tree.
+        final sheetCtx = rootNavigatorKey.currentContext;
+        if (sheetCtx != null) {
+          // Freshly obtained from the root navigator key after the dialog
+          // closed — not a stored pre-await context.
           // ignore: use_build_context_synchronously
-          unawaited(GoRouter.of(routeCtx).push('/login'));
+          unawaited(showLoginSheet(sheetCtx));
         }
       case _ReauthAction.dismiss:
       case null:

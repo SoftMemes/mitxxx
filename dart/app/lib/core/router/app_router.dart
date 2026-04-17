@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/features/auth/providers/auth_provider.dart';
 import 'package:omnilect/features/auth/providers/reauth_provider.dart';
-import 'package:omnilect/features/auth/screens/login_screen.dart';
 import 'package:omnilect/features/courses/providers/selected_lists_provider.dart';
 import 'package:omnilect/features/courses/screens/course_outline_screen.dart';
 import 'package:omnilect/features/courses/screens/home_screen.dart';
@@ -65,7 +64,6 @@ GoRouter appRouter(Ref ref) {
       final authState = ref.read(authProvider);
       final isLoading = authState.isLoading;
       final isAuthenticated = authState.value != null;
-      final isLoginRoute = location == '/login';
 
       // While checking auth on startup, stay put.
       if (isLoading) return null;
@@ -83,18 +81,16 @@ GoRouter appRouter(Ref ref) {
       if (isAuthenticated && hasSelection && isListSelectionRoute) {
         return '/home';
       }
-      // Unauthenticated users can't use the list-selection step.
-      if (!isAuthenticated && isListSelectionRoute) return '/login';
+      // Unauthenticated user shouldn't be on the list-selection step —
+      // bounce to home where they can tap "Log in to sync" to open the
+      // login bottom sheet.
+      if (!isAuthenticated && isListSelectionRoute) return '/home';
 
-      // Logged-out users can browse /home, /settings, /onboarding, /login.
-      // Course content routes require auth (they need cached data from a sync).
+      // Course content routes require auth (cached data from a sync). Send
+      // unauth users back to home; login is initiated via an explicit tap
+      // on the "Log in to sync" button there (opens the sheet modally).
       final requiresAuth = location.startsWith('/course/');
-      if (!isAuthenticated && requiresAuth) return '/login';
-      // Authenticated users normally can't re-enter /login, but when reauth
-      // is active (stale session) we explicitly want to allow it so the user
-      // can refresh their cookies without being wiped.
-      final reauthActive = ref.read(reauthControllerProvider) != null;
-      if (isAuthenticated && isLoginRoute && !reauthActive) return '/home';
+      if (!isAuthenticated && requiresAuth) return '/home';
       return null;
     },
     routes: [
@@ -115,10 +111,6 @@ GoRouter appRouter(Ref ref) {
             builder: (context, state) => const ListSelectionScreen(),
           ),
         ],
-      ),
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginScreen(),
       ),
       GoRoute(
         path: '/home',
