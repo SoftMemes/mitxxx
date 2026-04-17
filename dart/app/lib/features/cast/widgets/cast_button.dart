@@ -8,12 +8,11 @@ import 'package:flutter_to_airplay/flutter_to_airplay.dart';
 
 /// Cast button for the video player overlay.
 ///
-/// On iOS: renders an [AirPlayRoutePickerView] which shows both AirPlay and
-/// Chromecast devices in the system route picker (Google Cast SDK registers
-/// itself as a media output device on iOS).
-///
-/// On Android: renders an [IconButton] that opens a device-picker dialog using
-/// [GoogleCastDiscoveryManager].
+/// Renders the same Material cast icon on both platforms. Tapping opens a
+/// device picker that lists discovered Chromecast receivers. On iOS, the
+/// picker also includes an AirPlay row that opens the native AirPlay picker
+/// (via a transparent [AirPlayRoutePickerView] layered over the tile — the
+/// plugin does not expose a way to trigger it programmatically).
 class CastButton extends ConsumerWidget {
   const CastButton({
     required this.iconSize,
@@ -27,19 +26,6 @@ class CastButton extends ConsumerWidget {
     final castState = ref.watch(castControllerProvider);
     final isConnected = castState.isConnected || castState.isConnecting;
 
-    if (Platform.isIOS) {
-      return SizedBox(
-        width: iconSize + 8,
-        height: iconSize + 8,
-        child: AirPlayRoutePickerView(
-          tintColor: isConnected ? Colors.blue : Colors.white,
-          activeTintColor: Colors.blue,
-          backgroundColor: Colors.transparent,
-        ),
-      );
-    }
-
-    // Android: custom icon that opens a device-picker dialog.
     return IconButton(
       padding: EdgeInsets.zero,
       constraints: BoxConstraints(
@@ -98,7 +84,7 @@ class CastButton extends ConsumerWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Android device picker dialog
+// Device picker dialog
 // ---------------------------------------------------------------------------
 
 class _DevicePickerDialog extends StatelessWidget {
@@ -116,32 +102,36 @@ class _DevicePickerDialog extends StatelessWidget {
           stream: GoogleCastDiscoveryManager.instance.devicesStream,
           builder: (context, snapshot) {
             final devices = snapshot.data ?? [];
-            if (devices.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 12),
-                      Text('Looking for cast devices…'),
-                    ],
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (devices.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 12),
+                        Text('Looking for cast devices…'),
+                      ],
+                    ),
+                  )
+                else
+                  ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: devices.length,
+                    itemBuilder: (ctx, i) {
+                      final device = devices[i];
+                      return ListTile(
+                        leading: const Icon(Icons.cast),
+                        title: Text(device.friendlyName),
+                        onTap: () => onDeviceSelected(device),
+                      );
+                    },
                   ),
-                ),
-              );
-            }
-            return ListView.builder(
-              shrinkWrap: true,
-              itemCount: devices.length,
-              itemBuilder: (ctx, i) {
-                final device = devices[i];
-                return ListTile(
-                  leading: const Icon(Icons.cast),
-                  title: Text(device.friendlyName),
-                  onTap: () => onDeviceSelected(device),
-                );
-              },
+                if (Platform.isIOS) const _AirPlayRow(),
+              ],
             );
           },
         ),
@@ -150,6 +140,36 @@ class _DevicePickerDialog extends StatelessWidget {
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+}
+
+/// An "AirPlay" row for the iOS device picker.
+///
+/// A standard [ListTile] with an invisible [AirPlayRoutePickerView] stacked on
+/// top — the native route picker intercepts the tap and opens the system
+/// AirPlay chooser. Our dialog stays open behind the system modal; the user
+/// dismisses it via Cancel afterwards (the plugin exposes no tap callback to
+/// auto-dismiss).
+class _AirPlayRow extends StatelessWidget {
+  const _AirPlayRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Stack(
+      children: [
+        ListTile(
+          leading: Icon(Icons.airplay),
+          title: Text('AirPlay'),
+        ),
+        Positioned.fill(
+          child: AirPlayRoutePickerView(
+            tintColor: Colors.transparent,
+            activeTintColor: Colors.transparent,
+            backgroundColor: Colors.transparent,
+          ),
         ),
       ],
     );

@@ -1,6 +1,5 @@
 // ignore_for_file: uri_has_not_been_generated
 import 'dart:async';
-import 'dart:io';
 
 import 'package:omnilect/features/cast/models/cast_queue_item.dart';
 import 'package:omnilect/features/cast/models/cast_state.dart';
@@ -42,9 +41,7 @@ class CastController extends _$CastController {
   // ---------------------------------------------------------------------------
 
   void _init() {
-    if (Platform.isAndroid) {
-      GoogleCastDiscoveryManager.instance.startDiscovery();
-    }
+    GoogleCastDiscoveryManager.instance.startDiscovery();
 
     _sessionSub = GoogleCastSessionManager.instance.currentSessionStream
         .listen(_onSessionChange);
@@ -54,9 +51,7 @@ class CastController extends _$CastController {
     _pollTimer?.cancel();
     _sessionSub?.cancel();
     _mediaStatusSub?.cancel();
-    if (Platform.isAndroid) {
-      GoogleCastDiscoveryManager.instance.stopDiscovery();
-    }
+    GoogleCastDiscoveryManager.instance.stopDiscovery();
   }
 
   // ---------------------------------------------------------------------------
@@ -250,8 +245,7 @@ class CastController extends _$CastController {
     state = state.copyWith(speed: speed);
   }
 
-  /// Stream of discovered Cast devices (Android only — on iOS discovery is
-  /// handled by the system route picker).
+  /// Stream of discovered Cast devices.
   Stream<List<GoogleCastDevice>> get devicesStream =>
       GoogleCastDiscoveryManager.instance.devicesStream;
 
