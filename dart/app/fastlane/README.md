@@ -53,10 +53,42 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 
 
+### beta_android
+
+```sh
+[bundle exec] fastlane beta_android
+```
+
+
+
+### beta_ios
+
+```sh
+[bundle exec] fastlane beta_ios
+```
+
+
+
 ### release
 
 ```sh
 [bundle exec] fastlane release
+```
+
+
+
+### release_android
+
+```sh
+[bundle exec] fastlane release_android
+```
+
+
+
+### release_ios
+
+```sh
+[bundle exec] fastlane release_ios
 ```
 
 
