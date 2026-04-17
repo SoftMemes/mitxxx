@@ -25,6 +25,14 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
           ListTile(
+            leading: const Icon(Icons.playlist_add_check),
+            title: const Text('Courses'),
+            subtitle: const Text('Choose which lists to sync'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/settings/courses'),
+          ),
+          const Divider(),
+          ListTile(
             leading: const Icon(Icons.tune_outlined),
             title: const Text('Settings'),
             trailing: const Icon(Icons.chevron_right),

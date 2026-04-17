@@ -23,3 +23,34 @@ Future<List<Enrollment>> enrollments(Ref ref) async {
       .map((e) => Enrollment.fromJson(e as Map<String, dynamic>))
       .toList();
 }
+
+/// Enrollments filtered to the user's current sync selection: only courses
+/// that appear in at least one selected list's membership. This is what the
+/// home screen shows — dropped courses (their local data has been wiped by
+/// reconciliation) don't appear here either.
+///
+/// Before the first reconciliation sync completes after onboarding the
+/// membership table is still empty, so this provider yields an empty list.
+/// The home screen handles that by auto-triggering sync.
+@riverpod
+Stream<List<Enrollment>> activeEnrollments(Ref ref) async* {
+  final db = ref.read(appDatabaseProvider);
+
+  // Drive on membership changes so removing a list in settings updates the
+  // home view as soon as reconciliation commits.
+  await for (final memberships in db.select(db.courseListMemberships).watch()) {
+    final allowedCourseIds = memberships.map((m) => m.courseId).toSet();
+    final cached = await db.getEnrollments();
+    if (cached == null) {
+      yield const [];
+      continue;
+    }
+    final list = jsonDecode(cached.data) as List<dynamic>;
+    final all = list
+        .map((e) => Enrollment.fromJson(e as Map<String, dynamic>))
+        .toList();
+    yield all
+        .where((e) => allowedCourseIds.contains(e.run.coursewareId))
+        .toList();
+  }
+}
