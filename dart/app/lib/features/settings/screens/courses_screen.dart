@@ -53,7 +53,7 @@ class _CoursesScreenState extends ConsumerState<CoursesScreen> {
     }
   }
 
-  Future<void> _save() async {
+  Future<void> _apply() async {
     final added = _draftSelection.difference(_initialSelection);
     final removed = _initialSelection.difference(_draftSelection);
     final hasAllEnrolled = _draftSelection.contains(kAllEnrolledListId);
@@ -75,13 +75,18 @@ class _CoursesScreenState extends ConsumerState<CoursesScreen> {
           ),
     );
 
-    // Kick off reconciliation sync but don't block the UI on it.
-    unawaited(
-      ref.read(syncControllerProvider.notifier).syncAll(),
-    );
+    // Restart sync from the top so the new selection takes effect
+    // immediately — existing in-flight work is cancelled first.
+    final syncController = ref.read(syncControllerProvider.notifier);
+    unawaited(() async {
+      await syncController.stopAll();
+      await syncController.syncAll();
+    }());
 
     if (!mounted) return;
-    context.pop();
+    // Apply closes straight back to the home screen so the user sees the
+    // sync progress on the course list rather than returning to /settings.
+    context.go('/home');
   }
 
   @override
@@ -91,15 +96,12 @@ class _CoursesScreenState extends ConsumerState<CoursesScreen> {
 
     selectionAsync.whenData(_primeFromSelection);
 
+    final hasChanges =
+        !_setEquals(_draftSelection, _initialSelection);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Courses'),
-        actions: [
-          TextButton(
-            onPressed: _draftSelection.isEmpty ? null : _save,
-            child: const Text('Save'),
-          ),
-        ],
       ),
       body: Column(
         children: [
@@ -163,10 +165,39 @@ class _CoursesScreenState extends ConsumerState<CoursesScreen> {
               },
             ),
           ),
+          const Divider(height: 1),
+          Material(
+            color: Theme.of(context).colorScheme.surface,
+            elevation: 4,
+            child: SafeArea(
+              top: false,
+              minimum: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _draftSelection.isEmpty ? null : _apply,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      hasChanges ? 'Apply' : 'Done',
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
+}
+
+bool _setEquals(Set<String> a, Set<String> b) {
+  if (a.length != b.length) return false;
+  for (final v in a) {
+    if (!b.contains(v)) return false;
+  }
+  return true;
 }
 
 class _EmptyListMessage extends StatelessWidget {

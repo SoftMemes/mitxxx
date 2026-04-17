@@ -123,6 +123,23 @@ class CourseListMemberships extends Table {
   Set<Column> get primaryKey => {courseId, listId};
 }
 
+/// Cache of list items we CAN'T sync (OCW, edX, etc.) but still want to
+/// display on the home screen so the user knows they're in a selected list
+/// even though we can't download them yet. Rebuilt on every reconciliation —
+/// safe to treat as cache.
+///
+/// [courseId] is the resource's `readable_id` (stable-ish across runs) since
+/// unsupported items don't have an Open edX courseware_id.
+class UnsupportedListItems extends Table {
+  TextColumn get courseId => text()();
+  TextColumn get listId => text()();
+  TextColumn get title => text()();
+  TextColumn get platformCode => text()();
+
+  @override
+  Set<Column> get primaryKey => {courseId, listId};
+}
+
 /// Tracks downloaded video files on disk. Primary key is the video URL —
 /// deduplication is URL-keyed so a video shared across courses is only
 /// downloaded once. [courseIds] is a JSON-encoded `List<String>`.
@@ -156,6 +173,7 @@ const _cacheTables = [
   'cached_sanitized_xblocks',
   'cached_course_sync',
   'available_lists',
+  'unsupported_list_items',
 ];
 
 @DriftDatabase(tables: [
@@ -169,6 +187,7 @@ const _cacheTables = [
   SelectedLists,
   AvailableLists,
   CourseListMemberships,
+  UnsupportedListItems,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -178,7 +197,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -535,6 +554,25 @@ class AppDatabase extends _$AppDatabase {
         }
       });
 
+  /// Rebuild cached unsupported items for a single list. Pairs with
+  /// [rebuildMembershipForList] so home can display OCW / edX items with a
+  /// "not yet supported" badge without trying to sync them.
+  Future<void> rebuildUnsupportedForList(
+    String listId,
+    Iterable<UnsupportedListItemsCompanion> items,
+  ) =>
+      transaction(() async {
+        await (delete(unsupportedListItems)
+              ..where((t) => t.listId.equals(listId)))
+            .go();
+        for (final row in items) {
+          await into(unsupportedListItems).insert(row);
+        }
+      });
+
+  Stream<List<UnsupportedListItem>> watchUnsupportedListItems() =>
+      select(unsupportedListItems).watch();
+
   /// Returns courseIds that have local state (outline, sync record, or downloads)
   /// but are no longer referenced by any selected-list membership — the "drop
   /// set" for reconciliation.
@@ -638,6 +676,7 @@ class AppDatabase extends _$AppDatabase {
     await delete(selectedLists).go();
     await delete(availableLists).go();
     await delete(courseListMemberships).go();
+    await delete(unsupportedListItems).go();
     return paths;
   }
 

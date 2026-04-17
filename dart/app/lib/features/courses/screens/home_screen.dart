@@ -60,27 +60,51 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             onPressed: () => context.push('/settings'),
           ),
         ],
+        bottom: isSyncing
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(2),
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            : null,
       ),
       body: !isAuthenticated
           ? _LoggedOutState(onLogin: () => context.go('/login'))
           : enrollmentsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => _EmptyState(
-          isSyncing: isSyncing,
-          onSync: () => ref.read(syncControllerProvider.notifier).syncAll(),
+        error: (_, _) => _PullToSyncWrapper(
+          onRefresh: () async {
+            final controller =
+                ref.read(syncControllerProvider.notifier);
+            await controller.stopAll();
+            await controller.syncAll(
+              trigger: kTriggerPullToRefresh,
+            );
+          },
+          child: _EmptyState(
+            isSyncing: isSyncing,
+            onSync: () =>
+                ref.read(syncControllerProvider.notifier).syncAll(),
+          ),
         ),
         data: (enrollments) {
+          Future<void> restartSync() async {
+            final controller = ref.read(syncControllerProvider.notifier);
+            await controller.stopAll();
+            await controller.syncAll(trigger: kTriggerPullToRefresh);
+          }
+
           if (enrollments.isEmpty) {
-            return const _NotEnrolledState();
+            return _PullToSyncWrapper(
+              onRefresh: restartSync,
+              child: const _NotEnrolledState(),
+            );
           }
 
           return Column(
             children: [
               Expanded(
                 child: RefreshIndicator(
-                  onRefresh: () => ref
-                      .read(syncControllerProvider.notifier)
-                      .syncAll(trigger: kTriggerPullToRefresh),
+                  onRefresh: restartSync,
                   child: ListView.separated(
                     itemCount: enrollments.length,
                     separatorBuilder: (_, _) => const Divider(height: 1),
@@ -191,6 +215,35 @@ class _EmptyState extends StatelessWidget {
             label: Text(isSyncing ? 'Syncing…' : 'Sync now'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Makes a non-scrolling empty-state widget support pull-to-refresh by
+/// hosting it inside a scrollable that always accepts overscroll. Sized to
+/// fill the viewport so the content stays vertically centred.
+class _PullToSyncWrapper extends StatelessWidget {
+  const _PullToSyncWrapper({
+    required this.onRefresh,
+    required this.child,
+  });
+
+  final Future<void> Function() onRefresh;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: child,
+          ),
+        ),
       ),
     );
   }

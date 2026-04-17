@@ -176,6 +176,15 @@ class _CourseContext {
   int itemsSynced = 0; // populated at finalisation for analytics
 }
 
+class _ListReconcileResult {
+  _ListReconcileResult({
+    required this.courseIds,
+    required this.unsupported,
+  });
+  final Set<String> courseIds;
+  final List<UnsupportedListItemsCompanion> unsupported;
+}
+
 // ---------------------------------------------------------------------------
 // Course-level sync controller
 // ---------------------------------------------------------------------------
@@ -349,9 +358,9 @@ class SyncController extends _$SyncController {
     for (final selected in selection) {
       final source = ListSource.fromStorage(selected.source);
       final listId = selected.listId;
-      Set<String>? listMembers;
+      _ListReconcileResult? listResult;
       try {
-        listMembers = await _fetchListCourseIds(
+        listResult = await _fetchListCourseIds(
           client: client,
           listId: listId,
           source: source,
@@ -363,9 +372,10 @@ class SyncController extends _$SyncController {
         _log.warning('_reconcileMembership: list $listId fetch failed', e, st);
       }
 
-      if (listMembers != null) {
-        await db.rebuildMembershipForList(listId, listMembers);
-        target.addAll(listMembers);
+      if (listResult != null) {
+        await db.rebuildMembershipForList(listId, listResult.courseIds);
+        await db.rebuildUnsupportedForList(listId, listResult.unsupported);
+        target.addAll(listResult.courseIds);
       } else {
         // Preserve prior union for this list by reading the existing
         // memberships back.
@@ -403,11 +413,12 @@ class SyncController extends _$SyncController {
     return target;
   }
 
-  /// Fetches the set of courseware ids the selected list maps to. Intersects
-  /// with [enrolledIds] because the LMS only serves content for courses the
-  /// user is enrolled in. Returns `null`-typed as a `throw` if the fetch
-  /// itself fails — the caller skips the list in that case.
-  Future<Set<String>> _fetchListCourseIds({
+  /// Fetches both the supported-course ids and the unsupported-item details
+  /// for a single selected list. Supported ids are intersected with
+  /// [enrolledIds] (the LMS only serves enrolled content). Unsupported items
+  /// are preserved so the home screen can show them with a "not yet
+  /// supported" badge. Throws if the fetch itself fails — caller catches.
+  Future<_ListReconcileResult> _fetchListCourseIds({
     required DioClient client,
     required String listId,
     required ListSource source,
@@ -416,30 +427,52 @@ class SyncController extends _$SyncController {
     switch (source) {
       case ListSource.enrolled:
         // "Enrolled" — every enrollment is in this list's membership.
-        return enrolledIds;
+        return _ListReconcileResult(
+          courseIds: enrolledIds,
+          unsupported: const [],
+        );
       case ListSource.learnMyList:
         await client.ensureLearnApiSession();
-        final resp = await client.learnApi.get<Map<String, dynamic>>(
+        final resp = await client.learnApi.get<dynamic>(
           '/api/v1/userlists/$listId/items/',
           queryParameters: {'limit': 1000},
         );
-        final results = (resp.data?['results'] as List<dynamic>? ?? [])
+        final body = resp.data as Map<String, dynamic>;
+        final results = (body['results'] as List<dynamic>? ?? [])
             .cast<Map<String, dynamic>>();
-        final out = <String>{};
+        final supported = <String>{};
+        final unsupported = <UnsupportedListItemsCompanion>[];
         for (final item in results) {
           final resource = item['resource'] as Map<String, dynamic>? ?? {};
           final platform = resource['platform'] as Map<String, dynamic>? ?? {};
-          if (platform['code'] != 'mitxonline') continue;
-          final runs = (resource['runs'] as List<dynamic>? ?? [])
-              .cast<Map<String, dynamic>>();
-          for (final run in runs) {
-            final courseId = run['courseware_id'] as String?;
-            if (courseId != null && enrolledIds.contains(courseId)) {
-              out.add(courseId);
+          final platformCode = platform['code'] as String? ?? 'unknown';
+          final readableId = resource['readable_id'] as String? ?? '';
+          final title = resource['title'] as String? ?? readableId;
+
+          if (platformCode == 'mitxonline') {
+            final runs = (resource['runs'] as List<dynamic>? ?? [])
+                .cast<Map<String, dynamic>>();
+            for (final run in runs) {
+              final courseId = run['courseware_id'] as String?;
+              if (courseId != null && enrolledIds.contains(courseId)) {
+                supported.add(courseId);
+              }
             }
+          } else if (readableId.isNotEmpty) {
+            unsupported.add(
+              UnsupportedListItemsCompanion.insert(
+                courseId: readableId,
+                listId: listId,
+                title: title,
+                platformCode: platformCode,
+              ),
+            );
           }
         }
-        return out;
+        return _ListReconcileResult(
+          courseIds: supported,
+          unsupported: unsupported,
+        );
     }
   }
 
