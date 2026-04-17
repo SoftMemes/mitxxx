@@ -9,7 +9,6 @@ import 'package:omnilect/features/courses/providers/selected_lists_provider.dart
 import 'package:omnilect/features/courses/screens/course_outline_screen.dart';
 import 'package:omnilect/features/courses/screens/home_screen.dart';
 import 'package:omnilect/features/courses/screens/lecture_screen.dart';
-import 'package:omnilect/features/courses/screens/ocw_lecture_screen.dart';
 import 'package:omnilect/features/onboarding/providers/onboarding_provider.dart';
 import 'package:omnilect/features/onboarding/screens/list_selection_screen.dart';
 import 'package:omnilect/features/onboarding/screens/onboarding_screen.dart';
@@ -154,17 +153,12 @@ GoRouter appRouter(Ref ref) {
         ),
       ),
       GoRoute(
+        // Handles both MITx (sequenceId = Open edX block id) and OCW
+        // (sequenceId = lectureSlug) — LecturePlayer dispatches internally.
         path: '/course/:courseId/sequence/:sequenceId',
         builder: (context, state) => LectureScreen(
           courseId: state.pathParameters['courseId']!,
           sequenceId: state.pathParameters['sequenceId']!,
-        ),
-      ),
-      GoRoute(
-        path: '/course/:courseId/ocw-lecture/:lectureSlug',
-        builder: (context, state) => OcwLectureScreen(
-          courseId: state.pathParameters['courseId']!,
-          lectureSlug: state.pathParameters['lectureSlug']!,
         ),
       ),
     ],

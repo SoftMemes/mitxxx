@@ -588,7 +588,10 @@ class _OcwLectureTile extends ConsumerWidget {
   }
 
   void _tap(BuildContext context) {
-    context.push('/course/$courseId/ocw-lecture/${lecture.slug}');
+    // Reuses the MITx LectureScreen route — LecturePlayer.build dispatches on
+    // the `ocw:` courseId prefix and treats the sequenceId path segment as
+    // the OCW lectureSlug. One player, one route, one UX.
+    context.push('/course/$courseId/sequence/${lecture.slug}');
   }
 }
 

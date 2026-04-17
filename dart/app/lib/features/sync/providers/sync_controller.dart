@@ -642,6 +642,13 @@ class SyncController extends _$SyncController {
     String sequenceId, {
     String trigger = kTriggerManual,
   }) async {
+    // OCW courses have no Open edX sequence tree — pull-to-refresh on an
+    // OCW lecture page re-runs the course-level fetch instead.
+    if (courseId.startsWith('ocw:')) {
+      await syncCourse(courseId, trigger: trigger);
+      return;
+    }
+
     final analytics = ref.read(analyticsServiceProvider);
     final startedAt = DateTime.now();
 

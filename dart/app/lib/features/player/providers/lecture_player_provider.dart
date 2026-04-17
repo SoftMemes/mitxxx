@@ -2,8 +2,11 @@
 import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/cast/models/cast_queue_item.dart';
+import 'package:omnilect/features/courses/models/ocw_course.dart';
+import 'package:omnilect/features/courses/models/xblock_content.dart';
 import 'package:omnilect/features/courses/providers/sequence_provider.dart';
 import 'package:omnilect/features/courses/providers/xblock_provider.dart';
+import 'package:omnilect/features/courses/utils/ocw_resource_html_builder.dart';
 import 'package:omnilect/features/courses/utils/xblock_parser.dart';
 import 'package:omnilect/features/downloads/utils/resolve_playable_uri.dart';
 import 'package:omnilect/features/player/controllers/lecture_playback_controller.dart';
@@ -76,6 +79,14 @@ class LecturePlayer extends _$LecturePlayer {
     required String courseId,
     required String sequenceId,
   }) async {
+    // Dispatch by course platform. For OCW courses, `sequenceId` is the
+    // lecture slug (e.g. `lecture-1-introduction`) rather than an Open edX
+    // block id — we load from `cached_ocw_*` tables and synthesize a
+    // length-1 segment so the shared LectureScreen widget works unchanged.
+    if (courseId.startsWith('ocw:')) {
+      return _buildOcw(courseId: courseId, lectureSlug: sequenceId);
+    }
+
     // Load sequence metadata.
     final sequence = await ref.watch(
       sequenceDetailProvider(blockId: sequenceId).future,
@@ -182,6 +193,110 @@ class LecturePlayer extends _$LecturePlayer {
       segments: segments,
       activeSegmentIndex: videoSchedule.first.segmentIndex,
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // OCW variant — one lecture, one segment. The rest of the widget tree
+  // (LectureScreen, LectureVideoPlayer, VerticalSectionTile, scrub bar,
+  // fullscreen, cast) runs unchanged because the state shape is identical.
+  // ---------------------------------------------------------------------------
+
+  Future<LecturePlayerState> _buildOcw({
+    required String courseId,
+    required String lectureSlug,
+  }) async {
+    final db = ref.read(appDatabaseProvider);
+    final lectureId = '$courseId/$lectureSlug';
+    final lecture = await db.getOcwLecture(lectureId);
+    if (lecture == null) {
+      return const LecturePlayerState(segments: []);
+    }
+
+    // Gather resources matched to this lecture + render them through the
+    // same sanitizer that MITx HTML blocks use so the tile looks identical.
+    final resources = await db.getOcwResources(courseId);
+    final matched = resources
+        .where((r) => r.lectureId == lecture.lectureId)
+        .map((r) => OcwResource(
+              id: r.resourceId,
+              type: _decodeOcwType(r.type),
+              title: r.title,
+              url: r.url,
+              lectureId: r.lectureId,
+            ))
+        .toList();
+    final rawHtml = buildOcwResourceHtml(matched);
+    final safeHtml = sanitizeXBlockHtml(rawHtml);
+
+    // Resolve local-file-first playback URI. OCW MP4s may be null for
+    // YouTube-only / in-class-dissection lectures; we surface that as a
+    // segment with no videoUrl, which LectureScreen already handles.
+    Uri? resolvedUri;
+    final mp4 = lecture.mp4Url;
+    final remoteUrl = mp4;
+    final duration = (lecture.durationSeconds ?? 0).toDouble();
+    if (mp4 != null) {
+      resolvedUri = await resolvePlayableUri(
+        ParsedVideoBlock(
+          videoBlockId: lecture.lectureId,
+          mp4Url: mp4,
+          hlsUrl: null,
+          duration: duration,
+          transcriptLanguages: const {},
+          transcriptTranslationUrl: null,
+        ),
+        db,
+      );
+    }
+
+    final segment = VerticalSegment(
+      verticalId: lecture.lectureId,
+      title: lecture.title,
+      videoUrl: resolvedUri,
+      videoDuration: duration,
+      globalStartTime: 0,
+      safeHtmlContent: safeHtml,
+      remoteVideoUrl: remoteUrl,
+    );
+    _segments = [segment];
+
+    if (resolvedUri == null) {
+      // No playable video — let LectureScreen render the resource tile only.
+      return LecturePlayerState(segments: [segment]);
+    }
+
+    final videoSchedule = [
+      VideoScheduleEntry(
+        segmentIndex: 0,
+        uri: resolvedUri,
+        duration: duration,
+        globalStartTime: 0,
+      ),
+    ];
+    _videoIndexToSegmentIndex.add(0);
+
+    final controller = LecturePlaybackController(videoSchedule);
+    _playbackController = controller;
+    ref.onDispose(controller.dispose);
+
+    final segments = [segment];
+    void onPlaybackChange() => _handlePlaybackSnapshot(
+          controller.snapshot.value,
+          segments,
+        );
+    controller.snapshot.addListener(onPlaybackChange);
+    ref.onDispose(() => controller.snapshot.removeListener(onPlaybackChange));
+
+    await controller.initialize();
+
+    return LecturePlayerState(segments: segments);
+  }
+
+  OcwResourceType _decodeOcwType(String name) {
+    for (final t in OcwResourceType.values) {
+      if (t.name == name) return t;
+    }
+    return OcwResourceType.lectureNotes;
   }
 
   // ---------------------------------------------------------------------------
