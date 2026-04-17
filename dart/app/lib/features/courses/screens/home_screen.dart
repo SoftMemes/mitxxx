@@ -8,6 +8,7 @@ import 'package:omnilect/features/auth/providers/auth_provider.dart';
 import 'package:omnilect/features/courses/models/enrollment.dart';
 import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
 import 'package:omnilect/features/courses/providers/outline_provider.dart';
+import 'package:omnilect/features/courses/providers/unsupported_courses_provider.dart';
 import 'package:omnilect/features/sync/models/course_sync_state.dart';
 import 'package:omnilect/features/sync/providers/sync_controller.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -93,12 +94,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             await controller.syncAll(trigger: kTriggerPullToRefresh);
           }
 
-          if (enrollments.isEmpty) {
+          final unsupported =
+              ref.watch(unsupportedCoursesProvider).asData?.value ??
+                  const <UnsupportedCourse>[];
+
+          if (enrollments.isEmpty && unsupported.isEmpty) {
             return _PullToSyncWrapper(
               onRefresh: restartSync,
               child: const _NotEnrolledState(),
             );
           }
+
+          final totalCount = enrollments.length +
+              (unsupported.isNotEmpty ? unsupported.length + 1 : 0);
 
           return Column(
             children: [
@@ -106,23 +114,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: RefreshIndicator(
                   onRefresh: restartSync,
                   child: ListView.separated(
-                    itemCount: enrollments.length,
+                    itemCount: totalCount,
                     separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (context, index) {
-                      final enrollment = enrollments[index];
-                      final courseId = enrollment.run.coursewareId;
-                      final courseSyncState = syncState[courseId];
-                      return _CourseTile(
-                        enrollment: enrollment,
-                        syncState: courseSyncState,
-                        onTap: () {
-                          ref.read(analyticsServiceProvider).logCourseView(
-                            courseId: courseId,
-                            source: kSourceCourseList,
-                          );
-                          context.push('/course/$courseId');
-                        },
-                      );
+                      if (index < enrollments.length) {
+                        final enrollment = enrollments[index];
+                        final courseId = enrollment.run.coursewareId;
+                        final courseSyncState = syncState[courseId];
+                        return _CourseTile(
+                          enrollment: enrollment,
+                          syncState: courseSyncState,
+                          onTap: () {
+                            ref.read(analyticsServiceProvider).logCourseView(
+                                  courseId: courseId,
+                                  source: kSourceCourseList,
+                                );
+                            context.push('/course/$courseId');
+                          },
+                        );
+                      }
+                      final unsupportedIndex = index - enrollments.length;
+                      if (unsupportedIndex == 0) {
+                        return const _SectionHeader('Not yet supported');
+                      }
+                      final course = unsupported[unsupportedIndex - 1];
+                      return _UnsupportedCourseTile(course: course);
                     },
                   ),
                 ),
@@ -319,6 +335,53 @@ class _ManageCoursesLinkState extends State<_ManageCoursesLink> {
       style: theme.textTheme.bodySmall?.copyWith(
             color: cs.onSurfaceVariant,
           ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader(this.title);
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      color: theme.colorScheme.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Text(
+        title,
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
+class _UnsupportedCourseTile extends StatelessWidget {
+  const _UnsupportedCourseTile({required this.course});
+
+  final UnsupportedCourse course;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final disabled = cs.onSurface.withValues(alpha: 0.38);
+    return ListTile(
+      enabled: false,
+      leading: Icon(Icons.library_books_outlined, color: disabled),
+      title: Text(
+        course.title,
+        style: theme.textTheme.titleMedium?.copyWith(color: disabled),
+      ),
+      subtitle: Text(
+        'Not yet supported · ${course.platformLabel}',
+        style: theme.textTheme.bodySmall?.copyWith(color: disabled),
+      ),
     );
   }
 }
