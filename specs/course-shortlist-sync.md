@@ -1,7 +1,7 @@
 # Course Shortlist Sync Specification
 
 > **Version**: 1.0 (April 2026)
-> **Status**: Ready for Implementation
+> **Status**: Implemented
 > **Last Updated**: 2026-04-17
 
 ## Description
@@ -263,3 +263,21 @@ Files expected to be added or modified. Paths are best-effort pointers; structur
 - `dart/app/lib/features/settings/screens/settings_screen.dart` — add "Courses" entry.
 - `dart/app/lib/features/downloads/` — expose a "cancel + delete all course artifacts" entry point used by delete-cascade.
 - Existing adjacent specs touched: `app-onboarding.md` (flow now continues into wizard), `app-online-course-sync.md` (sync target changes from "all enrolled" to the union), `gradual-sync.md` (compatible — reconciliation chooses *which* courses to sync; gradual-sync governs *how* each course is synced).
+
+## Implementation Notes
+
+**Implemented**: April 2026.
+
+Shipped in two coordinated changes:
+
+1. **Phase A — MIT Learn API discovery** (commit `56a6ce4`): Extended `python-tools/mitx-client/` with a stage-4 SSO handshake against `api.learn.mit.edu` and two new CLI commands (`list-playlists`, `dump-playlist`). Documented the `/api/v1/userlists/` + `/api/v1/userlists/{id}/items/` endpoints and the `resource.platform.code == "mitxonline"` supported-course filter in `python-tools/mitx-client/CLAUDE.md`.
+
+2. **Phase B — Flutter implementation**: Drift schema v6 → v7 adding three tables (user state `selected_lists`, cache `available_lists`, user state `course_list_memberships`); `DioClient` gains a `learnApi` instance with its own lazy SSO refresh (`ensureLearnApiSession`); sync reconciliation in `sync_controller.dart` computes the target union (intersected with enrollments, filtered to mitxonline platform), rebuilds memberships per list, and delete-cascades dropped courses through the existing `VideoDownloadManager.deleteScope` plus new DAO `deleteCourseCache`; router redirects authenticated users without a selection to a new `/onboarding/list-selection` wizard step; `/settings/courses` lets users edit the selection later with Save-triggers-sync semantics; the home screen now watches `activeEnrollmentsProvider` which filters by membership so dropped courses vanish from UI as soon as reconciliation commits; a legacy migration provider seeds the "all-enrolled" row for upgraders.
+
+Reconciliation logic is covered by in-memory Drift unit tests in `dart/app/test/course_list_reconciliation_test.dart` (ref-counted union, drop detection, cascade, migration seed behavior). `fvm flutter analyze` is clean.
+
+**Deviations from spec:**
+
+- Mapping custom-list items to Open edX courseware ids relies on `resource.runs[*].courseware_id` intersected with the user's enrolled run ids — the spec left this open pending Phase A discovery. The user's test lists contained only OCW items so this path is documented but hasn't been empirically verified against a mitxonline-platform list item end-to-end.
+- The home screen filter (`activeEnrollmentsProvider`) is an addition not explicitly called out in the spec, needed to honor the "removed from the app" requirement for courses that are still enrolled upstream but outside the selection.
+- Pre-existing `test/widget_test.dart` is broken on `main` and remains broken — unrelated to this change.
