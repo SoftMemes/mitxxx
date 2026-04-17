@@ -45,7 +45,8 @@ class CastButton extends ConsumerWidget {
   }
 
   Future<void> _showDevicePicker(BuildContext context, WidgetRef ref) async {
-    final notifier = ref.read(castControllerProvider.notifier);
+    final notifier = ref.read(castControllerProvider.notifier)
+      ..startDiscovery();
 
     await showDialog<void>(
       context: context,

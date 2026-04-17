@@ -20,6 +20,7 @@ class CastController extends _$CastController {
   Timer? _pollTimer;
   StreamSubscription<GoogleCastSession?>? _sessionSub;
   StreamSubscription<GoggleCastMediaStatus?>? _mediaStatusSub;
+  bool _discoveryStarted = false;
 
   // Pre-assigned item IDs: item at index i has id = i + 1 (1-based).
   // This lets us map currentItemId back to a 0-based queue index reliably.
@@ -41,8 +42,6 @@ class CastController extends _$CastController {
   // ---------------------------------------------------------------------------
 
   void _init() {
-    GoogleCastDiscoveryManager.instance.startDiscovery();
-
     _sessionSub = GoogleCastSessionManager.instance.currentSessionStream
         .listen(_onSessionChange);
   }
@@ -51,7 +50,20 @@ class CastController extends _$CastController {
     _pollTimer?.cancel();
     _sessionSub?.cancel();
     _mediaStatusSub?.cancel();
-    GoogleCastDiscoveryManager.instance.stopDiscovery();
+    if (_discoveryStarted) {
+      GoogleCastDiscoveryManager.instance.stopDiscovery();
+      _discoveryStarted = false;
+    }
+  }
+
+  /// Start Chromecast device discovery.
+  ///
+  /// Deferred until the user opens the cast picker so iOS does not surface the
+  /// local-network permission prompt on lecture entry. Idempotent.
+  void startDiscovery() {
+    if (_discoveryStarted) return;
+    _discoveryStarted = true;
+    GoogleCastDiscoveryManager.instance.startDiscovery();
   }
 
   // ---------------------------------------------------------------------------
