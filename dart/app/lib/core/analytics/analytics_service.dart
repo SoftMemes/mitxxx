@@ -290,4 +290,24 @@ class AnalyticsService {
         kParamToPositionS: toPositionS,
         kParamDurationS: durationS,
       });
+
+  // ---------------------------------------------------------------------------
+  // Progress events
+  // ---------------------------------------------------------------------------
+
+  /// Fired when the user taps the "Continue" tile on a course outline.
+  /// `platform` is `mitx` | `ocw`. `lectureId` is the sequence block id for
+  /// MITx and the OCW lecture id for OCW courses.
+  Future<void> logContinueResume({
+    required String courseId,
+    required String lectureId,
+    required String platform,
+    required double positionSeconds,
+  }) =>
+      _emit(kEventContinueResume, {
+        kParamCourseId: courseId,
+        kParamLectureId: lectureId,
+        kParamPlatform: platform,
+        kParamPositionSeconds: positionSeconds,
+      });
 }

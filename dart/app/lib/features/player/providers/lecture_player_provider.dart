@@ -12,6 +12,7 @@ import 'package:omnilect/features/downloads/utils/resolve_playable_uri.dart';
 import 'package:omnilect/features/player/controllers/lecture_playback_controller.dart';
 import 'package:omnilect/features/player/models/lecture_player_state.dart';
 import 'package:omnilect/features/player/models/vertical_segment.dart';
+import 'package:omnilect/features/progress/providers/progress_tracker_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'lecture_player_provider.g.dart';
@@ -44,6 +45,11 @@ class LecturePlayer extends _$LecturePlayer {
 
   /// Position captured at scrub-start, in seconds, for the analytics event.
   int _scrubFromPositionS = 0;
+
+  /// Latest known global position, mirrored from playback snapshots. Used on
+  /// dispose to flush a final progress write without reading the disposed
+  /// controller.
+  double _lastKnownPosition = 0;
 
   // ---------------------------------------------------------------------------
   // Public accessor for the widget layer
@@ -177,7 +183,9 @@ class LecturePlayer extends _$LecturePlayer {
     // Create and initialise the playback controller.
     final controller = LecturePlaybackController(videoSchedule);
     _playbackController = controller;
-    ref.onDispose(controller.dispose);
+    ref
+      ..onDispose(_flushOnDispose)
+      ..onDispose(controller.dispose);
 
     // Listen for playback updates and mirror them into Riverpod state.
     void onPlaybackChange() => _handlePlaybackSnapshot(
@@ -189,10 +197,42 @@ class LecturePlayer extends _$LecturePlayer {
 
     await controller.initialize();
 
+    // Resume-from-saved-position: seek before the user presses play so the
+    // Continue tile lands the viewer exactly where they left off.
+    final savedPosition = await _readSavedPosition();
+    if (savedPosition > 0 && savedPosition < controller.totalDuration) {
+      await controller.seekGlobal(savedPosition);
+      _lastKnownPosition = savedPosition;
+    }
+
     return LecturePlayerState(
       segments: segments,
       activeSegmentIndex: videoSchedule.first.segmentIndex,
     );
+  }
+
+  /// Canonical lecture id for the progress tracker. For OCW courses the
+  /// tracked id is `$courseId/$lectureSlug`; for MITx it's the sequence
+  /// block id (i.e. `sequenceId`).
+  String get _trackedLectureId =>
+      courseId.startsWith('ocw:') ? '$courseId/$sequenceId' : sequenceId;
+
+  Future<double> _readSavedPosition() async {
+    final row = await ref
+        .read(progressTrackerProvider)
+        .db
+        .getCoursePosition(courseId);
+    if (row == null || row.lectureId != _trackedLectureId) return 0;
+    return row.positionSeconds;
+  }
+
+  void _flushOnDispose() {
+    // Fire-and-forget — the provider is tearing down so we can't await.
+    unawaited(ref.read(progressTrackerProvider).flushPosition(
+          courseId: courseId,
+          lectureId: _trackedLectureId,
+          positionSeconds: _lastKnownPosition,
+        ));
   }
 
   // ---------------------------------------------------------------------------
@@ -277,7 +317,9 @@ class LecturePlayer extends _$LecturePlayer {
 
     final controller = LecturePlaybackController(videoSchedule);
     _playbackController = controller;
-    ref.onDispose(controller.dispose);
+    ref
+      ..onDispose(_flushOnDispose)
+      ..onDispose(controller.dispose);
 
     final segments = [segment];
     void onPlaybackChange() => _handlePlaybackSnapshot(
@@ -288,6 +330,13 @@ class LecturePlayer extends _$LecturePlayer {
     ref.onDispose(() => controller.snapshot.removeListener(onPlaybackChange));
 
     await controller.initialize();
+
+    // Resume-from-saved-position: same path as the MITx branch.
+    final savedPosition = await _readSavedPosition();
+    if (savedPosition > 0 && savedPosition < controller.totalDuration) {
+      await controller.seekGlobal(savedPosition);
+      _lastKnownPosition = savedPosition;
+    }
 
     return LecturePlayerState(segments: segments);
   }
@@ -350,6 +399,12 @@ class LecturePlayer extends _$LecturePlayer {
 
     await _playbackController?.pause();
 
+    await ref.read(progressTrackerProvider).flushPosition(
+          courseId: courseId,
+          lectureId: _trackedLectureId,
+          positionSeconds: snap?.globalPosition ?? _lastKnownPosition,
+        );
+
     final verticalId = _currentVerticalId;
     if (verticalId != null) {
       unawaited(ref.read(analyticsServiceProvider).logVideoPause(
@@ -372,6 +427,11 @@ class LecturePlayer extends _$LecturePlayer {
     _scrubInProgress = false;
     final snap = _playbackController?.snapshot.value;
     final durationS = snap != null ? snap.totalDuration.round() : 0;
+    unawaited(ref.read(progressTrackerProvider).flushPosition(
+          courseId: courseId,
+          lectureId: _trackedLectureId,
+          positionSeconds: toPositionS,
+        ));
     final verticalId = _currentVerticalId;
     if (verticalId != null) {
       ref.read(analyticsServiceProvider).logVideoScrub(
@@ -462,6 +522,18 @@ class LecturePlayer extends _$LecturePlayer {
             ? snap.error
             : (snap.error == null ? null : current.errorMessage);
 
+    // Mirror the latest position into _lastKnownPosition so onDispose can
+    // flush it once the controller is torn down, and feed the throttled
+    // progress writer. The tracker itself enforces the 5-second gap.
+    _lastKnownPosition = snap.globalPosition;
+    if (snap.isPlaying) {
+      unawaited(ref.read(progressTrackerProvider).recordPosition(
+            courseId: courseId,
+            lectureId: _trackedLectureId,
+            positionSeconds: snap.globalPosition,
+          ));
+    }
+
     // Fire video_complete when playback transitions to complete for the first time.
     if (snap.isComplete && !current.isComplete) {
       final verticalId = _currentVerticalId;
@@ -472,6 +544,12 @@ class LecturePlayer extends _$LecturePlayer {
           durationS: snap.totalDuration.round(),
         );
       }
+      // Advance the "continue" row to the next video-bearing sequence (or
+      // clear it when none remains).
+      unawaited(ref.read(progressTrackerProvider).recordCompletion(
+            courseId: courseId,
+            completedLectureId: _trackedLectureId,
+          ));
     }
 
     state = AsyncData(current.copyWith(

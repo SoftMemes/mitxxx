@@ -116,6 +116,40 @@ void main() {
       expect(members, isEmpty);
     });
 
+    test('deleteCourseCache wipes course_positions for that course', () async {
+      await db.upsertCoursePosition(
+        courseId: 'c1',
+        lectureId: 'seq-1',
+        positionSeconds: 42,
+      );
+      await db.upsertCoursePosition(
+        courseId: 'c2',
+        lectureId: 'seq-2',
+        positionSeconds: 7,
+      );
+      await db.deleteCourseCache('c1');
+      expect(await db.getCoursePosition('c1'), isNull);
+      // Other courses are unaffected.
+      expect((await db.getCoursePosition('c2'))?.positionSeconds, 7);
+    });
+
+    test('clearAllAndGetDownloadPaths wipes all course_positions rows',
+        () async {
+      await db.upsertCoursePosition(
+        courseId: 'c1',
+        lectureId: 'seq-1',
+        positionSeconds: 10,
+      );
+      await db.upsertCoursePosition(
+        courseId: 'c2',
+        lectureId: 'seq-2',
+        positionSeconds: 20,
+      );
+      await db.clearAllAndGetDownloadPaths();
+      expect(await db.getCoursePosition('c1'), isNull);
+      expect(await db.getCoursePosition('c2'), isNull);
+    });
+
     test('replaceSelectedLists removes prior rows transactionally', () async {
       await seedSelection(['list-a', 'list-b', 'list-c']);
       expect((await db.getSelectedLists()).map((r) => r.listId).toSet(),

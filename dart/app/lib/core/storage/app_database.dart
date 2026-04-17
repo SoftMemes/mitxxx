@@ -189,6 +189,23 @@ class CachedOcwResources extends Table {
   Set<Column> get primaryKey => {resourceId};
 }
 
+/// User state: one row per course tracking the user's last-played lecture
+/// and position. Preserved across schema upgrades (never in [_cacheTables]).
+///
+/// [lectureId] is polymorphic by course type:
+///   - MITx courses (courseId = `course-v1:...`): sequence block id
+///     (e.g. `block-v1:MITxT+...+type@sequential+block@...`).
+///   - OCW courses (courseId = `ocw:...`): `CachedOcwLectures.lectureId`.
+class CoursePositions extends Table {
+  TextColumn get courseId => text()();
+  TextColumn get lectureId => text()();
+  RealColumn get positionSeconds => real()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {courseId};
+}
+
 /// Tracks downloaded video files on disk. Primary key is the video URL —
 /// deduplication is URL-keyed so a video shared across courses is only
 /// downloaded once. [courseIds] is a JSON-encoded `List<String>`.
@@ -243,6 +260,7 @@ const _cacheTables = [
   CachedOcwCourses,
   CachedOcwLectures,
   CachedOcwResources,
+  CoursePositions,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -252,7 +270,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -686,6 +704,9 @@ class AppDatabase extends _$AppDatabase {
         await (delete(cachedOcwResources)
               ..where((t) => t.courseId.equals(courseId)))
             .go();
+        await (delete(coursePositions)
+              ..where((t) => t.courseId.equals(courseId)))
+            .go();
       });
 
   // --- OCW course cache ---
@@ -758,6 +779,33 @@ class AppDatabase extends _$AppDatabase {
         }
       });
 
+  // --- Course positions (user state) ---
+
+  Future<CoursePosition?> getCoursePosition(String courseId) =>
+      (select(coursePositions)..where((t) => t.courseId.equals(courseId)))
+          .getSingleOrNull();
+
+  Stream<CoursePosition?> watchCoursePosition(String courseId) =>
+      (select(coursePositions)..where((t) => t.courseId.equals(courseId)))
+          .watchSingleOrNull();
+
+  Future<void> upsertCoursePosition({
+    required String courseId,
+    required String lectureId,
+    required double positionSeconds,
+  }) =>
+      into(coursePositions).insertOnConflictUpdate(
+        CoursePositionsCompanion.insert(
+          courseId: courseId,
+          lectureId: lectureId,
+          positionSeconds: positionSeconds,
+          updatedAt: DateTime.now(),
+        ),
+      );
+
+  Future<void> deleteCoursePosition(String courseId) =>
+      (delete(coursePositions)..where((t) => t.courseId.equals(courseId))).go();
+
   // --- Data-usage helpers ---
 
   /// Returns the absolute path to the SQLite database file. Can be called
@@ -825,6 +873,7 @@ class AppDatabase extends _$AppDatabase {
     await delete(cachedOcwCourses).go();
     await delete(cachedOcwLectures).go();
     await delete(cachedOcwResources).go();
+    await delete(coursePositions).go();
     return paths;
   }
 

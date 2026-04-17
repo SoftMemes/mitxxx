@@ -33,6 +33,8 @@ const kEventVideoPause = 'video_pause';
 const kEventVideoComplete = 'video_complete';
 const kEventVideoScrub = 'video_scrub';
 
+const kEventContinueResume = 'continue_resume';
+
 // ---------------------------------------------------------------------------
 // Parameter keys
 // ---------------------------------------------------------------------------
@@ -75,6 +77,12 @@ const kParamFromPositionS = 'from_position_s';
 const kParamToPositionS = 'to_position_s';
 const kParamDurationS = 'duration_s';
 const kParamIsResume = 'is_resume';
+
+const kParamLectureId = 'lecture_id';
+const kParamPositionSeconds = 'position_seconds';
+
+const kPlatformMitx = 'mitx';
+const kPlatformOcw = 'ocw';
 
 // ---------------------------------------------------------------------------
 // Enum-like string values

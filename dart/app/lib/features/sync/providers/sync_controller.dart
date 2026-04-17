@@ -26,6 +26,7 @@ import 'package:omnilect/features/courses/providers/xblock_provider.dart';
 import 'package:omnilect/features/courses/utils/xblock_parser.dart';
 import 'package:omnilect/features/downloads/models/download_status.dart';
 import 'package:omnilect/features/downloads/providers/video_download_manager.dart';
+import 'package:omnilect/features/progress/providers/progress_tracker_provider.dart';
 import 'package:omnilect/features/sync/fetchers/ocw_course_fetcher.dart';
 import 'package:omnilect/features/sync/models/course_sync_state.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -957,6 +958,12 @@ class SyncController extends _$SyncController {
       await _cleanupRemovedVideos(db, courseId, verts);
     } on Object catch (e, st) {
       _log.warning('cleanup failed for $courseId', e, st);
+    }
+    // Drop the tracked lecture if post-sync structure no longer contains it.
+    try {
+      await ref.read(progressTrackerProvider).validateTrackedLecture(courseId);
+    } on Object catch (e, st) {
+      _log.warning('validateTrackedLecture failed for $courseId', e, st);
     }
     final now = DateTime.now();
     await db.putSyncSuccess(courseId, now);

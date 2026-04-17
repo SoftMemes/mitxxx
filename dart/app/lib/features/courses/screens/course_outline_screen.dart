@@ -12,6 +12,7 @@ import 'package:omnilect/features/courses/providers/ocw_courses_provider.dart';
 import 'package:omnilect/features/courses/providers/outline_provider.dart';
 import 'package:omnilect/features/downloads/widgets/download_button.dart';
 import 'package:omnilect/features/downloads/widgets/download_progress_bar.dart';
+import 'package:omnilect/features/progress/providers/course_position_provider.dart';
 import 'package:omnilect/features/sync/models/course_sync_state.dart';
 import 'package:omnilect/features/sync/providers/sync_controller.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -62,6 +63,12 @@ class CourseOutlineScreen extends ConsumerWidget {
                   child: DownloadProgressBar(
                     courseId: courseId,
                     useLectureCount: true,
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: _MitxContinueSection(
+                    courseId: courseId,
+                    outline: outline,
                   ),
                 ),
                 SliverList(
@@ -321,6 +328,7 @@ class _SequenceTile extends ConsumerWidget {
     required this.sectionIndex,
     required this.sequenceIndex,
     required this.title,
+    this.onTapOverride,
   });
 
   final String courseId;
@@ -329,7 +337,15 @@ class _SequenceTile extends ConsumerWidget {
   final int sequenceIndex;
   final String title;
 
+  /// When set, overrides the default onTap — the Continue section uses this
+  /// so the tap fires `continue_resume` analytics before navigating.
+  final VoidCallback? onTapOverride;
+
   void _handleTap(BuildContext context, WidgetRef ref, SequenceSyncStatus status) {
+    if (onTapOverride != null && status == SequenceSyncStatus.synced) {
+      onTapOverride!();
+      return;
+    }
     if (status == SequenceSyncStatus.synced) {
       ref.read(analyticsServiceProvider).logSectionOpen(
         courseId: courseId,
@@ -354,6 +370,10 @@ class _SequenceTile extends ConsumerWidget {
       sequenceSyncControllerProvider.select((m) => m[sequenceId]),
     );
     final status = seqState?.status ?? SequenceSyncStatus.idle;
+    final trackedLectureId = ref.watch(
+      courseWatchPositionProvider(courseId).select((a) => a.asData?.value?.lectureId),
+    );
+    final isTracked = trackedLectureId == sequenceId;
     final cs = Theme.of(context).colorScheme;
 
     final isSynced = status == SequenceSyncStatus.synced;
@@ -392,11 +412,13 @@ class _SequenceTile extends ConsumerWidget {
           ),
         ListTile(
           leading: IconButton(
-            icon: const Icon(Icons.play_circle_outline),
+            icon: Icon(
+              isTracked ? Icons.play_circle : Icons.play_circle_outline,
+            ),
             color: iconColor,
-            tooltip: 'Play from beginning',
+            tooltip: isTracked ? 'Continue' : 'Play from beginning',
             onPressed: () {
-              if (isSynced) {
+              if (isSynced && onTapOverride == null) {
                 ref.read(analyticsServiceProvider).logSectionPlay(
                   courseId: courseId,
                   blockId: sequenceId,
@@ -421,6 +443,73 @@ class _SequenceTile extends ConsumerWidget {
             ],
           ),
           onTap: () => _handleTap(context, ref, status),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Continue section (MITx)
+// ---------------------------------------------------------------------------
+
+/// Top-of-outline "Continue where you left off" entry. Hidden when no
+/// `course_positions` row exists for [courseId].
+class _MitxContinueSection extends ConsumerWidget {
+  const _MitxContinueSection({required this.courseId, required this.outline});
+
+  final String courseId;
+  final CourseOutline outline;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final row = ref
+        .watch(courseWatchPositionProvider(courseId))
+        .asData
+        ?.value;
+    if (row == null) return const SizedBox.shrink();
+
+    // Find section + sequence indices for the tracked sequence. If it's not
+    // in the outline (structure drifted), don't render — the validator will
+    // clear the row on next sync.
+    int? sectionIndex;
+    int? sequenceIndex;
+    for (var s = 0; s < outline.outline.sections.length; s++) {
+      final seqs = outline.outline.sections[s].sequenceIds;
+      final i = seqs.indexOf(row.lectureId);
+      if (i >= 0) {
+        sectionIndex = s;
+        sequenceIndex = i;
+        break;
+      }
+    }
+    if (sectionIndex == null || sequenceIndex == null) {
+      return const SizedBox.shrink();
+    }
+
+    final title = outline.outline.sequences[row.lectureId]?.title ??
+        'Continue lecture';
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _SectionHeaderTile(title: 'Continue'),
+        _SequenceTile(
+          courseId: courseId,
+          sequenceId: row.lectureId,
+          sectionIndex: sectionIndex,
+          sequenceIndex: sequenceIndex,
+          title: title,
+          onTapOverride: () {
+            ref.read(analyticsServiceProvider).logContinueResume(
+                  courseId: courseId,
+                  lectureId: row.lectureId,
+                  platform: kPlatformMitx,
+                  positionSeconds: row.positionSeconds,
+                );
+            context.push('/course/$courseId/sequence/${row.lectureId}');
+          },
         ),
       ],
     );
@@ -504,6 +593,12 @@ class _OcwOutlineBody extends ConsumerWidget {
                 ),
               ),
             SliverToBoxAdapter(
+              child: _OcwContinueSection(
+                courseId: course.courseId,
+                lectures: data.lectures,
+              ),
+            ),
+            SliverToBoxAdapter(
               child: _SectionHeaderTile(
                 title: data.lectures.isEmpty
                     ? 'Lectures'
@@ -554,22 +649,38 @@ class _OcwOutlineData {
 }
 
 class _OcwLectureTile extends ConsumerWidget {
-  const _OcwLectureTile({required this.courseId, required this.lecture});
+  const _OcwLectureTile({
+    required this.courseId,
+    required this.lecture,
+    this.onTapOverride,
+  });
 
   final String courseId;
   final CachedOcwLecture lecture;
+
+  /// When set, overrides the default onTap — the Continue section uses this
+  /// so the tap fires `continue_resume` analytics before navigating.
+  final VoidCallback? onTapOverride;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final hasVideo = lecture.mp4Url != null;
     final subtitleColor = cs.onSurface.withValues(alpha: 0.6);
+    final trackedLectureId = ref.watch(
+      courseWatchPositionProvider(courseId)
+          .select((a) => a.asData?.value?.lectureId),
+    );
+    final isTracked = trackedLectureId == lecture.lectureId;
+    final leadingIcon = hasVideo
+        ? (isTracked ? Icons.play_circle : Icons.play_circle_outline)
+        : Icons.videocam_off_outlined;
     return ListTile(
       leading: IconButton(
-        icon: Icon(
-          hasVideo ? Icons.play_circle_outline : Icons.videocam_off_outlined,
-        ),
-        tooltip: hasVideo ? 'Play lecture' : 'Video not available',
+        icon: Icon(leadingIcon),
+        tooltip: hasVideo
+            ? (isTracked ? 'Continue' : 'Play lecture')
+            : 'Video not available',
         onPressed: () => _tap(context),
       ),
       title: Text(lecture.title),
@@ -588,10 +699,57 @@ class _OcwLectureTile extends ConsumerWidget {
   }
 
   void _tap(BuildContext context) {
+    if (onTapOverride != null) {
+      onTapOverride!();
+      return;
+    }
     // Reuses the MITx LectureScreen route — LecturePlayer.build dispatches on
     // the `ocw:` courseId prefix and treats the sequenceId path segment as
     // the OCW lectureSlug. One player, one route, one UX.
     context.push('/course/$courseId/sequence/${lecture.slug}');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Continue section (OCW)
+// ---------------------------------------------------------------------------
+
+class _OcwContinueSection extends ConsumerWidget {
+  const _OcwContinueSection({required this.courseId, required this.lectures});
+
+  final String courseId;
+  final List<CachedOcwLecture> lectures;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final row = ref
+        .watch(courseWatchPositionProvider(courseId))
+        .asData
+        ?.value;
+    if (row == null) return const SizedBox.shrink();
+    final match = lectures.where((l) => l.lectureId == row.lectureId).toList();
+    if (match.isEmpty) return const SizedBox.shrink();
+    final lecture = match.first;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _SectionHeaderTile(title: 'Continue'),
+        _OcwLectureTile(
+          courseId: courseId,
+          lecture: lecture,
+          onTapOverride: () {
+            ref.read(analyticsServiceProvider).logContinueResume(
+                  courseId: courseId,
+                  lectureId: lecture.lectureId,
+                  platform: kPlatformOcw,
+                  positionSeconds: row.positionSeconds,
+                );
+            context.push('/course/$courseId/sequence/${lecture.slug}');
+          },
+        ),
+      ],
+    );
   }
 }
 

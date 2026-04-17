@@ -1,7 +1,7 @@
 # Progress Tracking Specification
 
 > **Version**: 1.0 (April 2026)
-> **Status**: Ready for Implementation
+> **Status**: Implemented
 > **Last Updated**: 2026-04-17
 
 ## Overview
@@ -396,3 +396,55 @@ when the user enters via the Continue section.
 
 *Spec refined via `/refine-spec progress-tracking`. Ready for
 `/implement-spec progress-tracking`.*
+
+## Implementation Notes
+
+**Implemented**: April 2026 (branch `kristian/position-tracking`)
+
+**Key Changes**:
+
+New files:
+- `dart/app/lib/features/progress/services/progress_tracker.dart`
+- `dart/app/lib/features/progress/services/next_video_lecture_resolver.dart`
+- `dart/app/lib/features/progress/providers/progress_tracker_provider.dart`
+- `dart/app/lib/features/progress/providers/course_position_provider.dart`
+- `dart/app/lib/features/progress/providers/lecture_position_provider.dart`
+- `dart/app/test/features/progress/services/progress_tracker_test.dart`
+- `dart/app/test/features/progress/services/next_video_lecture_resolver_test.dart`
+- `dart/app/test/features/progress/end_threshold_test.dart`
+
+Modified files:
+- `dart/app/lib/core/storage/app_database.dart` — added `CoursePositions`
+  table, bumped `schemaVersion` 9 → 10, added CRUD helpers, extended
+  `deleteCourseCache` + `clearAllAndGetDownloadPaths`.
+- `dart/app/lib/features/player/providers/lecture_player_provider.dart` —
+  resume-on-init seek, throttled position writes from snapshots, pause/seek
+  flushes, `recordCompletion` on completion, dispose flush.
+- `dart/app/lib/features/courses/screens/ocw_lecture_screen.dart` — same
+  resume/record/flush/completion hooks but against the OCW
+  `VideoPlayerController` directly.
+- `dart/app/lib/features/courses/screens/course_outline_screen.dart` —
+  `_MitxContinueSection` + `_OcwContinueSection` slivers at the top of the
+  outline, `isTracked` flag threaded through `_SequenceTile` +
+  `_OcwLectureTile` so the tracked entry renders the filled `play_circle`
+  icon in both places.
+- `dart/app/lib/features/sync/providers/sync_controller.dart` —
+  `validateTrackedLecture` called at the end of `_finaliseCourse`.
+- `dart/app/lib/core/analytics/analytics_service.dart` +
+  `analytics_events.dart` — new `continue_resume` event with
+  `course_id`/`lecture_id`/`platform`/`position_seconds` params.
+- `dart/app/test/course_list_reconciliation_test.dart` — new assertions
+  that `deleteCourseCache` and `clearAllAndGetDownloadPaths` wipe
+  `course_positions`.
+
+**Deviations from Spec**:
+
+- The spec named `watchCoursePosition(courseId)` for the provider; shipped as
+  `courseWatchPositionProvider` to match the Riverpod-provider naming used
+  elsewhere in the codebase.
+- `lecturePosition((courseId, lectureId))` ships as
+  `lecturePositionProvider` taking a small `LecturePositionKey` freezed-ish
+  value for family key hashing (Riverpod families take a single arg).
+- The OCW lecture screen's `_OcwVideoArea` was converted from a plain
+  `StatefulWidget` to a `ConsumerStatefulWidget` so it can read the
+  progress tracker and position providers directly.
