@@ -25,17 +25,18 @@ class ListSelectionScreen extends ConsumerStatefulWidget {
 
 class _ListSelectionScreenState extends ConsumerState<ListSelectionScreen> {
   final Set<String> _draftSelection = <String>{};
-  bool _refreshing = false;
+  // Start in the refreshing state so the first build shows a spinner instead
+  // of briefly flashing the "No lists found" empty state.
+  bool _refreshing = true;
 
   @override
   void initState() {
     super.initState();
-    // Kick off a refresh on open so the picker has up-to-date lists.
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
   }
 
   Future<void> _refresh() async {
-    setState(() => _refreshing = true);
+    if (mounted) setState(() => _refreshing = true);
     try {
       await ref.read(availableListsControllerProvider.notifier).refresh();
     } finally {
@@ -83,24 +84,32 @@ class _ListSelectionScreenState extends ConsumerState<ListSelectionScreen> {
           if (available.isEmpty && _refreshing) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (available.isEmpty) {
-            return const _EmptyState();
-          }
           return Column(
             children: [
               Expanded(
-                child: ListPicker(
-                  available: available,
-                  selectedIds: _draftSelection,
-                  onToggle: (id, {required selected}) {
-                    setState(() {
-                      if (selected) {
-                        _draftSelection.add(id);
-                      } else {
-                        _draftSelection.remove(id);
-                      }
-                    });
-                  },
+                child: RefreshIndicator(
+                  onRefresh: _refresh,
+                  child: available.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: const [
+                            SizedBox(height: 80),
+                            _EmptyState(),
+                          ],
+                        )
+                      : ListPicker(
+                          available: available,
+                          selectedIds: _draftSelection,
+                          onToggle: (id, {required selected}) {
+                            setState(() {
+                              if (selected) {
+                                _draftSelection.add(id);
+                              } else {
+                                _draftSelection.remove(id);
+                              }
+                            });
+                          },
+                        ),
                 ),
               ),
               SafeArea(

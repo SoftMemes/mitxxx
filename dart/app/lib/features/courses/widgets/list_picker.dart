@@ -24,6 +24,7 @@ class ListPicker extends StatelessWidget {
   Widget build(BuildContext context) {
     final sorted = [...available]..sort(_sortKey);
     return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
       itemCount: sorted.length,
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, i) {
