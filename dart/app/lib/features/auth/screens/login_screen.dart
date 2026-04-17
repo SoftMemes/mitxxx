@@ -8,6 +8,7 @@ import 'package:logging/logging.dart';
 import 'package:mitx_api/mitx_api.dart';
 import 'package:omnilect/core/network/dio_client_provider.dart';
 import 'package:omnilect/features/auth/providers/auth_provider.dart';
+import 'package:omnilect/features/auth/providers/reauth_provider.dart';
 
 final _log = Logger('auth.login');
 
@@ -21,12 +22,24 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _showWebView = true;
   bool _completingAuth = false;
+  bool _loginSucceeded = false;
 
   @override
   void initState() {
     super.initState();
     // Clear stale Keycloak cookies immediately so the WebView starts fresh.
     CookieManager.instance().deleteAllCookies();
+  }
+
+  @override
+  void dispose() {
+    // If the user backed out of the login screen without completing the
+    // WebView OAuth, let the reauth controller know so it can re-surface
+    // the prompt rather than silently stranding the user.
+    if (!_loginSucceeded) {
+      ref.read(reauthControllerProvider.notifier).onLoginAbandoned();
+    }
+    super.dispose();
   }
 
 Future<void> _onWebViewAuthComplete() async {
@@ -43,6 +56,12 @@ Future<void> _onWebViewAuthComplete() async {
       // the catch block below can reset the spinner and show the error.
       final authState = ref.read(authProvider);
       if (authState.hasError) throw Exception(authState.error);
+      _loginSucceeded = true;
+
+      // If this login was prompted by a stale-session modal, clear the
+      // pending request and let the reauth controller re-run the halted
+      // sync operation.
+      ref.read(reauthControllerProvider.notifier).onLoginSucceeded();
     } on Object catch (e, st) {
       _log.severe('_onWebViewAuthComplete failed', e, st);
       if (mounted) {

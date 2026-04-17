@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/features/auth/providers/auth_provider.dart';
+import 'package:omnilect/features/auth/providers/reauth_provider.dart';
 import 'package:omnilect/features/auth/screens/login_screen.dart';
 import 'package:omnilect/features/courses/screens/course_outline_screen.dart';
 import 'package:omnilect/features/courses/screens/home_screen.dart';
@@ -19,12 +20,16 @@ part 'app_router.g.dart';
 
 @Riverpod(keepAlive: true)
 GoRouter appRouter(Ref ref) {
-  // Notifies GoRouter whenever auth or onboarding state changes so redirects
-  // are re-evaluated.
+  // Notifies GoRouter whenever auth, onboarding, or reauth state changes so
+  // redirects are re-evaluated.
   final notifier = ValueNotifier<int>(0);
   ref
     ..listen<AsyncValue<dynamic>>(authProvider, (_, _) => notifier.value++)
     ..listen<bool>(onboardingAcknowledgedProvider, (_, _) => notifier.value++)
+    ..listen<ReauthRequest?>(
+      reauthControllerProvider,
+      (_, _) => notifier.value++,
+    )
     ..onDispose(notifier.dispose);
 
   return GoRouter(
@@ -56,7 +61,11 @@ GoRouter appRouter(Ref ref) {
       final location = state.matchedLocation;
       final requiresAuth = location.startsWith('/course/');
       if (!isAuthenticated && requiresAuth) return '/login';
-      if (isAuthenticated && isLoginRoute) return '/home';
+      // Authenticated users normally can't re-enter /login, but when reauth
+      // is active (stale session) we explicitly want to allow it so the user
+      // can refresh their cookies without being wiped.
+      final reauthActive = ref.read(reauthControllerProvider) != null;
+      if (isAuthenticated && isLoginRoute && !reauthActive) return '/home';
       return null;
     },
     routes: [

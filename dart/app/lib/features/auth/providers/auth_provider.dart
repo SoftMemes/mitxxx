@@ -9,6 +9,7 @@ import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/core/network/dio_client_provider.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/auth/models/user.dart';
+import 'package:omnilect/features/auth/providers/reauth_provider.dart';
 import 'package:omnilect/features/downloads/providers/video_download_manager.dart';
 import 'package:omnilect/features/sync/providers/sync_controller.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -35,9 +36,15 @@ class Auth extends _$Auth {
   Future<User?> build() async {
     final client = ref.read(dioClientProvider)
       // Attach the 401 interceptor here (after auth_provider is created)
-      // to avoid a circular dependency in the provider graph.
+      // to avoid a circular dependency in the provider graph. On refresh
+      // failure we surface the reauth prompt rather than signing the user
+      // out — their cached content is still usable offline.
       ..addAuthInterceptor(
-        onAuthFailed: () => Future<void>.delayed(Duration.zero, signOut),
+        onAuthFailed: () => Future<void>.delayed(Duration.zero, () {
+          ref
+              .read(reauthControllerProvider.notifier)
+              .request(const SyncAllOperation());
+        }),
       );
 
     // Offline-first: if we have persisted cookies, treat the user as

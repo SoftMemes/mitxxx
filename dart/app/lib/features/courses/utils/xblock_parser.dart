@@ -138,7 +138,7 @@ Future<String> getOrComputeSanitizedXBlockHtml({
 }
 
 /// Extracts video metadata from raw xblock HTML.
-/// Port of web/src/lib/proxy/xblock-parser.ts
+/// Port of web/app/src/lib/proxy/xblock-parser.ts
 List<ParsedVideoBlock> extractVideoMetadata(String html) {
   // Find all data-metadata="..." attribute values.
   final pattern = RegExp('data-metadata="([^"]*)"');

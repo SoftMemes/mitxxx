@@ -14,6 +14,7 @@ import 'package:omnilect/core/network/dio_client_provider.dart';
 import 'package:omnilect/core/router/app_router.dart';
 import 'package:omnilect/core/storage/shared_preferences_provider.dart';
 import 'package:omnilect/core/theme/app_theme.dart';
+import 'package:omnilect/features/auth/widgets/reauth_gate.dart';
 import 'package:omnilect/firebase_options_dev.dart';
 import 'package:omnilect/firebase_options_prod.dart';
 import 'package:omnilect/flavor_config.dart';
@@ -97,6 +98,8 @@ class _OmnilectAppState extends ConsumerState<OmnilectApp> {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       routerConfig: router,
+      builder: (context, child) =>
+          ReauthGate(child: child ?? const SizedBox.shrink()),
     );
   }
 }

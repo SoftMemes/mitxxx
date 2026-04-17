@@ -11,7 +11,7 @@ import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/core/network/dio_client_provider.dart';
 import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
-import 'package:omnilect/features/auth/providers/auth_provider.dart';
+import 'package:omnilect/features/auth/providers/reauth_provider.dart';
 import 'package:omnilect/features/courses/models/enrollment.dart';
 import 'package:omnilect/features/courses/models/xblock_content.dart';
 import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
@@ -254,14 +254,14 @@ class SyncController extends _$SyncController {
       final status = e.response?.statusCode;
       final durationMs = DateTime.now().difference(startedAt).inMilliseconds;
       if (status == 401 || status == 403) {
-        _log.warning('syncAll: enrollment fetch returned $status — signing out', e, st);
+        _log.warning('syncAll: enrollment fetch returned $status — prompting reauth', e, st);
         unawaited(analytics.logSyncFailure(
           scope: kScopeAllCourses,
           durationMs: durationMs,
           stage: 'enrollments',
           errorKind: 'auth',
         ));
-        await ref.read(authProvider.notifier).signOut();
+        _notifyStaleSession(SyncAllOperation(trigger: trigger));
         return;
       }
       _log.warning('syncAll: enrollment fetch failed', e, st);
@@ -345,6 +345,20 @@ class SyncController extends _$SyncController {
       sequenceIds = await outlineReady.future;
     } on Object catch (e, st) {
       _log.warning('syncCourse($courseId): outline fetch failed', e, st);
+      if (_isStaleSession(e)) {
+        unawaited(analytics.logSyncFailure(
+          scope: kScopeCourse,
+          courseId: courseId,
+          durationMs: DateTime.now().difference(startedAt).inMilliseconds,
+          stage: 'outline',
+          errorKind: 'auth',
+        ));
+        _notifyStaleSession(SyncCourseOperation(
+          courseId: courseId,
+          trigger: trigger,
+        ));
+        return;
+      }
       final errorMsg = e.toString();
       await db.putSyncError(courseId, errorMsg);
       _updateCourseState(courseId, SyncStatus.error, errorMessage: errorMsg);
@@ -499,6 +513,38 @@ class SyncController extends _$SyncController {
     await _scheduler.waitForIdle();
   }
 
+  /// Halts scheduled and in-progress sync work without wiping cached content.
+  /// Used by the reauth flow when a stale session is detected: we want any
+  /// queued 401s to stop, but the local DB + last-synced-at metadata should
+  /// remain so the home screen still shows previously-cached courses.
+  void halt() {
+    _scheduler.clearQueue();
+    _trackers.clear();
+    for (final ctx in _courses.values) {
+      if (!ctx.completer.isCompleted) ctx.completer.complete();
+    }
+    _courses.clear();
+    if (state.isEmpty) return;
+    final updated = <String, CourseSyncState>{
+      for (final entry in state.entries)
+        entry.key: entry.value.status == SyncStatus.syncing
+            ? entry.value.copyWith(status: SyncStatus.idle)
+            : entry.value,
+    };
+    state = Map.unmodifiable(updated);
+  }
+
+  static bool _isStaleSession(Object e) {
+    if (e is! DioException) return false;
+    final s = e.response?.statusCode;
+    return s == 401 || s == 403;
+  }
+
+  void _notifyStaleSession(PendingSyncOperation op) {
+    ref.read(reauthControllerProvider.notifier).request(op);
+    halt();
+  }
+
   /// Tap-to-prioritise. Moves every queued task for [sequenceId] to the front
   /// of the global scheduler queue. If no sync is running for the course, it
   /// kicks one off so the sequence actually gets fetched.
@@ -583,6 +629,12 @@ class SyncController extends _$SyncController {
       vertIds = items.map((item) => item['id'] as String).toList();
     } on Object catch (e, st) {
       _log.warning('sequence metadata $seqId failed', e, st);
+      if (_isStaleSession(e)) {
+        _notifyStaleSession(SyncCourseOperation(
+          courseId: tracker.courseId,
+        ));
+        return;
+      }
       tracker
         ..errored = true
         ..errorMessage = e.toString();
@@ -617,6 +669,10 @@ class SyncController extends _$SyncController {
       await _fetchAndCacheXblock(client, db, vertId, courseId: courseId, retry: true);
     } on Object catch (e, st) {
       _log.warning('xblock $vertId failed', e, st);
+      if (_isStaleSession(e)) {
+        _notifyStaleSession(SyncCourseOperation(courseId: courseId));
+        return;
+      }
       tracker
         ?..errored = true
         ..errorMessage = e.toString();
