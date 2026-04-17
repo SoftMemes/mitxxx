@@ -51,6 +51,13 @@ class LecturePlayer extends _$LecturePlayer {
   /// controller.
   double _lastKnownPosition = 0;
 
+  /// Tracks the previous snapshot's isPlaying flag so we can detect the
+  /// false→true transition (i.e. the first frame of actual playback after a
+  /// tap). On that transition we flush immediately — bypassing the throttle
+  /// — so a Continue tile appears as soon as the user hits play, not 5 s
+  /// later.
+  bool _wasPlaying = false;
+
   // ---------------------------------------------------------------------------
   // Public accessor for the widget layer
   // ---------------------------------------------------------------------------
@@ -446,6 +453,15 @@ class LecturePlayer extends _$LecturePlayer {
 
   Future<void> seekGlobal(double globalSeconds) async {
     await _playbackController?.seekGlobal(globalSeconds);
+    // Immediate write — every seek is a deliberate user action and should
+    // persist right away. Covers scrub-release, skip-10/skip-30, and any
+    // other programmatic seek.
+    unawaited(ref.read(progressTrackerProvider).flushPosition(
+          courseId: courseId,
+          lectureId: _trackedLectureId,
+          positionSeconds: globalSeconds,
+        ));
+    _lastKnownPosition = globalSeconds;
     // After a seek, update activeSegmentIndex to the seek target and lock
     // override so snapshot-sync doesn't thrash the section on every frame.
     // The boundary-crossing branch in _handlePlaybackSnapshot will still
@@ -473,6 +489,12 @@ class LecturePlayer extends _$LecturePlayer {
     if (!state.hasValue) return;
     final seg = state.requireValue.segments[index];
     await _playbackController?.seekGlobal(seg.globalStartTime);
+    unawaited(ref.read(progressTrackerProvider).flushPosition(
+          courseId: courseId,
+          lectureId: _trackedLectureId,
+          positionSeconds: seg.globalStartTime,
+        ));
+    _lastKnownPosition = seg.globalStartTime;
     _updateState((s) => s.copyWith(
           activeSegmentIndex: index,
           userOverrideActive: true,
@@ -526,7 +548,17 @@ class LecturePlayer extends _$LecturePlayer {
     // flush it once the controller is torn down, and feed the throttled
     // progress writer. The tracker itself enforces the 5-second gap.
     _lastKnownPosition = snap.globalPosition;
-    if (snap.isPlaying) {
+    final startedPlaying = !_wasPlaying && snap.isPlaying;
+    _wasPlaying = snap.isPlaying;
+    if (startedPlaying) {
+      // First playback tick after a tap — persist immediately so the
+      // Continue section shows up the moment the user starts watching.
+      unawaited(ref.read(progressTrackerProvider).flushPosition(
+            courseId: courseId,
+            lectureId: _trackedLectureId,
+            positionSeconds: snap.globalPosition,
+          ));
+    } else if (snap.isPlaying) {
       unawaited(ref.read(progressTrackerProvider).recordPosition(
             courseId: courseId,
             lectureId: _trackedLectureId,
