@@ -180,13 +180,19 @@ def parse_lecture_page(html: str) -> dict:
     """
     soup = BeautifulSoup(html, "html.parser")
 
-    title = _first_text(soup.select("h1")) or ""
-    if title and "MIT OpenCourseWare" in title:
-        title = title.split("|")[0].strip()
+    # On a lecture page, <h1> is the course title and <h2> is the lecture
+    # title. The <title> tag always has the lecture title in the first
+    # pipe-separated segment, so we prefer it.
+    title = ""
+    raw_title = _first_text(soup.select("title"))
+    if raw_title:
+        title = raw_title.split("|")[0].strip()
     if not title:
-        raw_title = _first_text(soup.select("title"))
-        if raw_title:
-            title = raw_title.split("|")[0].strip()
+        for h2 in soup.select("h2"):
+            t = h2.get_text(strip=True)
+            if t and t.lower().startswith(("lecture", "lec ", "recitation", "session")):
+                title = t
+                break
 
     mp4_url: Optional[str] = None
     for a in soup.find_all("a", href=True):
