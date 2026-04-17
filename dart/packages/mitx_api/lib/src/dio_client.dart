@@ -14,6 +14,7 @@ class DioClient {
       : _cookies = cookies {
     _mitxOnlineDio = _buildDio(kMitxOnlineBaseUrl);
     _lmsDio = _buildDio(kLmsBaseUrl);
+    _learnApiDio = _buildDio(kLearnApiBaseUrl);
   }
 
   /// Async factory — loads cookies from [store] before constructing.
@@ -30,10 +31,13 @@ class DioClient {
 
   late final Dio _mitxOnlineDio;
   late final Dio _lmsDio;
+  late final Dio _learnApiDio;
   bool _authInterceptorAttached = false;
+  bool _learnSessionRefreshed = false;
 
   Dio get mitxOnline => _mitxOnlineDio;
   Dio get lms => _lmsDio;
+  Dio get learnApi => _learnApiDio;
 
   /// Returns true if any cookies are stored (i.e. the user has logged in before).
   bool get hasCookies => _cookies.isNotEmpty;
@@ -223,6 +227,101 @@ class DioClient {
     _log.info('establishLmsSession: complete');
   }
 
+  /// Walks the MIT Learn API SSO handshake with a bare Dio instance to pick up
+  /// `session_mitlearn` + `learn_csrftoken` cookies on api.learn.mit.edu.
+  ///
+  /// The `session_mitlearn` cookie can be present but silently expired — in
+  /// that state the userlist API returns empty results instead of 401. So we
+  /// always re-run this handshake once per [DioClient] instance (via
+  /// [ensureLearnApiSession]) rather than trusting cookie presence.
+  Future<void> establishLearnApiSession() async {
+    final bare = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(seconds: 60),
+      ),
+    );
+
+    final store = <String, Map<String, String>>{};
+    for (final entry in _cookies.entries) {
+      store[entry.key] = Map<String, String>.from(entry.value);
+    }
+
+    // Forward Keycloak identity cookies to sso.ol.mit.edu if they're only
+    // stored under one of the app hosts (happens because Dio routes SSO
+    // redirect responses under the originating host).
+    final ssoStore = store.putIfAbsent('sso.ol.mit.edu', () => {});
+    for (final host in ['mitxonline.mit.edu', 'courses.learn.mit.edu']) {
+      final hostStore = store[host] ?? {};
+      for (final key in ['KEYCLOAK_IDENTITY', 'KEYCLOAK_SESSION']) {
+        if (hostStore.containsKey(key) && !ssoStore.containsKey(key)) {
+          ssoStore[key] = hostStore[key]!;
+        }
+      }
+    }
+
+    var nextUrl = '$kLearnApiBaseUrl/login';
+    for (var hop = 0; hop < 15; hop++) {
+      final uri = Uri.parse(nextUrl);
+
+      final host = uri.host;
+      final merged = <String, String>{};
+      for (final e in store.entries) {
+        if (host == e.key || host.endsWith('.${e.key}')) {
+          merged.addAll(e.value);
+        }
+      }
+      final cookieHeader =
+          merged.entries.map((e) => '${e.key}=${e.value}').join('; ');
+
+      final resp = await bare.getUri<dynamic>(
+        uri,
+        options: Options(
+          followRedirects: false,
+          validateStatus: (s) => s != null && s < 400,
+          headers: {
+            if (cookieHeader.isNotEmpty) 'cookie': cookieHeader,
+          },
+        ),
+      );
+
+      for (final raw in resp.headers['set-cookie'] ?? <String>[]) {
+        _parseSetCookieInto(uri, raw, store);
+      }
+
+      final status = resp.statusCode ?? 0;
+      final location = resp.headers.value('location');
+      _log.info(
+        'establishLearnApiSession[$hop]: $status ${uri.host}${uri.path}'
+        ' → ${location ?? "(done)"}',
+      );
+
+      if (status >= 300 && status < 400 && location != null) {
+        nextUrl = location.startsWith('http')
+            ? location
+            : uri.resolve(location).toString();
+      } else {
+        break;
+      }
+    }
+
+    bare.close();
+
+    for (final entry in store.entries) {
+      _cookies.putIfAbsent(entry.key, () => {}).addAll(entry.value);
+    }
+    await _store.saveAll(_cookies);
+    _log.info('establishLearnApiSession: complete');
+  }
+
+  /// Lazy once-per-instance refresh of the MIT Learn API session. Call before
+  /// any api.learn.mit.edu request that requires auth.
+  Future<void> ensureLearnApiSession({bool force = false}) async {
+    if (!force && _learnSessionRefreshed) return;
+    await establishLearnApiSession();
+    _learnSessionRefreshed = true;
+  }
+
   /// Save [cookies] for [host] to the in-memory store and persist.
   /// Used by the Flutter login screen to inject WebView cookies.
   Future<void> saveCookies(String host, Map<String, String> cookies) async {
@@ -233,6 +332,7 @@ class DioClient {
   /// Delete all in-memory and persisted cookies.
   Future<void> clearCookies() async {
     _cookies = {};
+    _learnSessionRefreshed = false;
     await _store.deleteAll();
   }
 

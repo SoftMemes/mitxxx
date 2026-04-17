@@ -107,6 +107,14 @@ class Auth extends _$Auth {
       // Trigger LMS OAuth handshake — sets session + JWT cookies on the LMS.
       await _establishLmsSession(client);
 
+      // Refresh the MIT Learn API session too so the first userlist fetch
+      // doesn't pay a silent-stale cookie penalty.
+      try {
+        await client.ensureLearnApiSession(force: true);
+      } on Object catch (e, st) {
+        _log.warning('onLoginComplete: learn api session refresh failed', e, st);
+      }
+
       // Flush any LMS content cached while unauthenticated.
       final db = ref.read(appDatabaseProvider);
       await db.clearLmsCache();

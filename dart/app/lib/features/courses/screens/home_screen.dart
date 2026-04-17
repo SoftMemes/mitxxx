@@ -32,7 +32,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final enrollmentsAsync = ref.watch(enrollmentsProvider);
+    final enrollmentsAsync = ref.watch(activeEnrollmentsProvider);
     final syncState = ref.watch(syncControllerProvider);
     final isSyncing = syncState.values.any((s) => s.status == SyncStatus.syncing);
     final isAuthenticated = ref.watch(authProvider).value != null;

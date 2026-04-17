@@ -118,6 +118,38 @@ class AnalyticsService {
       });
 
   // ---------------------------------------------------------------------------
+  // List-selection events
+  // ---------------------------------------------------------------------------
+
+  Future<void> logOnboardingListSelectionCompleted({
+    required int listCount,
+    required bool hasAllEnrolled,
+    required bool hasMyLists,
+    required int availableCount,
+  }) =>
+      _emit(kEventOnboardingListSelectionCompleted, {
+        kParamListCount: listCount,
+        kParamHasAllEnrolled: hasAllEnrolled,
+        kParamHasMyLists: hasMyLists,
+        kParamAvailableCount: availableCount,
+      });
+
+  Future<void> logSettingsListSelectionChanged({
+    required int listCount,
+    required int listsAdded,
+    required int listsRemoved,
+    required bool hasAllEnrolled,
+    required bool hasMyLists,
+  }) =>
+      _emit(kEventSettingsListSelectionChanged, {
+        kParamListCount: listCount,
+        kParamListsAdded: listsAdded,
+        kParamListsRemoved: listsRemoved,
+        kParamHasAllEnrolled: hasAllEnrolled,
+        kParamHasMyLists: hasMyLists,
+      });
+
+  // ---------------------------------------------------------------------------
   // Download events
   // ---------------------------------------------------------------------------
 

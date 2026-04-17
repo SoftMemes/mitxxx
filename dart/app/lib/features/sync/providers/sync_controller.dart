@@ -13,6 +13,7 @@ import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/auth/providers/reauth_provider.dart';
 import 'package:omnilect/features/courses/models/enrollment.dart';
+import 'package:omnilect/features/courses/models/list_source.dart';
 import 'package:omnilect/features/courses/models/xblock_content.dart';
 import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
 import 'package:omnilect/features/courses/providers/outline_provider.dart';
@@ -20,6 +21,7 @@ import 'package:omnilect/features/courses/providers/sequence_provider.dart';
 import 'package:omnilect/features/courses/providers/xblock_provider.dart';
 import 'package:omnilect/features/courses/utils/xblock_parser.dart';
 import 'package:omnilect/features/downloads/models/download_status.dart';
+import 'package:omnilect/features/downloads/providers/video_download_manager.dart';
 import 'package:omnilect/features/sync/models/course_sync_state.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -241,14 +243,6 @@ class SyncController extends _$SyncController {
       enrollments = list
           .map((e) => Enrollment.fromJson(e as Map<String, dynamic>))
           .toList();
-      final seeded = <String, CourseSyncState>{};
-      for (final e in list.cast<Map<String, dynamic>>()) {
-        final courseId = Enrollment.fromJson(e).run.coursewareId;
-        final existing = state[courseId];
-        seeded[courseId] = (existing ?? const CourseSyncState())
-            .copyWith(status: SyncStatus.syncing);
-      }
-      state = Map.unmodifiable(seeded);
       ref.invalidate(enrollmentsProvider);
     } on DioException catch (e, st) {
       final status = e.response?.statusCode;
@@ -283,18 +277,170 @@ class SyncController extends _$SyncController {
       return;
     }
 
-    // Kick off syncs for every course concurrently — tasks all feed into the
-    // single shared scheduler, so total network concurrency is capped at
-    // [kSyncConcurrency] regardless of how many courses are enrolled.
+    // Reconciliation: rebuild course_list_memberships for each selected list
+    // and compute the target course set. Drop courses no longer referenced.
+    final Set<String> targetCourseIds;
+    try {
+      targetCourseIds = await _reconcileMembership(enrollments);
+    } on Object catch (e, st) {
+      _log.warning('syncAll: reconciliation failed', e, st);
+      unawaited(analytics.logSyncFailure(
+        scope: kScopeAllCourses,
+        durationMs: DateTime.now().difference(startedAt).inMilliseconds,
+        stage: 'reconcile',
+        errorKind: 'unknown',
+      ));
+      return;
+    }
+
+    // If no lists are selected, there's nothing to sync. This typically only
+    // happens during onboarding before the user has picked a selection.
+    if (targetCourseIds.isEmpty) {
+      _log.info('syncAll: empty target set — nothing to sync');
+      state = const {};
+      unawaited(analytics.logSyncComplete(
+        scope: kScopeAllCourses,
+        durationMs: DateTime.now().difference(startedAt).inMilliseconds,
+        itemsSynced: 0,
+      ));
+      return;
+    }
+
+    // Seed sync state for the target set only. Courses no longer in the target
+    // have already been wiped by [_reconcileMembership].
+    final seeded = <String, CourseSyncState>{};
+    for (final courseId in targetCourseIds) {
+      final existing = state[courseId];
+      seeded[courseId] = (existing ?? const CourseSyncState())
+          .copyWith(status: SyncStatus.syncing);
+    }
+    state = Map.unmodifiable(seeded);
+
+    // Kick off syncs for every target course concurrently — tasks all feed
+    // into the single shared scheduler, so total network concurrency is capped
+    // at [kSyncConcurrency] regardless of how many courses are in the set.
     await Future.wait(
-      enrollments.map((e) => syncCourse(e.run.coursewareId)),
+      targetCourseIds.map(syncCourse),
     );
 
     unawaited(analytics.logSyncComplete(
       scope: kScopeAllCourses,
       durationMs: DateTime.now().difference(startedAt).inMilliseconds,
-      itemsSynced: enrollments.length,
+      itemsSynced: targetCourseIds.length,
     ));
+  }
+
+  /// Computes the target course set for this sync pass: union of courses
+  /// across every selected list, intersected with current enrollments and
+  /// filtered to supported (mitxonline) platforms. As a side effect, rebuilds
+  /// `course_list_memberships` for each selected list and deletes any course
+  /// that's fallen out of every selection.
+  Future<Set<String>> _reconcileMembership(List<Enrollment> enrollments) async {
+    final client = ref.read(dioClientProvider);
+    final db = ref.read(appDatabaseProvider);
+    final selection = await db.getSelectedLists();
+    if (selection.isEmpty) {
+      return const <String>{};
+    }
+
+    final enrolledIds = {for (final e in enrollments) e.run.coursewareId};
+    final target = <String>{};
+
+    for (final selected in selection) {
+      final source = ListSource.fromStorage(selected.source);
+      final listId = selected.listId;
+      Set<String>? listMembers;
+      try {
+        listMembers = await _fetchListCourseIds(
+          client: client,
+          listId: listId,
+          source: source,
+          enrolledIds: enrolledIds,
+        );
+      } on Object catch (e, st) {
+        // Skip this list on failure — keep its existing memberships so
+        // courses aren't spuriously dropped when a single list fetch fails.
+        _log.warning('_reconcileMembership: list $listId fetch failed', e, st);
+      }
+
+      if (listMembers != null) {
+        await db.rebuildMembershipForList(listId, listMembers);
+        target.addAll(listMembers);
+      } else {
+        // Preserve prior union for this list by reading the existing
+        // memberships back.
+        final existing = await (db.select(db.courseListMemberships)
+              ..where((t) => t.listId.equals(listId)))
+            .get();
+        target.addAll(existing.map((m) => m.courseId));
+      }
+    }
+
+    // Drop-cascade: courses with state locally but not in any selected list.
+    final drops = await db.getCoursesNotInSelection();
+    if (drops.isNotEmpty) {
+      _log.info('_reconcileMembership: dropping ${drops.length} course(s): $drops');
+      final downloads = ref.read(videoDownloadManagerProvider);
+      for (final courseId in drops) {
+        try {
+          await downloads.deleteScope(courseId: courseId);
+        } on Object catch (e, st) {
+          _log.warning('_reconcileMembership: deleteScope $courseId failed', e, st);
+        }
+        try {
+          await db.deleteCourseCache(courseId);
+        } on Object catch (e, st) {
+          _log.warning('_reconcileMembership: deleteCourseCache $courseId failed', e, st);
+        }
+        // Prune any lingering state entry for this course.
+        if (state.containsKey(courseId)) {
+          final next = Map<String, CourseSyncState>.from(state)..remove(courseId);
+          state = Map.unmodifiable(next);
+        }
+      }
+    }
+
+    return target;
+  }
+
+  /// Fetches the set of courseware ids the selected list maps to. Intersects
+  /// with [enrolledIds] because the LMS only serves content for courses the
+  /// user is enrolled in. Returns `null`-typed as a `throw` if the fetch
+  /// itself fails — the caller skips the list in that case.
+  Future<Set<String>> _fetchListCourseIds({
+    required DioClient client,
+    required String listId,
+    required ListSource source,
+    required Set<String> enrolledIds,
+  }) async {
+    switch (source) {
+      case ListSource.enrolled:
+        // "All enrolled" — every enrollment is in this list's membership.
+        return enrolledIds;
+      case ListSource.learnMyList:
+        await client.ensureLearnApiSession();
+        final resp = await client.learnApi.get<Map<String, dynamic>>(
+          '/api/v1/userlists/$listId/items/',
+          queryParameters: {'limit': 1000},
+        );
+        final results = (resp.data?['results'] as List<dynamic>? ?? [])
+            .cast<Map<String, dynamic>>();
+        final out = <String>{};
+        for (final item in results) {
+          final resource = item['resource'] as Map<String, dynamic>? ?? {};
+          final platform = resource['platform'] as Map<String, dynamic>? ?? {};
+          if (platform['code'] != 'mitxonline') continue;
+          final runs = (resource['runs'] as List<dynamic>? ?? [])
+              .cast<Map<String, dynamic>>();
+          for (final run in runs) {
+            final courseId = run['courseware_id'] as String?;
+            if (courseId != null && enrolledIds.contains(courseId)) {
+              out.add(courseId);
+            }
+          }
+        }
+        return out;
+    }
   }
 
   // ── syncCourse ─────────────────────────────────────────────────────────────

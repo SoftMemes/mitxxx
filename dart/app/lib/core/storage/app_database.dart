@@ -83,6 +83,46 @@ class CachedCourseSync extends Table {
   Set<Column> get primaryKey => {courseId};
 }
 
+/// User state: which lists the user has opted to sync. Presence of a row means
+/// selected. Persists across schema upgrades like [DownloadedVideos].
+/// [listId] is a synthetic id: `"all-enrolled"` for the system list, otherwise
+/// the upstream learn.mit.edu userlist id as a string.
+class SelectedLists extends Table {
+  TextColumn get listId => text()();
+  TextColumn get source => text()(); // 'enrolled' | 'learn_my_list'
+  TextColumn get name => text()();
+  DateTimeColumn get selectedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {listId};
+}
+
+/// Cache of the list-of-lists shown in the picker. Rebuildable from the
+/// mitxonline + learn.mit.edu APIs; dropped on schema upgrade like other
+/// caches. [totalCourseCount] includes unsupported (OCW etc.) courses.
+class AvailableLists extends Table {
+  TextColumn get listId => text()();
+  TextColumn get source => text()();
+  TextColumn get name => text()();
+  IntColumn get totalCourseCount => integer()();
+  DateTimeColumn get fetchedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {listId};
+}
+
+/// User state: ref-counted mapping of locally-cached courses to the selected
+/// lists that pulled them in. A course with no rows here is in the drop set
+/// and will be fully removed on reconciliation. Persists across schema
+/// upgrades.
+class CourseListMemberships extends Table {
+  TextColumn get courseId => text()();
+  TextColumn get listId => text()();
+
+  @override
+  Set<Column> get primaryKey => {courseId, listId};
+}
+
 /// Tracks downloaded video files on disk. Primary key is the video URL —
 /// deduplication is URL-keyed so a video shared across courses is only
 /// downloaded once. [courseIds] is a JSON-encoded `List<String>`.
@@ -106,6 +146,8 @@ class DownloadedVideos extends Table {
 }
 
 // Cache table names used in migration (must match actual table names).
+// These are dropped and recreated on every schema upgrade — user state tables
+// (selected_lists, course_list_memberships, downloaded_videos) are preserved.
 const _cacheTables = [
   'cached_enrollments',
   'cached_outlines',
@@ -113,6 +155,7 @@ const _cacheTables = [
   'cached_xblocks',
   'cached_sanitized_xblocks',
   'cached_course_sync',
+  'available_lists',
 ];
 
 @DriftDatabase(tables: [
@@ -123,12 +166,19 @@ const _cacheTables = [
   CachedSanitizedXblocks,
   CachedCourseSync,
   DownloadedVideos,
+  SelectedLists,
+  AvailableLists,
+  CourseListMemberships,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
+  /// Test constructor. Use with `NativeDatabase.memory()` to get an in-memory
+  /// DB for unit tests.
+  AppDatabase.forTesting(super.executor);
+
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -415,6 +465,119 @@ class AppDatabase extends _$AppDatabase {
     return null;
   }
 
+  // --- Selected lists (user state) ---
+
+  Future<List<SelectedList>> getSelectedLists() =>
+      select(selectedLists).get();
+
+  Stream<List<SelectedList>> watchSelectedLists() =>
+      select(selectedLists).watch();
+
+  /// Transactionally replaces the entire selection with [lists]. Rows whose
+  /// [SelectedList.listId] no longer appear are deleted; new ones are inserted.
+  /// Existing rows are updated in place (preserves `selectedAt` when unchanged).
+  Future<void> replaceSelectedLists(List<SelectedListsCompanion> lists) =>
+      transaction(() async {
+        await delete(selectedLists).go();
+        for (final row in lists) {
+          await into(selectedLists).insert(row);
+        }
+      });
+
+  // --- Available lists (cache) ---
+
+  Future<List<AvailableList>> getAvailableLists() =>
+      select(availableLists).get();
+
+  Stream<List<AvailableList>> watchAvailableLists() =>
+      select(availableLists).watch();
+
+  /// Transactionally replaces the cached list-of-lists with [lists]. Always a
+  /// full refresh so a deleted upstream list disappears from the cache.
+  Future<void> replaceAvailableLists(List<AvailableListsCompanion> lists) =>
+      transaction(() async {
+        await delete(availableLists).go();
+        for (final row in lists) {
+          await into(availableLists).insert(row);
+        }
+      });
+
+  // --- Course list memberships (user state, ref-counted) ---
+
+  /// Returns all courseIds that appear in at least one currently-selected list.
+  Future<Set<String>> getCourseIdsInSelection() async {
+    final rows = await (selectOnly(courseListMemberships, distinct: true)
+          ..addColumns([courseListMemberships.courseId]))
+        .get();
+    return rows
+        .map((r) => r.read(courseListMemberships.courseId)!)
+        .toSet();
+  }
+
+  /// Rebuild memberships for a single list: delete all existing rows for
+  /// [listId], then insert one per courseId in [courseIds]. Transactional so
+  /// a reconciliation can be retried cleanly.
+  Future<void> rebuildMembershipForList(
+    String listId,
+    Iterable<String> courseIds,
+  ) =>
+      transaction(() async {
+        await (delete(courseListMemberships)
+              ..where((t) => t.listId.equals(listId)))
+            .go();
+        for (final courseId in courseIds) {
+          await into(courseListMemberships).insert(
+            CourseListMembershipsCompanion.insert(
+              courseId: courseId,
+              listId: listId,
+            ),
+          );
+        }
+      });
+
+  /// Returns courseIds that have local state (outline, sync record, or downloads)
+  /// but are no longer referenced by any selected-list membership — the "drop
+  /// set" for reconciliation.
+  Future<Set<String>> getCoursesNotInSelection() async {
+    final inSelection = await getCourseIdsInSelection();
+
+    final known = <String>{};
+    final outlineRows =
+        await (selectOnly(cachedOutlines)..addColumns([cachedOutlines.courseId]))
+            .get();
+    for (final r in outlineRows) {
+      known.add(r.read(cachedOutlines.courseId)!);
+    }
+    final syncRows = await (selectOnly(cachedCourseSync)
+          ..addColumns([cachedCourseSync.courseId]))
+        .get();
+    for (final r in syncRows) {
+      known.add(r.read(cachedCourseSync.courseId)!);
+    }
+
+    return known.difference(inSelection);
+  }
+
+  /// Removes all rows for [courseId] from sync/cache tables (excluding
+  /// downloaded_videos — the downloads layer handles those). Safe to call
+  /// even if nothing exists.
+  Future<void> deleteCourseCache(String courseId) => transaction(() async {
+        await (delete(cachedCourseSync)
+              ..where((t) => t.courseId.equals(courseId)))
+            .go();
+        await (delete(cachedOutlines)
+              ..where((t) => t.courseId.equals(courseId)))
+            .go();
+        // Sequences/xblocks/sanitized are keyed by blockId, not courseId —
+        // they get cleared via `clearLmsCache()` or remain until a general
+        // cache flush. Course-scoped cleanup of block-keyed tables would
+        // require knowing the block ids; the existing sync pipeline already
+        // handles stale blocks on next run.
+        await (delete(courseListMemberships)
+              ..where((t) => t.courseId.equals(courseId)))
+            .go();
+      });
+
   // --- Data-usage helpers ---
 
   /// Returns the absolute path to the SQLite database file. Can be called
@@ -472,6 +635,9 @@ class AppDatabase extends _$AppDatabase {
     await delete(cachedXblocks).go();
     await delete(cachedSanitizedXblocks).go();
     await delete(cachedCourseSync).go();
+    await delete(selectedLists).go();
+    await delete(availableLists).go();
+    await delete(courseListMemberships).go();
     return paths;
   }
 

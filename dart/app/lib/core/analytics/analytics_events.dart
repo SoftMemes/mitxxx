@@ -24,6 +24,10 @@ const kEventCourseView = 'course_view';
 const kEventSectionOpen = 'section_open';
 const kEventSectionPlay = 'section_play';
 
+const kEventOnboardingListSelectionCompleted =
+    'onboarding_list_selection_completed';
+const kEventSettingsListSelectionChanged = 'settings_list_selection_changed';
+
 const kEventVideoPlay = 'video_play';
 const kEventVideoPause = 'video_pause';
 const kEventVideoComplete = 'video_complete';
@@ -58,6 +62,13 @@ const kParamVideosTotal = 'videos_total';
 
 const kParamSource = 'source';
 const kParamSectionIndex = 'section_index';
+
+const kParamListCount = 'list_count';
+const kParamHasAllEnrolled = 'has_all_enrolled';
+const kParamHasMyLists = 'has_my_lists';
+const kParamAvailableCount = 'available_count';
+const kParamListsAdded = 'lists_added';
+const kParamListsRemoved = 'lists_removed';
 
 const kParamPositionS = 'position_s';
 const kParamFromPositionS = 'from_position_s';
