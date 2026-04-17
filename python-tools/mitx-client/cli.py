@@ -91,6 +91,57 @@ def enrollments(as_json):
         click.echo(f"    url           : {run.get('courseware_url', '?')}")
 
 
+@cli.command("list-playlists")
+@click.option("--json", "as_json", is_flag=True, help="Output raw JSON")
+def list_playlists(as_json):
+    """List the user's custom playlists ("My Lists" on learn.mit.edu)."""
+    c = get_client()
+    lists = c.list_userlists()
+    if as_json:
+        click.echo(json.dumps(lists, indent=2))
+        return
+    if not lists:
+        click.echo("No custom lists found.")
+        return
+    for lst in lists:
+        click.echo(f"\n  [{lst['id']}] {lst.get('title', '?')}")
+        click.echo(f"    items    : {lst.get('item_count', '?')}")
+        click.echo(f"    privacy  : {lst.get('privacy_level', '?')}")
+        desc = lst.get("description") or ""
+        if desc:
+            click.echo(f"    desc     : {desc}")
+
+
+@cli.command("dump-playlist")
+@click.argument("list_id", type=int)
+@click.option("--json", "as_json", is_flag=True, help="Output raw JSON")
+def dump_playlist(list_id, as_json):
+    """Dump courses inside a playlist, annotated [supported]/[ocw]/[other].
+
+    LIST_ID: integer ID of a userlist (see `list-playlists`).
+    """
+    c = get_client()
+    items = c.userlist_items(list_id)
+    if as_json:
+        click.echo(json.dumps(items, indent=2))
+        return
+    if not items:
+        click.echo("(empty list)")
+        return
+    for item in items:
+        resource = item.get("resource") or {}
+        platform_code = (resource.get("platform") or {}).get("code") or "?"
+        if platform_code == "mitxonline":
+            tag = "[supported]"
+        elif platform_code == "ocw":
+            tag = "[ocw]      "
+        else:
+            tag = f"[{platform_code:10}]"
+        readable_id = resource.get("readable_id", "?")
+        title = resource.get("title", "?")
+        click.echo(f"  {tag} {readable_id:40}  {title}")
+
+
 @cli.command()
 @click.argument("course_id")
 @click.option("--json", "as_json", is_flag=True, help="Output raw JSON")

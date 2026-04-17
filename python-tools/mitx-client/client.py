@@ -17,6 +17,7 @@ from bs4 import BeautifulSoup
 
 MITXONLINE_BASE = "https://mitxonline.mit.edu"
 LMS_BASE = "https://courses.learn.mit.edu"
+LEARN_API_BASE = "https://api.learn.mit.edu"
 SSO_BASE = "https://sso.ol.mit.edu"
 
 SESSION_FILE = Path.home() / ".mitx-client" / "session.json"
@@ -35,6 +36,7 @@ class MITxClient:
                 "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
             ),
         })
+        self._learn_session_refreshed = False
 
     # -------------------------------------------------------------------------
     # Session persistence
@@ -132,6 +134,9 @@ class MITxClient:
         # Stage 3: Establish LMS (Open edX) session via OAuth2
         self._lms_oauth()
 
+        # Stage 4: Establish MIT Learn API session (api.learn.mit.edu cookies)
+        self._learn_oauth()
+
         self.save_session()
         return user
 
@@ -146,6 +151,30 @@ class MITxClient:
         )
         # After this chain the session should have LMS cookies set.
 
+    def _learn_oauth(self):
+        """Trigger the MIT Learn SSO handshake to get session_mitlearn cookies on api.learn.mit.edu."""
+        # api.learn.mit.edu/login redirects through Keycloak; since the user is
+        # already SSO-authenticated, the chain completes silently and sets
+        # session_mitlearn + learn_csrftoken cookies.
+        self.session.get(
+            f"{LEARN_API_BASE}/login",
+            allow_redirects=True,
+            timeout=15,
+        )
+
+    def _ensure_learn_session(self, force: bool = False):
+        """Lazy-establish MIT Learn API session.
+
+        The api.learn.mit.edu `session_mitlearn` cookie can be present but
+        expired — in that state the API silently returns empty results rather
+        than 401. So we always re-run the SSO handshake once per MITxClient
+        instance to make sure cookies are fresh.
+        """
+        if force or not self._learn_session_refreshed:
+            self._learn_oauth()
+            self._learn_session_refreshed = True
+            self.save_session()
+
     # -------------------------------------------------------------------------
     # mitxonline.mit.edu APIs
     # -------------------------------------------------------------------------
@@ -159,6 +188,59 @@ class MITxClient:
         r = self.session.get(f"{MITXONLINE_BASE}/api/v1/enrollments/", timeout=10)
         r.raise_for_status()
         return r.json()
+
+    # -------------------------------------------------------------------------
+    # MIT Learn (api.learn.mit.edu) APIs — userlists / "My Lists"
+    # -------------------------------------------------------------------------
+
+    def _learn_get(self, path: str, **kwargs) -> requests.Response:
+        self._ensure_learn_session()
+        url = f"{LEARN_API_BASE}{path}"
+        r = self.session.get(url, timeout=15, **kwargs)
+        # If the session_mitlearn cookie is stale, the API returns 401/403 on
+        # endpoints that require auth. Retry once after re-running SSO.
+        if r.status_code in (401, 403):
+            self._ensure_learn_session(force=True)
+            r = self.session.get(url, timeout=15, **kwargs)
+        r.raise_for_status()
+        return r
+
+    def list_userlists(self, limit: int = 100) -> list[dict]:
+        """
+        Fetch the authenticated user's custom lists ("My Lists" on learn.mit.edu).
+
+        Each list has: id (int), title, description, item_count, image, privacy_level, author.
+        """
+        data = self._learn_get(
+            "/api/v1/userlists/", params={"limit": limit}
+        ).json()
+        return data.get("results", [])
+
+    def userlist_items(self, list_id: int, limit: int = 1000) -> list[dict]:
+        """
+        Fetch items (learning_resources) inside a single userlist.
+
+        Each item wraps a full learning_resource object. Key fields on the resource:
+        - readable_id: e.g. "course-v1:MITxT+24.09x", "MITx+6.86x", "9.13+spring_2019"
+        - platform: { "code": "mitxonline" | "edx" | "ocw" | ..., "name": ... }
+        - resource_type: typically "course"
+        - runs: list of run objects with run_tag, courseware_id (where applicable)
+        """
+        data = self._learn_get(
+            f"/api/v1/userlists/{list_id}/items/",
+            params={"limit": limit},
+        ).json()
+        return data.get("results", [])
+
+    def learn_enrollments(self) -> list[dict]:
+        """
+        Fetch mitxonline enrollments via the MIT Learn API proxy (v3).
+
+        Same shape as mitxonline.mit.edu/api/v1/enrollments/ but proxied through
+        api.learn.mit.edu/mitxonline/api/v3/enrollments/. Useful for consistency
+        when the app is already talking to api.learn.mit.edu for userlists.
+        """
+        return self._learn_get("/mitxonline/api/v3/enrollments/").json()
 
     # -------------------------------------------------------------------------
     # LMS (courses.learn.mit.edu) APIs
