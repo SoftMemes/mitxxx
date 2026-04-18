@@ -40,25 +40,18 @@ Future<SyncManager?> syncManager(Ref ref) async {
   final isolate = await SyncIsolate.spawn();
   final manager = SyncManager(isolate);
 
-  // Wait for the isolate's readiness handshake before accepting requests.
-  try {
-    await manager.events
-        .firstWhere((e) => e is IsolateReady)
-        .timeout(const Duration(seconds: 10));
-    _log.info('syncManagerProvider: IsolateReady received');
-  } on Object catch (e, st) {
-    _log.severe('sync isolate readiness timed out', e, st);
-    await manager.dispose();
-    rethrow;
-  }
-
+  // Wire bridges BEFORE awaiting readiness so isolate-forwarded log records
+  // emitted during startup (DioClient.create, AppDatabase open, etc.) reach
+  // the main logger via `applyForwardedLogRecord` instead of being dropped
+  // by the unlistened broadcast stream. The bridges don't require a
+  // "ready" isolate — they only subscribe to events.
   final sessionRefresh = SessionRefreshManager(
     syncManager: manager,
     client: ref.read(dioClientProvider),
     reauthController: ref.read(reauthControllerProvider.notifier),
   );
   final eventBridge = SyncEventBridge(syncManager: manager, ref: ref);
-  _log.info('syncManagerProvider: bridges wired — manager is live');
+  _log.info('syncManagerProvider: bridges wired — awaiting readiness');
 
   ref.onDispose(() async {
     _log.info('syncManagerProvider: disposing');
@@ -66,6 +59,22 @@ Future<SyncManager?> syncManager(Ref ref) async {
     await sessionRefresh.dispose();
     await manager.dispose();
   });
+
+  // `manager.ready` is populated synchronously inside `SyncManager._onEvent`
+  // for both IsolateReady and IsolateExited — no broadcast-subscription race,
+  // and we fail fast if the isolate died on startup instead of burning the
+  // full 10s waiting for a ready signal that will never come.
+  try {
+    await manager.ready.timeout(const Duration(seconds: 10));
+  } on Object catch (e, st) {
+    _log.severe('sync isolate readiness timed out', e, st);
+    rethrow;
+  }
+  if (manager.isolateExited) {
+    _log.severe('sync isolate exited during startup');
+    throw StateError('sync isolate exited during startup');
+  }
+  _log.info('syncManagerProvider: IsolateReady received — manager is live');
 
   return manager;
 }

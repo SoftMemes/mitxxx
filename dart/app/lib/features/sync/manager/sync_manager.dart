@@ -34,6 +34,19 @@ class SyncManager {
   final _eventsController = StreamController<SyncEvent>.broadcast(sync: true);
   Stream<SyncEvent> get events => _eventsController.stream;
 
+  /// One-shot completer populated from [_onEvent] the first time the isolate
+  /// reports terminal-to-startup state. Using a Completer — not a
+  /// `firstWhere` on the broadcast stream — avoids a race where `IsolateReady`
+  /// arrives before any subscriber attaches and gets silently dropped.
+  final _ready = Completer<void>();
+  Future<void> get ready => _ready.future;
+
+  /// True iff the isolate terminated during startup. Checked by
+  /// `syncManagerProvider` after [ready] resolves so it can fail fast instead
+  /// of treating a dead isolate as live.
+  bool _isolateExited = false;
+  bool get isolateExited => _isolateExited;
+
   // --- UI-facing request API ---------------------------------------------
 
   void requestFullSync({String trigger = kTriggerManual}) {
@@ -107,6 +120,16 @@ class SyncManager {
   // --- Event → state mirroring -------------------------------------------
 
   void _onEvent(SyncEvent event) {
+    // Resolve the readiness completer the moment the isolate tells us it's
+    // up — or that it's already dead. This is the reliable signal for
+    // `syncManagerProvider` to finish its build; awaiting the broadcast
+    // stream would race the constructor-time delivery of buffered events.
+    if (event is IsolateReady && !_ready.isCompleted) {
+      _ready.complete();
+    } else if (event is IsolateExited) {
+      _isolateExited = true;
+      if (!_ready.isCompleted) _ready.complete();
+    }
     _eventsController.add(event);
     final next = _apply(_state, event);
     if (!identical(next, _state)) {

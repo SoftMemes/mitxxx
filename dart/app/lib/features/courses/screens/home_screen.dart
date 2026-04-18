@@ -45,9 +45,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// gesture boundary so we can distinguish "manager absent" from "message
   /// sent but isolate silent" when diagnosing pull-to-refresh issues.
   void _fireFullSync(String trigger) {
-    final manager = ref.read(syncManagerOrNullProvider);
+    final async = ref.read(syncManagerProvider);
+    final auth = ref.read(authProvider);
+    final manager = async.value;
     if (manager == null) {
-      _log.warning('pull-to-refresh: syncManagerOrNull is NULL ($trigger)');
+      _log.warning(
+        'pull-to-refresh: manager NULL ($trigger) — '
+        'syncManager.isLoading=${async.isLoading} '
+        'hasError=${async.hasError} '
+        'error=${async.error} '
+        'auth.hasValue=${auth.hasValue} '
+        'auth.isLoading=${auth.isLoading} '
+        'auth.value=${auth.value?.username ?? 'null'}',
+      );
       return;
     }
     _log.info('pull-to-refresh: dispatching full-sync ($trigger)');
