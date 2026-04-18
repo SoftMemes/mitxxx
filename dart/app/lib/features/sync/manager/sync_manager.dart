@@ -37,14 +37,17 @@ class SyncManager {
   // --- UI-facing request API ---------------------------------------------
 
   void requestFullSync({String trigger = kTriggerManual}) {
+    _log.info('requestFullSync trigger=$trigger');
     _isolate.send(FullSyncRequest(trigger: trigger));
   }
 
   void requestListsRefresh({String trigger = kTriggerManual}) {
+    _log.info('requestListsRefresh trigger=$trigger');
     _isolate.send(ListsRefreshRequest(trigger: trigger));
   }
 
   void requestCourseSync(String courseId, {String trigger = kTriggerManual}) {
+    _log.info('requestCourseSync course=$courseId trigger=$trigger');
     _isolate.send(CourseSyncRequest(courseId, trigger: trigger));
   }
 
@@ -53,6 +56,9 @@ class SyncManager {
     String sequenceId, {
     String trigger = kTriggerManual,
   }) {
+    _log.info(
+      'requestLectureSync course=$courseId seq=$sequenceId trigger=$trigger',
+    );
     _isolate.send(LectureSyncRequest(courseId, sequenceId, trigger: trigger));
   }
 

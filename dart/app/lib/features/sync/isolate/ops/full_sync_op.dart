@@ -27,6 +27,8 @@ class FullSyncOp extends LogicalOp {
     final runtime = OpRuntime(ctx: ctx, token: cancelToken, events: events);
     final started = DateTime.now();
 
+    _log.info('fullSync: START trigger=$trigger');
+
     runtime.analytics.logSyncStart(
       scope: 'all_courses',
       trigger: trigger,
@@ -61,6 +63,7 @@ class FullSyncOp extends LogicalOp {
       return;
     }
 
+    _log.info('fullSync: fetched ${enrollments.length} enrollments');
     runtime.events.add(const DbInvalidated('enrollments'));
     if (enrollments.isNotEmpty) {
       final imgUrls = <String>{
@@ -74,6 +77,7 @@ class FullSyncOp extends LogicalOp {
     }
 
     // Reconcile memberships.
+    _log.info('fullSync: reconciling memberships');
     Set<String> targetCourseIds;
     try {
       targetCourseIds = await reconcileMembership(runtime, enrollments);
@@ -99,8 +103,13 @@ class FullSyncOp extends LogicalOp {
       return;
     }
 
+    _log.info(
+      'fullSync: reconcile resolved ${targetCourseIds.length} target course(s): '
+      '${targetCourseIds.toList()}',
+    );
+
     if (targetCourseIds.isEmpty) {
-      _log.info('fullSync: empty target set');
+      _log.info('fullSync: empty target set — nothing to sync');
       _publishScope(
         runtime,
         ScopeIds.allCourses,
@@ -139,7 +148,10 @@ class FullSyncOp extends LogicalOp {
       }
     }));
 
-    if (runtime.token.isCancelled) return;
+    if (runtime.token.isCancelled) {
+      _log.info('fullSync: cancelled before completion');
+      return;
+    }
 
     _publishScope(
       runtime,
@@ -147,9 +159,14 @@ class FullSyncOp extends LogicalOp {
       ScopeState(lastSyncedAt: DateTime.now()),
     );
 
+    final durationMs = DateTime.now().difference(started).inMilliseconds;
+    _log.info(
+      'fullSync: COMPLETE ${targetCourseIds.length} course(s) in ${durationMs}ms',
+    );
+
     runtime.analytics.logSyncComplete(
       scope: 'all_courses',
-      durationMs: DateTime.now().difference(started).inMilliseconds,
+      durationMs: durationMs,
       itemsSynced: targetCourseIds.length,
     );
   }

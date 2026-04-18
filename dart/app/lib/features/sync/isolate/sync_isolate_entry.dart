@@ -110,16 +110,23 @@ Future<void> syncIsolateEntry(SpawnBundle bundle) async {
 
   await for (final msg in fromMain) {
     if (msg is SyncRequest) {
+      log.info('recv SyncRequest scope=${msg.scopeId} trigger=${msg.trigger}');
       core.submit(msg);
     } else if (msg is SessionRefreshCompleted) {
+      log.info('recv SessionRefreshCompleted kind=${msg.kind}');
       // Reload cookies first so the next request uses the fresh jar.
       await _reloadCookies(ctx, log);
       core.onSessionRefreshCompleted(msg.kind);
     } else if (msg is SessionRefreshFailed) {
+      log.info(
+        'recv SessionRefreshFailed kind=${msg.kind} reason=${msg.reason}',
+      );
       core.onSessionRefreshFailed(msg.kind, msg.reason);
     } else if (msg is ReloadCookies) {
+      log.info('recv ReloadCookies');
       await _reloadCookies(ctx, log);
     } else if (msg is StopAll) {
+      log.info('recv StopAll drainInFlight=${msg.drainInFlight}');
       await core.stopAndWait(drain: msg.drainInFlight);
     } else if (msg is Shutdown) {
       log.info('shutdown received');
@@ -141,6 +148,7 @@ Future<void> _reloadCookies(OpContext ctx, Logger log) async {
   try {
     final fresh = await DioClient.create(SecureCookieStore());
     ctx.client = fresh;
+    log.info('reloadCookies: DioClient rebuilt');
   } on Object catch (e, st) {
     log.warning('reloadCookies failed', e, st);
   }

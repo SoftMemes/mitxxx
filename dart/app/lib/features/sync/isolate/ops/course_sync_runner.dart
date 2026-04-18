@@ -24,6 +24,7 @@ Future<CourseSyncOutcome> syncSingleCourse(
   final scope = ScopeIds.course(courseId);
   final started = DateTime.now();
 
+  _log.info('syncCourse: START $courseId');
   _publishScope(r, scope, const ScopeState(status: ScopeStatus.syncing));
 
   r.analytics.logSyncStart(
@@ -150,14 +151,24 @@ Future<CourseSyncOutcome> syncSingleCourse(
     },
   );
 
-  if (r.token.isCancelled) return CourseSyncOutcome.cancelled;
+  if (r.token.isCancelled) {
+    _log.info('syncCourse: CANCELLED $courseId');
+    return CourseSyncOutcome.cancelled;
+  }
 
   await _finaliseCourse(r, courseId, collectedVerticalIds, started);
+
+  final durationMs = DateTime.now().difference(started).inMilliseconds;
+  _log.info(
+    'syncCourse: COMPLETE $courseId '
+    '(${collectedVerticalIds.length} verticals, hadError=$hadError, '
+    '${durationMs}ms)',
+  );
 
   r.analytics.logSyncComplete(
     scope: 'course',
     courseId: courseId,
-    durationMs: DateTime.now().difference(started).inMilliseconds,
+    durationMs: durationMs,
     itemsSynced: collectedVerticalIds.length,
   );
 

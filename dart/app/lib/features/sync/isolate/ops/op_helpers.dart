@@ -79,6 +79,7 @@ String? parseOcwSlug(String runSlug) {
 /// Fetches enrollments from mitxonline, persists the JSON, returns parsed
 /// list. Throws [StaleSessionException] on 401/403.
 Future<List<Enrollment>> fetchEnrollments(OpRuntime r) async {
+  _log.info('fetchEnrollments: GET /api/v1/enrollments/');
   try {
     final response = await r.client.mitxOnline.get<dynamic>(
       '/api/v1/enrollments/',
@@ -86,10 +87,16 @@ Future<List<Enrollment>> fetchEnrollments(OpRuntime r) async {
     );
     final list = response.data as List<dynamic>;
     await r.db.putEnrollments(jsonEncode(list));
-    return list
+    final parsed = list
         .map((e) => Enrollment.fromJson(e as Map<String, dynamic>))
         .toList();
+    _log.info('fetchEnrollments: ${parsed.length} enrollment(s)');
+    return parsed;
   } on DioException catch (e, st) {
+    _log.warning(
+      'fetchEnrollments: DioException status=${e.response?.statusCode}',
+      e,
+    );
     throwAsStaleOrRethrow(e, SessionKind.mitxonline, st);
   }
 }
@@ -117,9 +124,17 @@ Future<Set<String>> reconcileMembership(
   List<Enrollment> enrollments,
 ) async {
   final selection = await r.db.getSelectedLists();
-  if (selection.isEmpty) return const <String>{};
+  _log.info(
+    'reconcile: ${selection.length} selected list(s): '
+    '${selection.map((s) => '${s.listId}(${s.source})').toList()}',
+  );
+  if (selection.isEmpty) {
+    _log.warning('reconcile: no selected lists — returning empty target set');
+    return const <String>{};
+  }
 
   final enrolledIds = {for (final e in enrollments) e.run.coursewareId};
+  _log.info('reconcile: ${enrolledIds.length} enrolled courseware id(s)');
   final target = <String>{};
 
   for (final selected in selection) {
@@ -146,6 +161,10 @@ Future<Set<String>> reconcileMembership(
     }
 
     if (listResult != null) {
+      _log.info(
+        'reconcile: list $listId → ${listResult.courseIds.length} supported, '
+        '${listResult.unsupported.length} unsupported',
+      );
       await r.db.rebuildMembershipForList(listId, listResult.courseIds);
       await r.db.rebuildUnsupportedForList(listId, listResult.unsupported);
       target.addAll(listResult.courseIds);
@@ -154,6 +173,10 @@ Future<Set<String>> reconcileMembership(
       final existing = await (r.db.select(r.db.courseListMemberships)
             ..where((t) => t.listId.equals(listId)))
           .get();
+      _log.info(
+        'reconcile: list $listId fetch failed — preserving '
+        '${existing.length} existing membership(s)',
+      );
       target.addAll(existing.map((m) => m.courseId));
     }
   }
@@ -161,7 +184,7 @@ Future<Set<String>> reconcileMembership(
   // Drop-cascade: courses not in any selection.
   final drops = await r.db.getCoursesNotInSelection();
   if (drops.isNotEmpty) {
-    _log.info('reconcile: dropping ${drops.length} course(s)');
+    _log.info('reconcile: dropping ${drops.length} course(s): $drops');
     for (final courseId in drops) {
       // Collect removed video URLs before wiping cache.
       final existingDownloads = await r.db.getDownloadsForCourse(courseId);
@@ -172,6 +195,10 @@ Future<Set<String>> reconcileMembership(
       }
     }
   }
+
+  _log.info(
+    'reconcile: wrote memberships; target union = ${target.length} course(s)',
+  );
 
   // Cross-isolate: main-isolate Drift `watch()` streams don't fire for
   // writes committed on this isolate. Emit one event per table the home
@@ -273,6 +300,7 @@ Future<ListReconcileResult> _fetchListCourseIds({
 /// order. OCW branches to end-to-end fetch and returns an empty list (no
 /// sequences to schedule).
 Future<List<String>> fetchOutline(OpRuntime r, String courseId) async {
+  _log.info('fetchOutline: $courseId');
   if (courseId.startsWith('ocw:')) {
     return _fetchOcwCourse(r, courseId);
   }
@@ -301,22 +329,35 @@ Future<List<String>> fetchOutline(OpRuntime r, String courseId) async {
     }
   } on DioException catch (e, st) {
     if (e.response?.statusCode == 304 && cachedOutline != null) {
+      _log.info('fetchOutline: $courseId 304 (using cached)');
       outlineData = jsonDecode(cachedOutline.data) as Map<String, dynamic>;
     } else if (isStaleStatus(e)) {
+      _log.warning(
+        'fetchOutline: $courseId stale-session status=${e.response?.statusCode}',
+      );
       throw StaleSessionException(kindForHost(e.requestOptions.uri), e);
     } else {
+      _log.warning(
+        'fetchOutline: $courseId failed status=${e.response?.statusCode}',
+        e,
+      );
       Error.throwWithStackTrace(e, st);
     }
   }
   final outlineSection = outlineData['outline'] as Map<String, dynamic>?;
   final sections =
       (outlineSection?['sections'] as List? ?? []).cast<dynamic>();
-  return sections
+  final seqIds = sections
       .expand<String>(
         (s) => ((s as Map<String, dynamic>)['sequence_ids'] as List? ?? [])
             .cast<String>(),
       )
       .toList();
+  _log.info(
+    'fetchOutline: $courseId → ${sections.length} section(s), '
+    '${seqIds.length} sequence(s)',
+  );
+  return seqIds;
 }
 
 Future<List<String>> _fetchOcwCourse(OpRuntime r, String courseId) async {

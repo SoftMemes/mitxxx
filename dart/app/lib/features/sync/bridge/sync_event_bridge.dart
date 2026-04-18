@@ -122,6 +122,9 @@ class SyncEventBridge {
 
   void _invalidate(DbInvalidated event) {
     final arg = event.arg;
+    _log.info(
+      'bridge: invalidate family=${event.family}${arg == null ? '' : '($arg)'}',
+    );
     switch (event.family) {
       case 'enrollments':
         ref.invalidate(enrollmentsProvider);
