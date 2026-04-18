@@ -5,8 +5,10 @@ import 'package:logging/logging.dart';
 import 'package:omnilect/core/analytics/analytics_events.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
+import 'package:omnilect/features/courses/providers/ocw_courses_provider.dart';
 import 'package:omnilect/features/courses/providers/outline_provider.dart';
 import 'package:omnilect/features/courses/providers/sequence_provider.dart';
+import 'package:omnilect/features/courses/providers/unsupported_courses_provider.dart';
 import 'package:omnilect/features/courses/providers/xblock_provider.dart';
 import 'package:omnilect/features/courses/utils/course_image_downloader.dart';
 import 'package:omnilect/features/downloads/providers/video_download_manager.dart';
@@ -123,9 +125,22 @@ class SyncEventBridge {
     switch (event.family) {
       case 'enrollments':
         ref.invalidate(enrollmentsProvider);
+      case 'memberships':
+        // course_list_memberships drives both the home-screen enrolled and
+        // OCW streams; invalidate both so Drift's watch() restarts against
+        // a snapshot that sees the isolate's writes.
+        ref
+          ..invalidate(activeEnrollmentsProvider)
+          ..invalidate(activeOcwCoursesProvider);
+      case 'unsupported':
+        ref.invalidate(unsupportedCoursesProvider);
       case 'courseOutline':
         if (arg != null) {
           ref.invalidate(courseOutlineProvider(courseId: arg));
+        }
+      case 'ocwCourse':
+        if (arg != null) {
+          ref.invalidate(ocwCourseProvider(arg));
         }
       case 'sequenceDetail':
         if (arg != null) {

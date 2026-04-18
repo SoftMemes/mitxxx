@@ -173,6 +173,13 @@ Future<Set<String>> reconcileMembership(
     }
   }
 
+  // Cross-isolate: main-isolate Drift `watch()` streams don't fire for
+  // writes committed on this isolate. Emit one event per table the home
+  // screen depends on so the bridge can imperatively invalidate the
+  // matching stream providers.
+  r.events.add(const DbInvalidated('memberships'));
+  r.events.add(const DbInvalidated('unsupported'));
+
   return target;
 }
 
@@ -389,8 +396,12 @@ Future<List<String>> _fetchOcwCourse(OpRuntime r, String courseId) async {
     r.events.add(RemovedVideoUrls(removed, courseId));
   }
 
-  // Let UI refresh.
+  // Let UI refresh. `ocwCourse` targets the single-course stream provider
+  // (ocwCourseProvider family) that the course-outline screen watches;
+  // `courseOutline` targets the legacy Future-backed provider. Both are
+  // needed because independent callers watch each.
   r.events.add(DbInvalidated('courseOutline', courseId));
+  r.events.add(DbInvalidated('ocwCourse', courseId));
   // Prefetch image on main side (needs path_provider).
   if (course.imageUrl != null && course.imageUrl!.isNotEmpty) {
     r.events.add(PrefetchCourseImages([course.imageUrl!]));
