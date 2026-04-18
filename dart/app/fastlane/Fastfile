@@ -204,11 +204,13 @@ def beta_ios_impl
     export_options: "ExportOptions-prod.plist",
   )
   upload_to_testflight(
-    api_key:          api_key,
-    app_identifier:   PROD_BUNDLE_ID,
-    ipa:              "build/ios/ipa/MITxxx.ipa",
-    groups:           ["internal"],
-    changelog:        testflight_changelog,
+    api_key:                api_key,
+    app_identifier:         PROD_BUNDLE_ID,
+    ipa:                    "build/ios/ipa/MITxxx.ipa",
+    groups:                 ["internal"],
+    changelog:              testflight_changelog,
+    beta_app_description:   "General bugs and stability",
+    beta_app_feedback_email: "contact@omnilect.app",
     skip_waiting_for_build_processing: false,
   )
 end
@@ -267,12 +269,14 @@ def release_ios_impl
     export_options: "ExportOptions-prod.plist",
   )
   upload_to_testflight(
-    api_key:              api_key,
-    app_identifier:       PROD_BUNDLE_ID,
-    ipa:                  "build/ios/ipa/MITxxx.ipa",
-    groups:               ["internal"],
-    changelog:            testflight_changelog,
-    submit_beta_review:   true,
+    api_key:                 api_key,
+    app_identifier:          PROD_BUNDLE_ID,
+    ipa:                     "build/ios/ipa/MITxxx.ipa",
+    groups:                  ["internal"],
+    changelog:               testflight_changelog,
+    beta_app_description:    "General bugs and stability",
+    beta_app_feedback_email: "contact@omnilect.app",
+    submit_beta_review:      true,
   )
 end
 

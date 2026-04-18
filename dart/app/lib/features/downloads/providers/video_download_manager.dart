@@ -383,13 +383,28 @@ class VideoDownloadManager {
     String? verticalId,
   }) async {
     final urls = <String>{};
+    final isOcw = courseId.startsWith('ocw:');
 
     if (verticalId != null) {
-      await _addUrlsForVertical(verticalId, urls);
+      if (isOcw) {
+        await _addUrlsForOcwLecture(verticalId, urls);
+      } else {
+        await _addUrlsForVertical(verticalId, urls);
+      }
     } else if (sequenceId != null) {
-      await _addUrlsForSequence(sequenceId, urls);
+      if (isOcw) {
+        // OCW has a single synthetic section per course — sequence scope is
+        // effectively course scope. Matches scope_download_provider.
+        await _addUrlsForOcwCourse(courseId, urls);
+      } else {
+        await _addUrlsForSequence(sequenceId, urls);
+      }
     } else {
-      await _addUrlsForCourse(courseId, urls);
+      if (isOcw) {
+        await _addUrlsForOcwCourse(courseId, urls);
+      } else {
+        await _addUrlsForCourse(courseId, urls);
+      }
     }
 
     return urls.toList();
@@ -425,6 +440,16 @@ class VideoDownloadManager {
         await _addUrlsForSequence(seqId, out);
       }
     }
+  }
+
+  Future<void> _addUrlsForOcwLecture(String lectureId, Set<String> out) async {
+    final row = await _db.getOcwLecture(lectureId);
+    final url = row?.mp4Url;
+    if (url != null) out.add(url);
+  }
+
+  Future<void> _addUrlsForOcwCourse(String courseId, Set<String> out) async {
+    out.addAll(await _db.getOcwLectureMp4Urls(courseId));
   }
 
   /// Returns the merged courseIds list for [url], including [courseId].

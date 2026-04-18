@@ -411,21 +411,9 @@ class _SequenceTile extends ConsumerWidget {
             ),
           ),
         ListTile(
-          leading: IconButton(
-            icon: Icon(
-              isTracked ? Icons.play_circle : Icons.play_circle_outline,
-            ),
+          leading: Icon(
+            isTracked ? Icons.play_circle : Icons.play_circle_outline,
             color: iconColor,
-            tooltip: isTracked ? 'Continue' : 'Play from beginning',
-            onPressed: () {
-              if (isSynced && onTapOverride == null) {
-                ref.read(analyticsServiceProvider).logSectionPlay(
-                  courseId: courseId,
-                  blockId: sequenceId,
-                );
-              }
-              _handleTap(context, ref, status);
-            },
           ),
           title: Text(title, style: TextStyle(color: titleColor)),
           trailing: Row(
@@ -676,13 +664,7 @@ class _OcwLectureTile extends ConsumerWidget {
         ? (isTracked ? Icons.play_circle : Icons.play_circle_outline)
         : Icons.videocam_off_outlined;
     return ListTile(
-      leading: IconButton(
-        icon: Icon(leadingIcon),
-        tooltip: hasVideo
-            ? (isTracked ? 'Continue' : 'Play lecture')
-            : 'Video not available',
-        onPressed: () => _tap(context),
-      ),
+      leading: Icon(leadingIcon, color: cs.onSurfaceVariant),
       title: Text(lecture.title),
       subtitle: hasVideo
           ? null
@@ -693,7 +675,16 @@ class _OcwLectureTile extends ConsumerWidget {
                   .bodySmall
                   ?.copyWith(color: subtitleColor),
             ),
-      trailing: Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Mirror the per-sequence download affordance from the MITx outline.
+          // Each OCW lecture maps 1:1 to a video URL, so scope it as a vertical.
+          if (hasVideo)
+            DownloadButton(courseId: courseId, verticalId: lecture.lectureId),
+          Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+        ],
+      ),
       onTap: () => _tap(context),
     );
   }
