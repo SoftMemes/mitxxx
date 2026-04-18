@@ -10,6 +10,7 @@ import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/features/sync/fetchers/ocw_course_fetcher.dart';
 import 'package:omnilect/features/sync/isolate/isolate_analytics.dart';
 import 'package:omnilect/features/sync/isolate/isolate_logger_bridge.dart';
+import 'package:omnilect/features/sync/isolate/ops/available_lists_refresh_op.dart';
 import 'package:omnilect/features/sync/isolate/ops/course_sync_op.dart';
 import 'package:omnilect/features/sync/isolate/ops/full_sync_op.dart';
 import 'package:omnilect/features/sync/isolate/ops/lecture_sync_op.dart';
@@ -99,6 +100,12 @@ Future<void> syncIsolateEntry(SpawnBundle bundle) async {
           ctx: ctx,
           courseId: req.courseId,
           sequenceId: req.sequenceId,
+        ),
+      AvailableListsRefreshRequest() => AvailableListsRefreshOp(
+          request: req,
+          cancelToken: token,
+          events: events,
+          ctx: ctx,
         ),
     };
   }

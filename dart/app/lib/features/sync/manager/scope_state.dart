@@ -83,6 +83,7 @@ class ScopeState {
 abstract final class ScopeIds {
   static const String allCourses = 'all-courses';
   static const String lists = 'lists';
+  static const String availableLists = 'available-lists';
   static String course(String courseId) => 'course:$courseId';
   static String lecture(String sequenceId) => 'lecture:$sequenceId';
 }

@@ -75,6 +75,42 @@ class SyncManager {
     _isolate.send(LectureSyncRequest(courseId, sequenceId, trigger: trigger));
   }
 
+  /// Refresh the `available_lists` cache on the sync isolate and await a
+  /// terminal outcome. Returns on [OpCompleted]; throws on [OpErrored];
+  /// completes normally on [OpCancelled] (cancel-and-replace is expected
+  /// during rapid interactions).
+  ///
+  /// Unlike the other request methods, this returns a [Future] so the
+  /// settings/onboarding RefreshIndicator can collapse at the right moment.
+  Future<void> refreshAvailableLists({
+    String trigger = kTriggerManual,
+  }) async {
+    _log.info('refreshAvailableLists trigger=$trigger');
+    final completer = Completer<void>();
+    late StreamSubscription<SyncEvent> sub;
+    sub = events.listen((event) {
+      void finish(FutureOr<void> Function() complete) {
+        if (completer.isCompleted) return;
+        complete();
+        unawaited(sub.cancel());
+      }
+
+      if (event is OpCompleted && event.scopeId == ScopeIds.availableLists) {
+        finish(completer.complete);
+      } else if (event is OpCancelled &&
+          event.scopeId == ScopeIds.availableLists) {
+        // Cancel-and-replace: treat as a "done enough" signal — the UI
+        // spinner should collapse, a subsequent op is running in its place.
+        finish(completer.complete);
+      } else if (event is OpErrored &&
+          event.scopeId == ScopeIds.availableLists) {
+        finish(() => completer.completeError(StateError(event.message)));
+      }
+    });
+    _isolate.send(AvailableListsRefreshRequest(trigger: trigger));
+    return completer.future;
+  }
+
   /// Cancel any in-flight op and wait for it to drain. Used by sign-out +
   /// "delete all app data" before wiping the DB.
   Future<void> stopAndWait() async {

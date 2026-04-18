@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:omnilect/core/analytics/analytics_events.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
+import 'package:omnilect/features/courses/providers/available_lists_provider.dart';
 import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
 import 'package:omnilect/features/courses/providers/ocw_courses_provider.dart';
 import 'package:omnilect/features/courses/providers/outline_provider.dart';
@@ -137,6 +138,8 @@ class SyncEventBridge {
           ..invalidate(activeOcwCoursesProvider);
       case 'unsupported':
         ref.invalidate(unsupportedCoursesProvider);
+      case 'availableLists':
+        ref.invalidate(availableListsProvider);
       case 'courseOutline':
         if (arg != null) {
           ref.invalidate(courseOutlineProvider(courseId: arg));

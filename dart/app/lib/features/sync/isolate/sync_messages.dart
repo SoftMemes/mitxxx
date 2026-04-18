@@ -59,6 +59,16 @@ final class LectureSyncRequest extends SyncRequest {
   String get scopeId => ScopeIds.lecture(sequenceId);
 }
 
+/// Refresh the `available_lists` cache — the list-of-lists a user can pick
+/// from in Settings → Courses and onboarding. Moved to the sync isolate so
+/// its HTTP + cookie-jar IO doesn't block the main UI thread.
+final class AvailableListsRefreshRequest extends SyncRequest {
+  const AvailableListsRefreshRequest({super.trigger});
+
+  @override
+  String get scopeId => ScopeIds.availableLists;
+}
+
 // Control messages (main → isolate) — not user requests, so they don't
 // carry a scope id and don't interact with the cancel-and-replace path.
 
