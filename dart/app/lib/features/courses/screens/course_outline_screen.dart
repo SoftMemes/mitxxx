@@ -370,10 +370,6 @@ class _SequenceTile extends ConsumerWidget {
       sequenceSyncControllerProvider.select((m) => m[sequenceId]),
     );
     final status = seqState?.status ?? SequenceSyncStatus.idle;
-    final trackedLectureId = ref.watch(
-      courseWatchPositionProvider(courseId).select((a) => a.asData?.value?.lectureId),
-    );
-    final isTracked = trackedLectureId == sequenceId;
     final cs = Theme.of(context).colorScheme;
 
     final isSynced = status == SequenceSyncStatus.synced;
@@ -411,10 +407,6 @@ class _SequenceTile extends ConsumerWidget {
             ),
           ),
         ListTile(
-          leading: Icon(
-            isTracked ? Icons.play_circle : Icons.play_circle_outline,
-            color: iconColor,
-          ),
           title: Text(title, style: TextStyle(color: titleColor)),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
@@ -655,16 +647,7 @@ class _OcwLectureTile extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final hasVideo = lecture.mp4Url != null;
     final subtitleColor = cs.onSurface.withValues(alpha: 0.6);
-    final trackedLectureId = ref.watch(
-      courseWatchPositionProvider(courseId)
-          .select((a) => a.asData?.value?.lectureId),
-    );
-    final isTracked = trackedLectureId == lecture.lectureId;
-    final leadingIcon = hasVideo
-        ? (isTracked ? Icons.play_circle : Icons.play_circle_outline)
-        : Icons.videocam_off_outlined;
     return ListTile(
-      leading: Icon(leadingIcon, color: cs.onSurfaceVariant),
       title: Text(lecture.title),
       subtitle: hasVideo
           ? null
