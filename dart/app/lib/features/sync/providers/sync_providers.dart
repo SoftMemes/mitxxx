@@ -1,6 +1,14 @@
 // ignore_for_file: uri_has_not_been_generated
 import 'dart:async';
 
+import 'package:logging/logging.dart';
+import 'package:omnilect/core/network/dio_client_provider.dart';
+import 'package:omnilect/features/auth/providers/auth_provider.dart';
+import 'package:omnilect/features/auth/providers/reauth_provider.dart';
+import 'package:omnilect/features/sync/bridge/session_refresh_manager.dart';
+import 'package:omnilect/features/sync/bridge/sync_event_bridge.dart';
+import 'package:omnilect/features/sync/bridge/sync_event_ring_buffer.dart';
+import 'package:omnilect/features/sync/isolate/sync_isolate.dart';
 import 'package:omnilect/features/sync/isolate/sync_messages.dart';
 import 'package:omnilect/features/sync/manager/scope_state.dart';
 import 'package:omnilect/features/sync/manager/sync_manager.dart';
@@ -9,25 +17,72 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'sync_providers.g.dart';
 
-/// Holds the [SyncManager] for the app's lifetime.
+final _log = Logger('sync.providers');
+
+/// Owns the [SyncManager] for the signed-in session.
 ///
-/// This provider MUST be overridden at app startup (see
-/// `SyncLifecycleObserver`) — the sync manager can't be constructed from a
-/// Ref because spawning the isolate is async and requires the
-/// `RootIsolateToken`. The default `build` throws to catch misconfiguration.
+/// Returns `null` before auth is established and after sign-out. When auth
+/// transitions from non-null → null, Riverpod disposes this provider — our
+/// `onDispose` tears down the bridges and shuts the isolate down.
+///
+/// Consumers that need the manager synchronously (UI fire-and-forget
+/// requests) should use [syncManagerOrNull] and guard on `null`.
 @Riverpod(keepAlive: true)
-SyncManager syncManager(Ref ref) {
-  throw StateError(
-    'syncManagerProvider must be overridden at app startup after '
-    'the sync isolate has spawned. See SyncLifecycleObserver.',
+Future<SyncManager?> syncManager(Ref ref) async {
+  final auth = ref.watch(authProvider);
+  final user = auth.value;
+  if (user == null) return null;
+
+  final isolate = await SyncIsolate.spawn();
+  final manager = SyncManager(isolate);
+
+  // Wait for the isolate's readiness handshake before accepting requests.
+  try {
+    await manager.events
+        .firstWhere((e) => e is IsolateReady)
+        .timeout(const Duration(seconds: 10));
+  } on Object catch (e, st) {
+    _log.severe('sync isolate readiness timed out', e, st);
+    await manager.dispose();
+    rethrow;
+  }
+
+  final sessionRefresh = SessionRefreshManager(
+    syncManager: manager,
+    client: ref.read(dioClientProvider),
+    reauthController: ref.read(reauthControllerProvider.notifier),
   );
+  final eventBridge = SyncEventBridge(syncManager: manager, ref: ref);
+
+  ref.onDispose(() async {
+    _log.info('syncManagerProvider: disposing');
+    await eventBridge.dispose();
+    await sessionRefresh.dispose();
+    await manager.dispose();
+  });
+
+  return manager;
 }
 
-/// Streams the current [SyncManagerState] for the UI.
+/// Synchronous accessor that returns `null` until [syncManagerProvider]
+/// resolves. Use this from UI fire-and-forget request sites — a `null`
+/// manager means sync isn't available yet (e.g. pre-auth cold start).
 @riverpod
-Stream<SyncManagerState> syncManagerState(Ref ref) {
-  final manager = ref.watch(syncManagerProvider);
-  return manager.stateStream;
+SyncManager? syncManagerOrNull(Ref ref) {
+  return ref.watch(syncManagerProvider).value;
+}
+
+/// Streams the current [SyncManagerState]. Emits the empty state while the
+/// manager is still constructing or absent.
+@riverpod
+Stream<SyncManagerState> syncManagerState(Ref ref) async* {
+  final manager = ref.watch(syncManagerOrNullProvider);
+  if (manager == null) {
+    yield const SyncManagerState();
+    return;
+  }
+  yield manager.state;
+  yield* manager.stateStream;
 }
 
 /// True while a full sync OR lists-refresh is running — drives the home
@@ -60,6 +115,20 @@ ScopeState lectureScopeState(Ref ref, String sequenceId) {
 /// should prefer one of the derived providers above for UI use.
 @riverpod
 Stream<SyncEvent> syncEvents(Ref ref) {
-  final manager = ref.watch(syncManagerProvider);
+  final manager = ref.watch(syncManagerOrNullProvider);
+  if (manager == null) return const Stream.empty();
   return manager.events;
+}
+
+/// Bounded ring buffer of recent [SyncEvent]s for the dev debugger. Rebinds
+/// whenever the underlying sync manager changes (e.g. sign-out → sign-in).
+@Riverpod(keepAlive: true)
+SyncEventRingBuffer syncEventRingBuffer(Ref ref) {
+  final buffer = SyncEventRingBuffer();
+  final manager = ref.watch(syncManagerOrNullProvider);
+  if (manager != null) {
+    buffer.bind(manager.events);
+  }
+  ref.onDispose(buffer.dispose);
+  return buffer;
 }

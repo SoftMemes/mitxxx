@@ -1,7 +1,7 @@
 # Async Sync Specification
 
 > **Version**: 1.0 (April 2026)
-> **Status**: Ready for Implementation
+> **Status**: Implemented
 > **Last Updated**: 2026-04-18
 
 ## Description
@@ -322,4 +322,57 @@ A short scripted e2e lives in the spec folder for QA: "force a 401 via expired c
 
 ---
 
-*Ready for implementation. Run `/implement-spec async-sync` to begin.*
+## Implementation Notes (2026-04-18)
+
+### Where the pieces landed
+
+- **Pure state machine + messages**
+  - `dart/app/lib/features/sync/isolate/sync_manager_core.dart` — `SyncManagerCore` (idle / running / cancelling / awaiting-session-refresh) with cancel-and-replace + `stopAndWait`.
+  - `dart/app/lib/features/sync/isolate/sync_messages.dart` — sealed `SyncRequest` / `SyncEvent` hierarchies.
+  - `dart/app/lib/features/sync/isolate/stale_session.dart` — `SessionKind` + `StaleSessionException`.
+
+- **Isolate + plumbing**
+  - `dart/app/lib/features/sync/isolate/sync_isolate.dart` — main-side spawn/handshake/shutdown.
+  - `dart/app/lib/features/sync/isolate/sync_isolate_entry.dart` — isolate entry: `BackgroundIsolateBinaryMessenger.ensureInitialized`, builds its own `DioClient` + `AppDatabase`, wires the core with a `SyncRequest → LogicalOp` factory.
+  - `dart/app/lib/features/sync/isolate/isolate_logger_bridge.dart`, `isolate_analytics.dart` — log + analytics forwarding.
+
+- **Logical ops** (`.../isolate/ops/`)
+  - `full_sync_op.dart`, `lists_refresh_op.dart`, `course_sync_op.dart`, `lecture_sync_op.dart`.
+  - `course_sync_runner.dart` — shared `syncSingleCourse` used by `FullSyncOp` + `CourseSyncOp`, bounded concurrency (kSyncConcurrency = 16).
+  - `op_helpers.dart` — ported verbatim from the old `SyncController`: outline fetch, OCW fetch, sequence metadata, xblock, stale-download detection, reconcileMembership, list fetches.
+
+- **Main-isolate facade + bridges**
+  - `dart/app/lib/features/sync/manager/sync_manager.dart` — `SyncManager` fire-and-forget facade; event → state mirroring.
+  - `dart/app/lib/features/sync/manager/sync_manager_state.dart` + `scope_state.dart` — UI-mirror state.
+  - `dart/app/lib/features/sync/bridge/session_refresh_manager.dart` — handles `SessionRefreshRequired` by dispatching LMS/learnApi silent bootstrap and mitxonline reauth.
+  - `dart/app/lib/features/sync/bridge/sync_event_bridge.dart` — routes events to `AnalyticsService`, `VideoDownloadManager.onRemovedVideoUrls`, `CourseImageDownloader`, `ProgressTracker`, provider invalidation, log re-emission.
+  - `dart/app/lib/features/sync/bridge/sync_event_ring_buffer.dart` — capped buffer for the dev debugger.
+
+- **Lifecycle**
+  - `dart/app/lib/features/sync/providers/sync_providers.dart` — `syncManagerProvider` became a `Future<SyncManager?>` keyed on `authProvider`. When auth becomes non-null, it spawns the isolate, awaits `IsolateReady`, wires `SessionRefreshManager` + `SyncEventBridge`. On sign-out the provider is disposed, which tears everything down.
+  - `dart/app/lib/features/sync/manager/sync_lifecycle_observer.dart` — thin `keepAlive` wrapper watched by `OmnilectApp.initState` so the isolate exists from app start (not just on first UI read).
+  - `dart/app/lib/features/auth/providers/auth_provider.dart` `signOut()` calls `syncManager.stopAndWait()` before `db.clearAll()`.
+
+- **UI rewire** — home, course outline, lecture, onboarding list selection, settings Courses, settings Data Usage. All `syncControllerProvider` / `sequenceSyncControllerProvider` usages replaced with `isSyncingAllProvider`, `courseScopeStateProvider(courseId)`, `lectureScopeStateProvider(sequenceId)`, and the new `syncManagerOrNullProvider` for request calls. Old tap-to-prioritise became `requestLectureSync` (cancel-and-replace is implicit).
+
+- **Reauth** — `PendingSyncOperation` hierarchy deleted. `ReauthController` state is `{showPrompt, isLoggingIn}`; `request()` is nullary; login outcomes stream through `ReauthController.outcomes` for the `SessionRefreshManager` to await.
+
+- **Dev debugger** — `/debug/sync` route guarded by `FlavorConfig.isDev`, entered from a dev-only `bug_report_outlined` icon on the home app bar. Shows current op, per-scope state map, timestamped event log (500-entry ring buffer).
+
+### Deviations from the original plan
+
+- `syncManagerProvider` is a `Future<SyncManager?>` keyed on auth rather than a container-override. This fit Riverpod 3.x lifecycles cleanly and made sign-out disposal automatic. UI call sites use `syncManagerOrNullProvider` and short-circuit if `null`.
+- Per-sequence numeric progress is gone from UI per spec ("boolean only"). Course/lecture tiles now use a static background tint while syncing instead of the prior animated progress fill.
+- Isolate-spawning integration tests (real Drift + mocked Dio) were deferred: plugin channels for `flutter_secure_storage` and `path_provider` don't work inside a spawned isolate under `flutter_test`. `SyncManagerCore` is covered by 10 unit tests; `ReauthController` by 7; derived sync state/scope model by 9; plus the existing DB reconciliation + progress tests.
+
+### DoD on completion
+
+```
+cd dart/app
+fvm flutter analyze   # → No issues found!
+fvm flutter test      # → 93 passed
+```
+
+---
+
+*Implemented.*

@@ -142,12 +142,10 @@ class AvailableListsController extends _$AvailableListsController {
     await db.replaceAvailableLists(companions);
 
     // If the session looked stale, surface the re-auth prompt so the user can
-    // sign back in. We reuse the sync controller's "sync all" operation as the
-    // resume target — after reauth, sync runs and refreshes lists again.
+    // sign back in. After reauth, the sync isolate picks up fresh cookies and
+    // the next sync pass refreshes lists again.
     if (authFailed) {
-      ref
-          .read(reauthControllerProvider.notifier)
-          .request(const SyncAllOperation());
+      ref.read(reauthControllerProvider.notifier).request();
     }
   }
 }

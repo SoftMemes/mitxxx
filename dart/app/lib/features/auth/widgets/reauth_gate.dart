@@ -26,9 +26,8 @@ class _ReauthGateState extends ConsumerState<ReauthGate> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<ReauthRequest?>(reauthControllerProvider, (prev, next) {
-      final shouldPrompt = next != null && !next.isLoggingIn;
-      if (shouldPrompt && !_dialogOpen) _showPrompt();
+    ref.listen<ReauthState>(reauthControllerProvider, (prev, next) {
+      if (next.showPrompt && !next.isLoggingIn && !_dialogOpen) _showPrompt();
     });
     return widget.child;
   }

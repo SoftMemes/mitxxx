@@ -8,7 +8,7 @@ import 'package:omnilect/features/courses/models/list_source.dart';
 import 'package:omnilect/features/courses/providers/available_lists_provider.dart';
 import 'package:omnilect/features/courses/providers/selected_lists_provider.dart';
 import 'package:omnilect/features/courses/widgets/list_picker.dart';
-import 'package:omnilect/features/sync/providers/sync_controller.dart';
+import 'package:omnilect/features/sync/providers/sync_providers.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const String _kManageListsUrl = 'https://learn.mit.edu/dashboard/my-lists';
@@ -76,16 +76,8 @@ class _CoursesScreenState extends ConsumerState<CoursesScreen> {
     );
 
     // Restart sync from the top so the new selection takes effect
-    // immediately — existing in-flight work is cancelled first.
-    final syncController = ref.read(syncControllerProvider.notifier);
-    unawaited(() async {
-      try {
-        await syncController.stopAll();
-        await syncController.syncAll();
-      } on Object catch (e, st) {
-        debugPrint('courses apply: sync kickoff failed: $e\n$st');
-      }
-    }());
+    // immediately — cancel-and-replace is implicit in requestFullSync.
+    ref.read(syncManagerOrNullProvider)?.requestFullSync();
 
     if (!mounted) return;
     // Apply closes straight back to the home screen so the user sees the

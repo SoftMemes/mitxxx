@@ -14,7 +14,7 @@ import 'package:omnilect/features/player/models/lecture_player_state.dart';
 import 'package:omnilect/features/player/models/vertical_segment.dart';
 import 'package:omnilect/features/player/providers/lecture_player_provider.dart';
 import 'package:omnilect/features/player/widgets/lecture_video_player.dart';
-import 'package:omnilect/features/sync/providers/sync_controller.dart';
+import 'package:omnilect/features/sync/providers/sync_providers.dart';
 
 /// Single-page lecture view.
 ///
@@ -65,13 +65,13 @@ class _LectureScreenState extends ConsumerState<LectureScreen> {
     }
   }
 
-  Future<void> _syncSequence() => ref
-      .read(syncControllerProvider.notifier)
-      .syncSequence(
-        widget.courseId,
-        widget.sequenceId,
-        trigger: kTriggerPullToRefresh,
-      );
+  Future<void> _syncSequence() async {
+    ref.read(syncManagerOrNullProvider)?.requestLectureSync(
+          widget.courseId,
+          widget.sequenceId,
+          trigger: kTriggerPullToRefresh,
+        );
+  }
 
   void _scrollToActive(int index) {
     if (index < 0 || index >= _tileKeys.length) return;

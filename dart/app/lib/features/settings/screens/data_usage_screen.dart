@@ -8,7 +8,7 @@ import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
 import 'package:omnilect/features/downloads/providers/video_download_manager.dart';
-import 'package:omnilect/features/sync/providers/sync_controller.dart';
+import 'package:omnilect/features/sync/providers/sync_providers.dart';
 
 final _log = Logger('data_usage');
 
@@ -106,7 +106,10 @@ class _DataUsageScreenState extends ConsumerState<DataUsageScreen> {
       // drain. Otherwise a task holding an xblock response may call
       // db.putXblock after we've cleared the tables, leaving orphan rows
       // behind. Cancel background downloads for the same reason.
-      await ref.read(syncControllerProvider.notifier).stopAll();
+      final manager = ref.read(syncManagerOrNullProvider);
+      if (manager != null) {
+        await manager.stopAndWait();
+      }
       await ref.read(videoDownloadManagerProvider).cancelAllTasks();
 
       final db = ref.read(appDatabaseProvider);
@@ -118,16 +121,10 @@ class _DataUsageScreenState extends ConsumerState<DataUsageScreen> {
           _log.warning('Could not delete video file $path: $e');
         }
       }
-      // Invalidate in-memory provider state so the home screen re-reads the
-      // (now empty) DB rather than serving stale cached values. The per-
-      // sequence state must be reset too: otherwise its stale `synced`
-      // entries cause the next syncCourse run to skip every sequence,
-      // finalise immediately, and leave the course appearing synced with
-      // no xblocks in the DB.
-      ref
-        ..invalidate(enrollmentsProvider)
-        ..invalidate(syncControllerProvider)
-        ..invalidate(sequenceSyncControllerProvider);
+      // Invalidate cached data providers so the home screen re-reads the
+      // (now empty) DB rather than serving stale cached values. The sync
+      // manager's in-memory scope state clears naturally on the next sync.
+      ref.invalidate(enrollmentsProvider);
       if (!mounted) return;
       context.go('/home');
     } finally {
