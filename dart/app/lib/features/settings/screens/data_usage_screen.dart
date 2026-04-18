@@ -121,12 +121,17 @@ class _DataUsageScreenState extends ConsumerState<DataUsageScreen> {
           _log.warning('Could not delete video file $path: $e');
         }
       }
-      // Invalidate cached data providers so the home screen re-reads the
+      // Invalidate cached data providers so downstream screens re-read the
       // (now empty) DB rather than serving stale cached values. The sync
       // manager's in-memory scope state clears naturally on the next sync.
       ref.invalidate(enrollmentsProvider);
       if (!mounted) return;
-      context.go('/home');
+      // Clearing selected_lists puts the user back in the "choose what to
+      // sync" onboarding state. Navigate there directly instead of bouncing
+      // through an empty home screen — the router's hasSelectedLists gate
+      // would eventually redirect anyway, but the Drift stream emission
+      // isn't synchronous so the user would flash empty state first.
+      context.go('/onboarding/list-selection');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
