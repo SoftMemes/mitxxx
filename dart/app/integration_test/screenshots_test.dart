@@ -188,23 +188,31 @@ void main() {
     // finishes — gray tiles just snackbar "Queued" on tap. Synced tiles
     // render a DownloadButton in their trailing area, so we wait for
     // one of those to appear and tap its containing _SequenceTile.
-    _step('waiting for a synced sequence (can take several minutes)');
-    // Scope the wait to DownloadButtons INSIDE a _SequenceTile — the
-    // course-level DownloadButton in the AppBar also matches otherwise
-    // and fires immediately, before any sequence has actually synced.
-    final sequenceDownloadButton = find.descendant(
-      of: _byTypeName('_SequenceTile'),
+    // Find a sequence tile that (a) is a lecture (not a discussion
+    // forum or other non-video item) and (b) has finished syncing.
+    //   - Lecture-ness: title matches `Lecture <digit>` (MITx convention).
+    //   - Synced-ness: a DownloadButton is rendered in the trailing row
+    //     (only added after SequenceSyncStatus.synced).
+    // We scope the DownloadButton match to _SequenceTile descendants so
+    // the course-level AppBar DownloadButton doesn't satisfy the wait.
+    final lectureTiles = find.ancestor(
+      of: find.textContaining(RegExp(r'^Lecture\s*\d')),
+      matching: _byTypeName('_SequenceTile'),
+    );
+    final syncedLectureButton = find.descendant(
+      of: lectureTiles,
       matching: _byTypeName('DownloadButton'),
     );
+    _step('waiting for a synced lecture sequence (can take several minutes)');
     await _waitFor(
       tester,
-      sequenceDownloadButton,
-      timeout: const Duration(minutes: 10),
-      label: 'synced sequence (DownloadButton inside _SequenceTile)',
+      syncedLectureButton,
+      timeout: const Duration(minutes: 15),
+      label: 'synced Lecture tile',
     );
-    _step('tapping first synced sequence');
+    _step('tapping first synced lecture');
     final syncedTile = find.ancestor(
-      of: sequenceDownloadButton.first,
+      of: syncedLectureButton.first,
       matching: _byTypeName('_SequenceTile'),
     );
     await tester.tap(syncedTile.first);
