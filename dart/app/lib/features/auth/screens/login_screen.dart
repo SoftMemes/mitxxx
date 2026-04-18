@@ -6,11 +6,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:mitx_api/mitx_api.dart';
 import 'package:omnilect/core/network/dio_client_provider.dart';
+import 'package:omnilect/core/screenshots/screenshot_mode.dart';
 import 'package:omnilect/features/auth/providers/auth_provider.dart';
 import 'package:omnilect/features/auth/providers/reauth_provider.dart';
 import 'package:omnilect/features/auth/utils/webview_cookie_sync.dart';
 
 final _log = Logger('auth.login');
+
+String _jsString(String value) {
+  final escaped = value
+      .replaceAll(r'\', r'\\')
+      .replaceAll("'", r"\'")
+      .replaceAll('\n', r'\n')
+      .replaceAll('\r', r'\r')
+      .replaceAll('<', r'\u003C');
+  return "'$escaped'";
+}
 
 /// Shows the MIT login WebView as a dismissible modal bottom sheet that
 /// covers ~90% of the screen. Dismissing before completion (drag down or
@@ -186,6 +197,24 @@ class _LoginSheetBodyState extends ConsumerState<_LoginSheetBody> {
                 onLoadStop: (controller, uri) async {
                   _log.fine('WebView onLoadStop: $uri');
                   if (uri == null) return;
+
+                  if (ScreenshotMode.enabled &&
+                      uri.host == 'sso.ol.mit.edu' &&
+                      ScreenshotMode.email.isNotEmpty) {
+                    await controller.evaluateJavascript(source: '''
+                      (function() {
+                        var u = document.querySelector('#username, input[name="username"]');
+                        var p = document.querySelector('#password, input[name="password"]');
+                        var f = document.querySelector('form#kc-form-login, form');
+                        if (u && p && f) {
+                          u.value = ${_jsString(ScreenshotMode.email)};
+                          p.value = ${_jsString(ScreenshotMode.password)};
+                          f.submit();
+                        }
+                      })();
+                    ''');
+                    return;
+                  }
 
                   // We only care about pages fully loaded on
                   // mitxonline.mit.edu, OUTSIDE the /login/ flow. The OAuth

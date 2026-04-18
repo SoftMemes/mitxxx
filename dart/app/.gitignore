@@ -12,6 +12,9 @@
 .swiftpm/
 migrate_working_dir/
 
+# Screenshot captures (regenerate via scripts/screenshots.sh)
+/screenshots/raw/
+
 # IntelliJ related
 *.iml
 *.ipr
