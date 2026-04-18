@@ -48,16 +48,23 @@ class _CoursesScreenState extends ConsumerState<CoursesScreen> {
   }
 
   Future<void> _refresh() async {
+    final started = DateTime.now();
     _log.info('pull-to-refresh: START');
     setState(() => _refreshing = true);
     try {
       await ref.read(availableListsControllerProvider.notifier).refresh();
-      _log.info('pull-to-refresh: refresh() returned');
+      _log.info(
+        'pull-to-refresh: refresh() returned '
+        'after ${DateTime.now().difference(started).inMilliseconds}ms',
+      );
     } on Object catch (e, st) {
       _log.warning('pull-to-refresh: refresh() failed', e, st);
     } finally {
       if (mounted) setState(() => _refreshing = false);
-      _log.info('pull-to-refresh: END (mounted=$mounted)');
+      _log.info(
+        'pull-to-refresh: END (mounted=$mounted) '
+        'total ${DateTime.now().difference(started).inMilliseconds}ms',
+      );
     }
   }
 
