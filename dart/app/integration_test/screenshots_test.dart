@@ -184,8 +184,30 @@ void main() {
     await _shoot(binding, tester, '04_course_outline');
 
     // ── 6. Lecture / player ────────────────────────────────────────────
-    _step('tapping first lecture');
-    await tester.tap(_byTypeName('_SequenceTile').first);
+    // A sequence tile is only tappable-into-a-lecture once its sync
+    // finishes — gray tiles just snackbar "Queued" on tap. Synced tiles
+    // render a DownloadButton in their trailing area, so we wait for
+    // one of those to appear and tap its containing _SequenceTile.
+    _step('waiting for a synced sequence (can take several minutes)');
+    // Scope the wait to DownloadButtons INSIDE a _SequenceTile — the
+    // course-level DownloadButton in the AppBar also matches otherwise
+    // and fires immediately, before any sequence has actually synced.
+    final sequenceDownloadButton = find.descendant(
+      of: _byTypeName('_SequenceTile'),
+      matching: _byTypeName('DownloadButton'),
+    );
+    await _waitFor(
+      tester,
+      sequenceDownloadButton,
+      timeout: const Duration(minutes: 10),
+      label: 'synced sequence (DownloadButton inside _SequenceTile)',
+    );
+    _step('tapping first synced sequence');
+    final syncedTile = find.ancestor(
+      of: sequenceDownloadButton.first,
+      matching: _byTypeName('_SequenceTile'),
+    );
+    await tester.tap(syncedTile.first);
     await _waitFor(
       tester,
       find.byElementPredicate((e) {
@@ -199,5 +221,5 @@ void main() {
     await _shoot(binding, tester, '05_lecture');
 
     _step('done');
-  }, timeout: const Timeout(Duration(minutes: 12)));
+  }, timeout: const Timeout(Duration(minutes: 25)));
 }
