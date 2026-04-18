@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:logging/logging.dart';
 import 'package:omnilect/core/analytics/analytics_events.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/core/storage/app_database.dart';
@@ -19,6 +20,8 @@ import 'package:omnilect/features/sync/manager/scope_state.dart';
 import 'package:omnilect/features/sync/providers/sync_providers.dart';
 import 'package:omnilect/flavor_config.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+final _log = Logger('home');
 
 /// MIT Learn dashboard for managing course enrollments.
 const _kManageCoursesUrl = 'https://learn.mit.edu/dashboard';
@@ -38,6 +41,19 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _autoSyncTriggered = false;
 
+  /// Dispatches a full-sync request and logs exactly what happened at the
+  /// gesture boundary so we can distinguish "manager absent" from "message
+  /// sent but isolate silent" when diagnosing pull-to-refresh issues.
+  void _fireFullSync(String trigger) {
+    final manager = ref.read(syncManagerOrNullProvider);
+    if (manager == null) {
+      _log.warning('pull-to-refresh: syncManagerOrNull is NULL ($trigger)');
+      return;
+    }
+    _log.info('pull-to-refresh: dispatching full-sync ($trigger)');
+    manager.requestFullSync(trigger: trigger);
+  }
+
   @override
   Widget build(BuildContext context) {
     final enrollmentsAsync = ref.watch(activeEnrollmentsProvider);
@@ -53,9 +69,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _autoSyncTriggered = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          ref
-              .read(syncManagerOrNullProvider)
-              ?.requestFullSync(trigger: kTriggerAuto);
+          _fireFullSync(kTriggerAuto);
         }
       });
     }
@@ -87,23 +101,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           : enrollmentsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => _PullToSyncWrapper(
-          onRefresh: () async {
-            ref
-                .read(syncManagerOrNullProvider)
-                ?.requestFullSync(trigger: kTriggerPullToRefresh);
-          },
+          onRefresh: () async => _fireFullSync(kTriggerPullToRefresh),
           child: _EmptyState(
             isSyncing: isSyncing,
-            onSync: () =>
-                ref.read(syncManagerOrNullProvider)?.requestFullSync(),
+            onSync: () => _fireFullSync(kTriggerManual),
           ),
         ),
         data: (enrollments) {
-          Future<void> restartSync() async {
-            ref
-                .read(syncManagerOrNullProvider)
-                ?.requestFullSync(trigger: kTriggerPullToRefresh);
-          }
+          Future<void> restartSync() async =>
+              _fireFullSync(kTriggerPullToRefresh);
 
           final unsupported =
               ref.watch(unsupportedCoursesProvider).asData?.value ??

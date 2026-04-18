@@ -31,8 +31,12 @@ final _log = Logger('sync.providers');
 Future<SyncManager?> syncManager(Ref ref) async {
   final auth = ref.watch(authProvider);
   final user = auth.value;
-  if (user == null) return null;
+  if (user == null) {
+    _log.info('syncManagerProvider: auth not ready — manager is null');
+    return null;
+  }
 
+  _log.info('syncManagerProvider: spawning sync isolate');
   final isolate = await SyncIsolate.spawn();
   final manager = SyncManager(isolate);
 
@@ -41,6 +45,7 @@ Future<SyncManager?> syncManager(Ref ref) async {
     await manager.events
         .firstWhere((e) => e is IsolateReady)
         .timeout(const Duration(seconds: 10));
+    _log.info('syncManagerProvider: IsolateReady received');
   } on Object catch (e, st) {
     _log.severe('sync isolate readiness timed out', e, st);
     await manager.dispose();
@@ -53,6 +58,7 @@ Future<SyncManager?> syncManager(Ref ref) async {
     reauthController: ref.read(reauthControllerProvider.notifier),
   );
   final eventBridge = SyncEventBridge(syncManager: manager, ref: ref);
+  _log.info('syncManagerProvider: bridges wired — manager is live');
 
   ref.onDispose(() async {
     _log.info('syncManagerProvider: disposing');

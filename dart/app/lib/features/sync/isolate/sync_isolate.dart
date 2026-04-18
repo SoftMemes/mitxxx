@@ -49,6 +49,7 @@ class SyncIsolate {
   /// Spawn the sync isolate and wait for the initial handshake (the
   /// isolate's SendPort) before returning.
   static Future<SyncIsolate> spawn() async {
+    _log.info('spawn: starting sync isolate');
     final token = RootIsolateToken.instance;
     if (token == null) {
       throw StateError('RootIsolateToken.instance is null');
