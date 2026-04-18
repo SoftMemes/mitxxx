@@ -2,7 +2,17 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:logging/logging.dart';
 import 'package:video_player/video_player.dart';
+
+final _log = Logger('player.lecture');
+
+/// How long to wait for `VideoPlayerController.initialize()` before surfacing
+/// a "video failed to load" error. The native player can silently hang on
+/// network issues (DNS, redirect handling, server stalls) — without this the
+/// UI sits on a forever spinner. 25 s is generous for a slow first byte but
+/// short enough that the user sees something actionable.
+const _initTimeout = Duration(seconds: 25);
 
 /// A snapshot of the current playback state exposed by [LecturePlaybackController].
 @immutable
@@ -232,10 +242,15 @@ class LecturePlaybackController {
       _preloadedVpc = null;
     } else {
       await _discardPreloaded();
+      _log.info('_loadSegmentSuppressed[$index]: initializing ${entry.uri}');
       vpc = _createController(entry.uri);
       try {
-        await vpc.initialize();
+        await vpc.initialize().timeout(_initTimeout);
       } on Object catch (e) {
+        _log.warning(
+          '_loadSegmentSuppressed[$index]: init failed for ${entry.uri}',
+          e,
+        );
         await vpc.dispose();
         if (!_disposed) {
           snapshot.value = PlaybackSnapshot(
@@ -244,7 +259,7 @@ class LecturePlaybackController {
             isPlaying: false,
             activeVideoIndex: index,
             isComplete: false,
-            error: 'Failed to load segment: $e',
+            error: 'Failed to load video: $e',
           );
         }
         return;
@@ -302,10 +317,14 @@ class LecturePlaybackController {
       _preloadedVpc = null;
     } else {
       await _discardPreloaded();
+      _log.info('_loadSegment[$index]: initializing ${entry.uri}');
       vpc = _createController(entry.uri);
       try {
-        await vpc.initialize();
+        await vpc.initialize().timeout(_initTimeout);
+        _log.info('_loadSegment[$index]: initialized in '
+            '${vpc.value.duration.inMilliseconds}ms duration');
       } on Object catch (e) {
+        _log.warning('_loadSegment[$index]: init failed for ${entry.uri}', e);
         await vpc.dispose();
         if (!_disposed) {
           snapshot.value = PlaybackSnapshot(
@@ -314,7 +333,7 @@ class LecturePlaybackController {
             isPlaying: false,
             activeVideoIndex: index,
             isComplete: false,
-            error: 'Failed to load segment: $e',
+            error: 'Failed to load video: $e',
           );
         }
         return;
@@ -413,8 +432,9 @@ class LecturePlaybackController {
     if (_disposed || index >= schedule.length) return;
     final vpc = _createController(schedule[index].uri);
     try {
-      await vpc.initialize();
-    } on Object {
+      await vpc.initialize().timeout(_initTimeout);
+    } on Object catch (e) {
+      _log.fine('preload[$index]: ${schedule[index].uri} failed: $e');
       await vpc.dispose();
       return;
     }

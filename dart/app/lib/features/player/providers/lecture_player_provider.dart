@@ -1,4 +1,5 @@
 // ignore_for_file: uri_has_not_been_generated
+import 'package:logging/logging.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/cast/models/cast_queue_item.dart';
@@ -16,6 +17,8 @@ import 'package:omnilect/features/progress/providers/progress_tracker_provider.d
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'lecture_player_provider.g.dart';
+
+final _log = Logger('player.lecture-provider');
 
 /// Async notifier that drives the single-page lecture player.
 ///
@@ -306,6 +309,8 @@ class LecturePlayer extends _$LecturePlayer {
         db,
       );
     }
+    _log.info('_buildOcw $lectureId: mp4Url=$mp4 resolved=$resolvedUri '
+        'duration=$duration');
 
     final segment = VerticalSegment(
       verticalId: lecture.lectureId,
