@@ -119,43 +119,78 @@ class _ButtonForState extends StatelessWidget {
   final VoidCallback onDownload;
   final VoidCallback onDelete;
 
+  // Arrow rendered at ~55 % of the circle diameter so it sits
+  // comfortably inside the ring or filled circle.
+  double get _innerArrowSize => iconSize * 0.55;
+
   @override
   Widget build(BuildContext context) {
     final boxSize = iconSize + 8;
+    final iconColor =
+        IconTheme.of(context).color ?? Theme.of(context).colorScheme.onSurface;
+    final borderColor = iconColor;
 
     switch (state.status) {
-      // All in-flight states render as a tappable spinner so the user can
-      // always see that work is happening and always has a hit target to
-      // cancel. Determinate when aggregate progress > 0, indeterminate
-      // otherwise. (Flutter's CircularProgressIndicator self-animates when
-      // value is null, so no external AnimationController is needed.)
+      // Progress ring with a centred solid arrow — always tappable to cancel.
+      // Determinate when aggregate progress > 0, indeterminate otherwise
+      // (Flutter self-animates when value is null).
       case DownloadStatus.pending:
       case DownloadStatus.queued:
       case DownloadStatus.downloading:
         return IconButton(
           padding: EdgeInsets.zero,
           constraints: BoxConstraints(minWidth: boxSize, minHeight: boxSize),
+          style: IconButton.styleFrom(
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
           tooltip: 'Downloading — tap to cancel',
           onPressed: onDelete,
           icon: SizedBox(
             width: iconSize,
             height: iconSize,
-            child: CircularProgressIndicator(
-              value: state.progress > 0 ? state.progress : null,
-              strokeWidth: 2,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Always indeterminate — a small ring can't meaningfully
+                // convey aggregate progress across many files.
+                const CircularProgressIndicator(strokeWidth: 2),
+                _DownloadArrow(size: _innerArrowSize, color: iconColor),
+              ],
             ),
           ),
         );
 
+      // Filled green circle with a white solid arrow — clearly "done".
       case DownloadStatus.downloaded:
         return IconButton(
           padding: EdgeInsets.zero,
           constraints: BoxConstraints(minWidth: boxSize, minHeight: boxSize),
-          icon: Icon(Icons.check_circle, size: iconSize, color: Colors.green),
+          style: IconButton.styleFrom(
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
           tooltip: 'Downloaded — tap to remove',
           onPressed: onDelete,
+          icon: SizedBox(
+            width: iconSize,
+            height: iconSize,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: iconSize,
+                  height: iconSize,
+                  decoration: const BoxDecoration(
+                    color: Colors.green,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                _DownloadArrow(size: _innerArrowSize, color: Colors.white),
+              ],
+            ),
+          ),
         );
 
+      // Outlined circle with arrow + badge dot for "new version available".
       case DownloadStatus.stale:
         return Stack(
           alignment: Alignment.topRight,
@@ -164,9 +199,29 @@ class _ButtonForState extends StatelessWidget {
               padding: EdgeInsets.zero,
               constraints:
                   BoxConstraints(minWidth: boxSize, minHeight: boxSize),
-              icon: Icon(Icons.download_outlined, size: iconSize),
+              style: IconButton.styleFrom(
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
               tooltip: 'New version available — tap to update',
               onPressed: onDownload,
+              icon: SizedBox(
+                width: iconSize,
+                height: iconSize,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: iconSize,
+                      height: iconSize,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: borderColor, width: 1.5),
+                      ),
+                    ),
+                    _DownloadArrow(size: _innerArrowSize, color: iconColor),
+                  ],
+                ),
+              ),
             ),
             Positioned(
               top: 4,
@@ -187,6 +242,9 @@ class _ButtonForState extends StatelessWidget {
         return IconButton(
           padding: EdgeInsets.zero,
           constraints: BoxConstraints(minWidth: boxSize, minHeight: boxSize),
+          style: IconButton.styleFrom(
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
           icon: Icon(
             Icons.error_outline,
             size: iconSize,
@@ -196,14 +254,80 @@ class _ButtonForState extends StatelessWidget {
           onPressed: onDownload,
         );
 
+      // Plain solid arrow, no circle — same arrow size and centre-point as the
+      // downloading state so there is no jump when the progress ring appears.
       case DownloadStatus.notDownloaded:
         return IconButton(
           padding: EdgeInsets.zero,
           constraints: BoxConstraints(minWidth: boxSize, minHeight: boxSize),
-          icon: Icon(Icons.download_outlined, size: iconSize),
+          style: IconButton.styleFrom(
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
           tooltip: 'Download for offline viewing',
           onPressed: onDownload,
+          icon: SizedBox(
+            width: iconSize,
+            height: iconSize,
+            child: Center(
+              child: _DownloadArrow(size: _innerArrowSize, color: iconColor),
+            ),
+          ),
         );
     }
   }
+}
+
+/// Fat solid download arrow: a thick rectangular stem topped with a wide
+/// filled triangle, custom-painted so the arrowhead reads as a solid shape
+/// rather than a Material chevron.
+class _DownloadArrow extends StatelessWidget {
+  const _DownloadArrow({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(size, size),
+      painter: _DownloadArrowPainter(color: color),
+    );
+  }
+}
+
+class _DownloadArrowPainter extends CustomPainter {
+  const _DownloadArrowPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    final w = size.width;
+    final h = size.height;
+
+    // Stem: 28 % wide, occupies the top ~46 % of the canvas (with a small
+    // top gap so the arrow doesn't clip at the edge inside a circle).
+    final stemW = w * 0.28;
+    final stemLeft = (w - stemW) / 2;
+    canvas.drawRect(
+      Rect.fromLTWH(stemLeft, h * 0.06, stemW, h * 0.46),
+      paint,
+    );
+
+    // Arrowhead: solid triangle, full canvas width at the join, tip at
+    // the vertical centre-bottom (with a small bottom gap).
+    final path = Path()
+      ..moveTo(0, h * 0.48)
+      ..lineTo(w, h * 0.48)
+      ..lineTo(w / 2, h * 0.94)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_DownloadArrowPainter old) => old.color != color;
 }

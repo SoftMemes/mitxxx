@@ -11,7 +11,6 @@ import 'package:omnilect/features/courses/models/outline.dart';
 import 'package:omnilect/features/courses/providers/ocw_courses_provider.dart';
 import 'package:omnilect/features/courses/providers/outline_provider.dart';
 import 'package:omnilect/features/downloads/widgets/download_button.dart';
-import 'package:omnilect/features/downloads/widgets/download_progress_bar.dart';
 import 'package:omnilect/features/progress/providers/course_position_provider.dart';
 import 'package:omnilect/features/sync/models/course_sync_state.dart';
 import 'package:omnilect/features/sync/providers/sync_controller.dart';
@@ -59,12 +58,6 @@ class CourseOutlineScreen extends ConsumerWidget {
                 .syncCourse(courseId, trigger: kTriggerPullToRefresh),
             child: CustomScrollView(
               slivers: [
-                SliverToBoxAdapter(
-                  child: DownloadProgressBar(
-                    courseId: courseId,
-                    useLectureCount: true,
-                  ),
-                ),
                 SliverToBoxAdapter(
                   child: _MitxContinueSection(
                     courseId: courseId,
@@ -386,7 +379,6 @@ class _SequenceTile extends ConsumerWidget {
     // secondary text.
     final disabledFg = cs.onSurface.withValues(alpha: 0.38);
     final titleColor = isSynced ? null : disabledFg;
-    final iconColor = isSynced ? null : disabledFg;
 
     return Stack(
       children: [
@@ -419,7 +411,6 @@ class _SequenceTile extends ConsumerWidget {
               // point offering video download before we know what videos exist.
               if (isSynced)
                 DownloadButton(courseId: courseId, sequenceId: sequenceId),
-              Icon(Icons.chevron_right, color: iconColor),
             ],
           ),
           onTap: () => _handleTap(context, ref, status),
@@ -555,12 +546,6 @@ class _OcwOutlineBody extends ConsumerWidget {
         if (data == null) return const _CourseOutlineSkeleton();
         return CustomScrollView(
           slivers: [
-            SliverToBoxAdapter(
-              child: DownloadProgressBar(
-                courseId: course.courseId,
-                useLectureCount: true,
-              ),
-            ),
             if (course.description.isNotEmpty)
               SliverToBoxAdapter(
                 child: Padding(
@@ -665,7 +650,6 @@ class _OcwLectureTile extends ConsumerWidget {
           // Each OCW lecture maps 1:1 to a video URL, so scope it as a vertical.
           if (hasVideo)
             DownloadButton(courseId: courseId, verticalId: lecture.lectureId),
-          Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
         ],
       ),
       onTap: () => _tap(context),
