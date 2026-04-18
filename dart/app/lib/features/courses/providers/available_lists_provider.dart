@@ -45,6 +45,7 @@ class AvailableListsController extends _$AvailableListsController {
   void build() {}
 
   Future<void> refresh() async {
+    _log.info('refresh: START');
     final client = ref.read(dioClientProvider);
     final db = ref.read(appDatabaseProvider);
     final now = DateTime.now();
@@ -63,9 +64,11 @@ class AvailableListsController extends _$AvailableListsController {
     // latter can trip over Dio's generic dispatch on some SDK versions.
     var authFailed = false;
     try {
+      _log.info('refresh: GET /api/v1/enrollments/ (mitxonline)');
       final resp =
           await client.mitxOnline.get<dynamic>('/api/v1/enrollments/');
       final list = resp.data as List<dynamic>;
+      _log.info('refresh: enrollments fetched count=${list.length}');
       companions.add(
         AvailableListsCompanion.insert(
           listId: kAllEnrolledListId,
@@ -99,6 +102,7 @@ class AvailableListsController extends _$AvailableListsController {
 
     // Custom lists from learn.mit.edu.
     try {
+      _log.info('refresh: GET /api/v1/userlists/ (learnApi)');
       final resp = await client.learnApi.get<dynamic>(
         '/api/v1/userlists/',
         queryParameters: {'limit': 100},
@@ -139,13 +143,19 @@ class AvailableListsController extends _$AvailableListsController {
       }
     }
 
+    _log.info(
+      'refresh: writing ${companions.length} available list(s) to DB',
+    );
     await db.replaceAvailableLists(companions);
+    _log.info('refresh: DB write done');
 
     // If the session looked stale, surface the re-auth prompt so the user can
     // sign back in. After reauth, the sync isolate picks up fresh cookies and
     // the next sync pass refreshes lists again.
     if (authFailed) {
+      _log.info('refresh: authFailed — surfacing reauth prompt');
       ref.read(reauthControllerProvider.notifier).request();
     }
+    _log.info('refresh: END');
   }
 }
