@@ -65,10 +65,14 @@ class AvailableListsController extends _$AvailableListsController {
     var authFailed = false;
     try {
       _log.info('refresh: GET /api/v1/enrollments/ (mitxonline)');
+      final t0 = DateTime.now();
       final resp =
           await client.mitxOnline.get<dynamic>('/api/v1/enrollments/');
       final list = resp.data as List<dynamic>;
-      _log.info('refresh: enrollments fetched count=${list.length}');
+      _log.info(
+        'refresh: enrollments fetched count=${list.length} '
+        'in ${DateTime.now().difference(t0).inMilliseconds}ms',
+      );
       companions.add(
         AvailableListsCompanion.insert(
           listId: kAllEnrolledListId,
@@ -103,9 +107,14 @@ class AvailableListsController extends _$AvailableListsController {
     // Custom lists from learn.mit.edu.
     try {
       _log.info('refresh: GET /api/v1/userlists/ (learnApi)');
+      final t1 = DateTime.now();
       final resp = await client.learnApi.get<dynamic>(
         '/api/v1/userlists/',
         queryParameters: {'limit': 100},
+      );
+      _log.info(
+        'refresh: userlists HTTP round-trip '
+        '${DateTime.now().difference(t1).inMilliseconds}ms',
       );
       final body = resp.data as Map<String, dynamic>;
       final results =

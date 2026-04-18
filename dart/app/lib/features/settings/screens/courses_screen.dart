@@ -48,6 +48,14 @@ class _CoursesScreenState extends ConsumerState<CoursesScreen> {
   }
 
   Future<void> _refresh() async {
+    // Guard against overlapping pulls. Each refresh runs on the main
+    // isolate (HTTP + cookie jar IO), so stacking them saturates the main
+    // thread and leaves the RefreshIndicator unable to animate its
+    // completion.
+    if (_refreshing) {
+      _log.info('pull-to-refresh: ignored — refresh already in flight');
+      return;
+    }
     final started = DateTime.now();
     _log.info('pull-to-refresh: START');
     setState(() => _refreshing = true);
