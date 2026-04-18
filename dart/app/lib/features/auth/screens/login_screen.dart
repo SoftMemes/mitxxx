@@ -194,23 +194,56 @@ class _LoginSheetBodyState extends ConsumerState<_LoginSheetBody> {
                   );
                   return NavigationActionPolicy.ALLOW;
                 },
+                onConsoleMessage: ScreenshotMode.enabled
+                    ? (controller, msg) =>
+                        _log.info('WebView console: ${msg.message}')
+                    : null,
                 onLoadStop: (controller, uri) async {
-                  _log.fine('WebView onLoadStop: $uri');
+                  if (ScreenshotMode.enabled) {
+                    _log.info('WebView onLoadStop: $uri');
+                  } else {
+                    _log.fine('WebView onLoadStop: $uri');
+                  }
                   if (uri == null) return;
 
                   if (ScreenshotMode.enabled &&
                       uri.host == 'sso.ol.mit.edu' &&
                       ScreenshotMode.email.isNotEmpty) {
+                    _log.info('screenshot mode: injecting auto-fill on ${uri.host}');
+                    // MIT Keycloak is a two-step login: username on the
+                    // first page, then a password page. This polls for
+                    // whichever form is on the current page and submits
+                    // it; onLoadStop fires again for the password step
+                    // and this handler re-runs.
                     await controller.evaluateJavascript(source: '''
                       (function() {
-                        var u = document.querySelector('#username, input[name="username"]');
-                        var p = document.querySelector('#password, input[name="password"]');
-                        var f = document.querySelector('form#kc-form-login, form');
-                        if (u && p && f) {
-                          u.value = ${_jsString(ScreenshotMode.email)};
-                          p.value = ${_jsString(ScreenshotMode.password)};
-                          f.submit();
+                        var attempts = 0;
+                        var EMAIL = ${_jsString(ScreenshotMode.email)};
+                        var PASSWORD = ${_jsString(ScreenshotMode.password)};
+                        function tryFill() {
+                          var u = document.querySelector('#username, input[name="username"]');
+                          var p = document.querySelector('#password, input[name="password"]');
+                          var f = document.querySelector('form#kc-form-login, form');
+                          console.log('[screenshots] attempt=' + attempts +
+                            ' u=' + !!u + ' p=' + !!p + ' f=' + !!f);
+                          if (f && p) {
+                            if (p.value) return; // avoid double-submit
+                            if (u) { u.value = EMAIL; u.dispatchEvent(new Event('input', {bubbles: true})); }
+                            p.value = PASSWORD;
+                            p.dispatchEvent(new Event('input', {bubbles: true}));
+                            f.submit();
+                            return;
+                          }
+                          if (f && u) {
+                            if (u.value) return;
+                            u.value = EMAIL;
+                            u.dispatchEvent(new Event('input', {bubbles: true}));
+                            f.submit();
+                            return;
+                          }
+                          if (++attempts < 40) setTimeout(tryFill, 250);
                         }
+                        tryFill();
                       })();
                     ''');
                     return;

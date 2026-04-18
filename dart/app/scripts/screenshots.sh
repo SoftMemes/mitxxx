@@ -55,7 +55,6 @@ fvm flutter drive \
   --driver=test_driver/integration_test.dart \
   --target=integration_test/screenshots_test.dart \
   --flavor=dev \
-  -t lib/main_dev.dart \
   --dart-define=SCREENSHOT_MODE=true \
   --dart-define="SCREENSHOT_EMAIL=$SCREENSHOT_EMAIL" \
   --dart-define="SCREENSHOT_PASSWORD=$SCREENSHOT_PASSWORD"
