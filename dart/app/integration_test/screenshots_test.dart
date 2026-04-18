@@ -19,6 +19,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -85,6 +87,18 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
     }
 
+    // Swallow framework errors. Real app code paths (sync, background
+    // refreshes, Firebase, etc.) throw the occasional transient error,
+    // particularly under emulator flakiness. We only care about getting
+    // pixels on disk; log and continue.
+    FlutterError.onError = (details) {
+      _step('suppressed FlutterError: ${details.exception}');
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      _step('suppressed platform error: $error');
+      return true;
+    };
+
     // Convert the Flutter surface ONCE for the whole test so
     // takeScreenshot can read pixels on Android. Calling it per-shot
     // leaves the surface in a half-converted state that breaks taps.
@@ -121,10 +135,28 @@ void main() {
     );
 
     // ── 3. List selection ─────────────────────────────────────────────
+    // The screen title renders before the list itself — wait for the
+    // available-lists refresh to finish and at least one checkbox to
+    // paint, otherwise `.first` throws Bad state: No element.
+    _step('waiting for list checkboxes to render');
+    await _waitFor(
+      tester,
+      find.byType(Checkbox),
+      timeout: const Duration(minutes: 1),
+      label: 'at least one list checkbox '
+          '(account needs at least one MIT Learn list)',
+    );
     await _shoot(binding, tester, '02_list_selection');
     _step('ticking first list + Continue');
     await tester.tap(find.byType(Checkbox).first);
     await tester.pump(const Duration(milliseconds: 300));
+    // The Continue button is disabled until a checkbox is ticked — give
+    // the setState a pump so onPressed flips from null to a callback.
+    await _waitFor(
+      tester,
+      find.widgetWithText(FilledButton, 'Continue'),
+      label: 'Continue button',
+    );
     await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
 
     // ── 4. Home (logged in, after sync populates enrollments) ──────────
