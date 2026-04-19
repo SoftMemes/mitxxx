@@ -92,6 +92,7 @@ const kScopeAllCourses = 'all_courses';
 const kScopeCourse = 'course';
 const kScopeSection = 'section';
 const kScopeVideo = 'video';
+const kScopeLists = 'lists';
 
 const kTriggerManual = 'manual';
 const kTriggerAuto = 'auto_on_open';

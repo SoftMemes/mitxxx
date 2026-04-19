@@ -16,6 +16,8 @@ import 'package:omnilect/features/settings/screens/courses_screen.dart';
 import 'package:omnilect/features/settings/screens/data_usage_screen.dart';
 import 'package:omnilect/features/settings/screens/preferences_screen.dart';
 import 'package:omnilect/features/settings/screens/settings_screen.dart';
+import 'package:omnilect/features/sync/debugger/sync_debugger_screen.dart';
+import 'package:omnilect/flavor_config.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'app_router.g.dart';
@@ -38,7 +40,7 @@ GoRouter appRouter(Ref ref) {
       hasSelectedListsProvider,
       (_, _) => notifier.value++,
     )
-    ..listen<ReauthRequest?>(
+    ..listen<ReauthState>(
       reauthControllerProvider,
       (_, _) => notifier.value++,
     )
@@ -152,6 +154,12 @@ GoRouter appRouter(Ref ref) {
           courseId: state.pathParameters['courseId']!,
           sequenceId: state.pathParameters['sequenceId']!,
         ),
+      ),
+      GoRoute(
+        path: '/debug/sync',
+        redirect: (context, state) =>
+            FlavorConfig.isDev ? null : '/home',
+        builder: (context, state) => const SyncDebuggerScreen(),
       ),
     ],
   );

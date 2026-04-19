@@ -16,6 +16,7 @@ import 'package:omnilect/core/storage/shared_preferences_provider.dart';
 import 'package:omnilect/core/theme/app_theme.dart';
 import 'package:omnilect/features/auth/widgets/reauth_gate.dart';
 import 'package:omnilect/features/courses/providers/legacy_selection_migration.dart';
+import 'package:omnilect/features/sync/manager/sync_lifecycle_observer.dart';
 import 'package:omnilect/firebase_options_dev.dart';
 import 'package:omnilect/firebase_options_prod.dart';
 import 'package:omnilect/flavor_config.dart';
@@ -74,8 +75,12 @@ class _OmnilectAppState extends ConsumerState<OmnilectApp> {
     super.initState();
     _initAnalytics();
     // Run the legacy-user selection migration eagerly so the router sees
-    // a populated selected_lists on first redirect evaluation.
-    ref.read(legacySelectionMigrationProvider);
+    // a populated selected_lists on first redirect evaluation. Also hold
+    // the sync manager open across the app's lifetime: it auto-spawns the
+    // isolate when auth becomes non-null and tears it down on sign-out.
+    ref
+      ..read(legacySelectionMigrationProvider)
+      ..read(syncLifecycleObserverProvider);
   }
 
   Future<void> _initAnalytics() async {

@@ -12,8 +12,8 @@ import 'package:omnilect/features/courses/providers/ocw_courses_provider.dart';
 import 'package:omnilect/features/courses/providers/outline_provider.dart';
 import 'package:omnilect/features/downloads/widgets/download_button.dart';
 import 'package:omnilect/features/progress/providers/course_position_provider.dart';
-import 'package:omnilect/features/sync/models/course_sync_state.dart';
-import 'package:omnilect/features/sync/providers/sync_controller.dart';
+import 'package:omnilect/features/sync/manager/scope_state.dart';
+import 'package:omnilect/features/sync/providers/sync_providers.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // ignore_for_file: uri_has_not_been_generated
@@ -31,6 +31,9 @@ class CourseOutlineScreen extends ConsumerWidget {
 
     final outlineAsync =
         ref.watch(courseOutlineProvider(courseId: courseId));
+    final scope = ref.watch(courseScopeStateProvider(courseId));
+    final isSyncing = scope.status == ScopeStatus.syncing ||
+        scope.status == ScopeStatus.scheduled;
 
     return Scaffold(
       appBar: AppBar(
@@ -46,6 +49,12 @@ class CourseOutlineScreen extends ConsumerWidget {
           DownloadButton(courseId: courseId),
           const SizedBox(width: 8),
         ],
+        bottom: isSyncing
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(2),
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            : null,
       ),
       body: outlineAsync.when(
         loading: () => const _CourseOutlineSkeleton(),
@@ -53,9 +62,11 @@ class CourseOutlineScreen extends ConsumerWidget {
         data: (outline) {
           final sections = outline.outline.sections;
           return RefreshIndicator(
-            onRefresh: () => ref
-                .read(syncControllerProvider.notifier)
-                .syncCourse(courseId, trigger: kTriggerPullToRefresh),
+            onRefresh: () async {
+              ref
+                  .read(syncManagerOrNullProvider)
+                  ?.requestCourseSync(courseId, trigger: kTriggerPullToRefresh);
+            },
             child: CustomScrollView(
               slivers: [
                 SliverToBoxAdapter(
@@ -334,12 +345,19 @@ class _SequenceTile extends ConsumerWidget {
   /// so the tap fires `continue_resume` analytics before navigating.
   final VoidCallback? onTapOverride;
 
-  void _handleTap(BuildContext context, WidgetRef ref, SequenceSyncStatus status) {
-    if (onTapOverride != null && status == SequenceSyncStatus.synced) {
+  /// Tapping an unsynced sequence now triggers a `requestLectureSync` —
+  /// cancel-and-replace semantics mean it runs as soon as the current op
+  /// completes or yields. The old "prioritise" action is gone.
+  void _handleTap(
+    BuildContext context,
+    WidgetRef ref,
+    bool isSynced,
+  ) {
+    if (onTapOverride != null && isSynced) {
       onTapOverride!();
       return;
     }
-    if (status == SequenceSyncStatus.synced) {
+    if (isSynced) {
       ref.read(analyticsServiceProvider).logSectionOpen(
         courseId: courseId,
         blockId: sequenceId,
@@ -347,7 +365,9 @@ class _SequenceTile extends ConsumerWidget {
       );
       context.push('/course/$courseId/sequence/$sequenceId');
     } else {
-      ref.read(syncControllerProvider.notifier).prioritiseSequence(courseId, sequenceId);
+      ref
+          .read(syncManagerOrNullProvider)
+          ?.requestLectureSync(courseId, sequenceId);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Queued — will sync next'),
@@ -359,30 +379,37 @@ class _SequenceTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final seqState = ref.watch(
-      sequenceSyncControllerProvider.select((m) => m[sequenceId]),
-    );
-    final status = seqState?.status ?? SequenceSyncStatus.idle;
+    final scope = ref.watch(lectureScopeStateProvider(sequenceId));
     final cs = Theme.of(context).colorScheme;
 
-    final isSynced = status == SequenceSyncStatus.synced;
-    final isSyncing = status == SequenceSyncStatus.syncing;
-    final isError = status == SequenceSyncStatus.error;
+    // "Synced" in the new model = we have a successful lastSyncedAt and no
+    // active or errored state. Cached data + idle status ⇒ tap opens it.
+    final isError = scope.status == ScopeStatus.error;
+    final isSyncing = scope.status == ScopeStatus.syncing;
+    final isScheduled = scope.status == ScopeStatus.scheduled;
+    final isSynced = scope.status == ScopeStatus.idle &&
+        scope.lastSyncedAt != null;
 
-    final progress = (seqState == null || seqState.totalTasks == 0)
+    final progress = scope.total == 0
         ? 0.0
-        : (seqState.completedTasks / seqState.totalTasks).clamp(0.0, 1.0);
+        : (scope.completed / scope.total).clamp(0.0, 1.0);
 
     // Gray out text + leading/trailing icons for any row that isn't fully
-    // synced yet. Uses Material 3's standard disabled opacity (0.38) so the
-    // "not ready to open" state reads clearly as disabled, not just as
-    // secondary text.
+    // synced yet. Uses Material 3's standard disabled opacity (0.38).
     final disabledFg = cs.onSurface.withValues(alpha: 0.38);
     final titleColor = isSynced ? null : disabledFg;
 
     return Stack(
       children: [
-        // Full-row background progress fill — only while actively syncing.
+        // Scheduled = queued but not yet running: faint full-row tint so the
+        // user sees "this one is in line". Syncing = actively working: a
+        // fractional fill whose width tracks completed/total sub-tasks.
+        if (isScheduled)
+          Positioned.fill(
+            child: ColoredBox(
+              color: cs.primaryContainer.withValues(alpha: 0.15),
+            ),
+          ),
         if (isSyncing)
           Positioned.fill(
             child: TweenAnimationBuilder<double>(
@@ -413,7 +440,7 @@ class _SequenceTile extends ConsumerWidget {
                 DownloadButton(courseId: courseId, sequenceId: sequenceId),
             ],
           ),
-          onTap: () => _handleTap(context, ref, status),
+          onTap: () => _handleTap(context, ref, isSynced),
         ),
       ],
     );
@@ -502,6 +529,9 @@ class _OcwCourseOutlineView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final courseAsync = ref.watch(ocwCourseProvider(courseId));
+    final scope = ref.watch(courseScopeStateProvider(courseId));
+    final isSyncing = scope.status == ScopeStatus.syncing ||
+        scope.status == ScopeStatus.scheduled;
     return Scaffold(
       appBar: AppBar(
         title: courseAsync.maybeWhen(
@@ -513,6 +543,12 @@ class _OcwCourseOutlineView extends ConsumerWidget {
           DownloadButton(courseId: courseId),
           const SizedBox(width: 8),
         ],
+        bottom: isSyncing
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(2),
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            : null,
       ),
       body: courseAsync.when(
         loading: () => const _CourseOutlineSkeleton(),
@@ -520,9 +556,11 @@ class _OcwCourseOutlineView extends ConsumerWidget {
         data: (course) {
           if (course == null) return const _CourseOutlineSkeleton();
           return RefreshIndicator(
-            onRefresh: () => ref
-                .read(syncControllerProvider.notifier)
-                .syncCourse(courseId, trigger: kTriggerPullToRefresh),
+            onRefresh: () async {
+              ref
+                  .read(syncManagerOrNullProvider)
+                  ?.requestCourseSync(courseId, trigger: kTriggerPullToRefresh);
+            },
             child: _OcwOutlineBody(course: course),
           );
         },

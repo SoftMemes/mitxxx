@@ -1,108 +1,89 @@
 // ignore_for_file: uri_has_not_been_generated
 import 'dart:async';
 
-import 'package:omnilect/core/analytics/analytics_events.dart';
-import 'package:omnilect/features/sync/providers/sync_controller.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'reauth_provider.g.dart';
 
-/// Describes a sync operation that was halted by a stale-session failure and
-/// should be re-run once the user signs back in.
-sealed class PendingSyncOperation {
-  const PendingSyncOperation({required this.trigger});
-  final String trigger;
-}
+/// State held by [ReauthController].
+///
+/// - [showPrompt] drives the "session expired" modal in `ReauthGate`.
+/// - [isLoggingIn] hides the modal while the login sheet is on-screen and
+///   re-opens it automatically when the sheet is dismissed without success
+///   (via [ReauthController.onLoginAbandoned]).
+class ReauthState {
+  const ReauthState({required this.showPrompt, required this.isLoggingIn});
 
-final class SyncAllOperation extends PendingSyncOperation {
-  const SyncAllOperation({super.trigger = kTriggerManual});
-}
+  const ReauthState.idle()
+      : showPrompt = false,
+        isLoggingIn = false;
 
-final class SyncCourseOperation extends PendingSyncOperation {
-  const SyncCourseOperation({
-    required this.courseId,
-    super.trigger = kTriggerManual,
-  });
-  final String courseId;
-}
-
-/// State held by [ReauthController]. Non-null means a sync just hit a stale
-/// session; the prompt is shown unless [isLoggingIn] is true (which indicates
-/// the user already accepted the prompt and is mid-login, so the router
-/// should allow `/login`).
-class ReauthRequest {
-  const ReauthRequest({required this.operation, required this.isLoggingIn});
-  final PendingSyncOperation operation;
+  final bool showPrompt;
   final bool isLoggingIn;
 
-  ReauthRequest copyWith({bool? isLoggingIn}) => ReauthRequest(
-        operation: operation,
+  ReauthState copyWith({bool? showPrompt, bool? isLoggingIn}) => ReauthState(
+        showPrompt: showPrompt ?? this.showPrompt,
         isLoggingIn: isLoggingIn ?? this.isLoggingIn,
       );
 }
 
-/// Coordinates the "session expired" flow: receives a signal from the sync
-/// layer when a 401/403 surfaces, asks the user (via the global dialog shown
-/// by `ReauthGate`) whether to re-authenticate, and — on success — resumes
-/// the originating sync operation.
+/// Coordinates the "session expired" flow. Callers (the sync layer's
+/// `SessionRefreshManager` for `SessionKind.mitxonline`) invoke [request] to
+/// surface the dialog and await the next value on [outcomes] to learn whether
+/// the user completed a login (`true`) or dismissed the prompt (`false`).
 ///
-/// The user's cached content is left untouched; only a full Settings → Sign
-/// Out wipes the local database.
+/// The user's cached content is left untouched; only Settings → Sign Out
+/// wipes the local database.
 @Riverpod(keepAlive: true)
 class ReauthController extends _$ReauthController {
+  final _outcomes = StreamController<bool>.broadcast();
+
   @override
-  ReauthRequest? build() => null;
-
-  /// Called by the sync layer when it detects a stale session. Coalesces:
-  /// while a request is pending (or the user is mid-login), subsequent
-  /// triggers are ignored so we don't stack dialogs or clobber a retry target.
-  void request(PendingSyncOperation op) {
-    if (state != null) return;
-    state = ReauthRequest(operation: op, isLoggingIn: false);
+  ReauthState build() {
+    ref.onDispose(_outcomes.close);
+    return const ReauthState.idle();
   }
 
-  /// User tapped "Dismiss" — drop the pending request and halt any in-flight
-  /// sync work so we don't keep firing 401s in the background.
+  /// Broadcast of terminal outcomes: `true` on successful login, `false` when
+  /// the user dismisses the prompt. Re-opening the prompt after
+  /// [onLoginAbandoned] does not emit — it waits for a terminal action.
+  Stream<bool> get outcomes => _outcomes.stream;
+
+  /// Surface the prompt. Coalesces: a second `request()` while a prompt is
+  /// already showing is a no-op.
+  void request() {
+    if (state.showPrompt || state.isLoggingIn) return;
+    state = const ReauthState(showPrompt: true, isLoggingIn: false);
+  }
+
+  /// User tapped "Dismiss" — drop the pending prompt. Emits `false` so any
+  /// awaiting `SessionRefreshManager` can report the failure back to the
+  /// sync isolate.
   void dismiss() {
-    if (state == null) return;
-    state = null;
-    ref.read(syncControllerProvider.notifier).halt();
+    if (!state.showPrompt && !state.isLoggingIn) return;
+    state = const ReauthState.idle();
+    _outcomes.add(false);
   }
 
-  /// User tapped "Log in" — hide the dialog but keep the pending op around so
-  /// the router permits `/login` and so login completion can trigger a retry.
+  /// User tapped "Log in" — hide the dialog so the router/bottom sheet can
+  /// present the login UI.
   void beginLogin() {
-    final cur = state;
-    if (cur == null || cur.isLoggingIn) return;
-    state = cur.copyWith(isLoggingIn: true);
+    if (!state.showPrompt || state.isLoggingIn) return;
+    state = state.copyWith(showPrompt: false, isLoggingIn: true);
   }
 
-  /// Called by `LoginScreen` after `onLoginComplete` succeeds. Clears the
-  /// request and kicks off the retry in the background.
+  /// Login completed successfully. Emits `true`.
   void onLoginSucceeded() {
-    final cur = state;
-    if (cur == null) return;
-    final op = cur.operation;
-    state = null;
-    unawaited(_retry(op));
+    if (!state.isLoggingIn && !state.showPrompt) return;
+    state = const ReauthState.idle();
+    _outcomes.add(true);
   }
 
-  /// Called if `LoginScreen` is torn down without a successful login (e.g.
-  /// the user backs out). Re-surfaces the prompt so the user can choose
-  /// again instead of being silently stranded.
+  /// Login sheet was torn down without success — re-surface the prompt so
+  /// the user can choose again instead of being silently stranded. Does not
+  /// emit a terminal outcome.
   void onLoginAbandoned() {
-    final cur = state;
-    if (cur == null || !cur.isLoggingIn) return;
-    state = cur.copyWith(isLoggingIn: false);
-  }
-
-  Future<void> _retry(PendingSyncOperation op) async {
-    final sync = ref.read(syncControllerProvider.notifier);
-    switch (op) {
-      case SyncAllOperation():
-        await sync.syncAll(trigger: op.trigger);
-      case SyncCourseOperation():
-        await sync.syncCourse(op.courseId, trigger: op.trigger);
-    }
+    if (!state.isLoggingIn) return;
+    state = const ReauthState(showPrompt: true, isLoggingIn: false);
   }
 }
