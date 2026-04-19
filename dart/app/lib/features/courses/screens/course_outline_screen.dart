@@ -392,10 +392,14 @@ class _SequenceTile extends ConsumerWidget {
     // "Synced" in the new model = we have a successful lastSyncedAt and no
     // active or errored state. Cached data + idle status ⇒ tap opens it.
     final isError = scope.status == ScopeStatus.error;
-    final isSyncing = scope.status == ScopeStatus.syncing ||
-        scope.status == ScopeStatus.scheduled;
+    final isSyncing = scope.status == ScopeStatus.syncing;
+    final isScheduled = scope.status == ScopeStatus.scheduled;
     final isSynced = scope.status == ScopeStatus.idle &&
         scope.lastSyncedAt != null;
+
+    final progress = scope.total == 0
+        ? 0.0
+        : (scope.completed / scope.total).clamp(0.0, 1.0);
 
     // Gray out text + leading/trailing icons for any row that isn't fully
     // synced yet. Uses Material 3's standard disabled opacity (0.38).
@@ -405,10 +409,28 @@ class _SequenceTile extends ConsumerWidget {
 
     return Stack(
       children: [
-        if (isSyncing)
+        // Scheduled = queued but not yet running: faint full-row tint so the
+        // user sees "this one is in line". Syncing = actively working: a
+        // fractional fill whose width tracks completed/total sub-tasks.
+        if (isScheduled)
           Positioned.fill(
             child: ColoredBox(
-              color: cs.primaryContainer.withValues(alpha: 0.25),
+              color: cs.primaryContainer.withValues(alpha: 0.15),
+            ),
+          ),
+        if (isSyncing)
+          Positioned.fill(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: progress),
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              builder: (_, v, _) => FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: v,
+                child: ColoredBox(
+                  color: cs.primaryContainer.withValues(alpha: 0.45),
+                ),
+              ),
             ),
           ),
         ListTile(
