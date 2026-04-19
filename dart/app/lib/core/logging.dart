@@ -1,5 +1,3 @@
-import 'dart:developer' as dev;
-
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 
@@ -10,13 +8,15 @@ void initLogging() {
 
   Logger.root.level = Level.ALL;
   Logger.root.onRecord.listen((record) {
-    dev.log(
-      record.message,
-      time: record.time,
-      name: record.loggerName,
-      level: record.level.value,
-      error: record.error,
-      stackTrace: record.stackTrace,
-    );
+    final t = record.time;
+    final hh = t.hour.toString().padLeft(2, '0');
+    final mm = t.minute.toString().padLeft(2, '0');
+    final ss = t.second.toString().padLeft(2, '0');
+    final ms = t.millisecond.toString().padLeft(3, '0');
+    final ts = '$hh:$mm:$ss.$ms';
+    final level = record.level.name.padRight(7);
+    debugPrint('$ts [$level] ${record.loggerName}: ${record.message}');
+    if (record.error != null) debugPrint('  error: ${record.error}');
+    if (record.stackTrace != null) debugPrint(record.stackTrace.toString());
   });
 }

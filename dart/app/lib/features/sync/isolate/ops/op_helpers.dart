@@ -93,13 +93,14 @@ String? parseOcwSlug(String runSlug) {
 // Enrollment fetch
 // ---------------------------------------------------------------------------
 
-/// Fetches enrollments from mitxonline, persists the JSON, returns parsed
-/// list. Throws [StaleSessionException] on 401/403.
+/// Fetches enrollments via the MIT Learn API proxy, persists the JSON,
+/// returns parsed list. Throws [StaleSessionException] on 401/403. Callers
+/// must have already ensured a fresh Learn API session upstream.
 Future<List<Enrollment>> fetchEnrollments(OpRuntime r) async {
-  _log.info('fetchEnrollments: GET /api/v1/enrollments/');
+  _log.info('fetchEnrollments: GET /mitxonline/api/v3/enrollments/');
   try {
-    final response = await r.client.mitxOnline.get<dynamic>(
-      '/api/v1/enrollments/',
+    final response = await r.client.learnApi.get<dynamic>(
+      '/mitxonline/api/v3/enrollments/',
       cancelToken: r.token,
     );
     final list = response.data as List<dynamic>;
@@ -114,7 +115,7 @@ Future<List<Enrollment>> fetchEnrollments(OpRuntime r) async {
       'fetchEnrollments: DioException status=${e.response?.statusCode}',
       e,
     );
-    throwAsStaleOrRethrow(e, SessionKind.mitxonline, st);
+    throwAsStaleOrRethrow(e, SessionKind.learnApi, st);
   }
 }
 

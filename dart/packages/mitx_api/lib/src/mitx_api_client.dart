@@ -203,9 +203,13 @@ class MitxApiClient {
     return resp.data!;
   }
 
+  // ---------------------------------------------------------------------------
+  // MIT Learn (api.learn.mit.edu) APIs
+  // ---------------------------------------------------------------------------
+
   Future<List<dynamic>> enrollments() async {
-    final resp = await _client.mitxOnline
-        .get<List<dynamic>>('/api/v1/enrollments/');
+    final resp = await _client.learnApi
+        .get<List<dynamic>>('/mitxonline/api/v3/enrollments/');
     return resp.data!;
   }
 
