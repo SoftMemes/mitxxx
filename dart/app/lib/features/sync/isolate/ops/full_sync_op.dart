@@ -37,6 +37,16 @@ class FullSyncOp extends LogicalOp {
     _publishScope(runtime, ScopeIds.allCourses,
         const ScopeState(status: ScopeStatus.syncing));
 
+    // Eagerly refresh the api.learn.mit.edu session. A stale `session`
+    // cookie returns 200-empty on userlists, which would silently wipe
+    // membership during reconciliation below.
+    try {
+      await ensureFreshLearnSession(runtime);
+    } on StaleSessionException {
+      _publishScope(runtime, ScopeIds.allCourses, const ScopeState());
+      rethrow;
+    }
+
     // Fetch enrollments.
     List<Enrollment> enrollments;
     try {

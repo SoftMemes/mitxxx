@@ -34,6 +34,15 @@ class ListsRefreshOp extends LogicalOp {
       ScopeState(status: ScopeStatus.syncing),
     ));
 
+    // Eagerly refresh the api.learn.mit.edu session — stale `session`
+    // silently returns 200-empty on userlists, which would wipe membership.
+    try {
+      await ensureFreshLearnSession(runtime);
+    } on StaleSessionException {
+      runtime.events.add(const ScopeStateChanged(ScopeIds.lists, ScopeState()));
+      rethrow;
+    }
+
     // Enrollments are needed to filter mitxonline list items to "things we
     // are enrolled in"; keep the same subset of syncAll behavior.
     List<Enrollment> enrollments;

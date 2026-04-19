@@ -49,6 +49,23 @@ SessionKind kindForHost(Uri? uri) {
   return SessionKind.mitxonline;
 }
 
+/// Eagerly refresh the api.learn.mit.edu session at the start of a logical
+/// op that will call that host. Throws [StaleSessionException] with
+/// [SessionKind.learnApi] on failure, which the manager's refresh chain
+/// handles: silent WebView bootstrap first, escalation to the reauth dialog
+/// if that also fails.
+///
+/// The userlists endpoint silently returns 200 with an empty result when
+/// `session` is stale, so relying on 401/403 retries inside a sub-task is
+/// not sufficient — we refresh up-front and bail if the fresh cookies don't
+/// authenticate.
+Future<void> ensureFreshLearnSession(OpRuntime r) async {
+  final ok = await r.client.refreshLearnSession();
+  if (!ok) {
+    throw const StaleSessionException(SessionKind.learnApi);
+  }
+}
+
 /// Build `If-None-Match` / `If-Modified-Since` conditional request headers.
 Map<String, String>? conditionalHeaders({
   String? etag,

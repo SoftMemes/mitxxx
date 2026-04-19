@@ -43,6 +43,19 @@ class AvailableListsRefreshOp extends LogicalOp {
       ScopeState(status: ScopeStatus.syncing),
     ));
 
+    // Eagerly refresh the api.learn.mit.edu session — stale `session`
+    // silently returns 200-empty on userlists, which would wipe the
+    // custom-lists portion of `available_lists` below.
+    try {
+      await ensureFreshLearnSession(runtime);
+    } on StaleSessionException {
+      runtime.events.add(const ScopeStateChanged(
+        ScopeIds.availableLists,
+        ScopeState(),
+      ));
+      rethrow;
+    }
+
     final now = DateTime.now();
     final companions = <AvailableListsCompanion>[];
 

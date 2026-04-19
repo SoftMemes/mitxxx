@@ -33,7 +33,6 @@ class DioClient {
   late final Dio _lmsDio;
   late final Dio _learnApiDio;
   bool _authInterceptorAttached = false;
-  bool _learnSessionRefreshed = false;
 
   Dio get mitxOnline => _mitxOnlineDio;
   Dio get lms => _lmsDio;
@@ -230,10 +229,12 @@ class DioClient {
   /// Walks the MIT Learn API SSO handshake with a bare Dio instance to pick up
   /// `session_mitlearn` + `learn_csrftoken` cookies on api.learn.mit.edu.
   ///
-  /// The `session_mitlearn` cookie can be present but silently expired — in
-  /// that state the userlist API returns empty results instead of 401. So we
-  /// always re-run this handshake once per [DioClient] instance (via
-  /// [ensureLearnApiSession]) rather than trusting cookie presence.
+  /// The `session` cookie (set on `.learn.mit.edu`) authenticates userlists;
+  /// it can be present but silently expired, in which case the API returns
+  /// 200 with empty results instead of 401. Cookie presence is not a
+  /// trustworthy health signal — callers should use [refreshLearnSession],
+  /// which re-runs this handshake and verifies the result with an
+  /// authenticated probe.
   Future<void> establishLearnApiSession() async {
     final bare = Dio(
       BaseOptions(
@@ -314,12 +315,38 @@ class DioClient {
     _log.info('establishLearnApiSession: complete');
   }
 
-  /// Lazy once-per-instance refresh of the MIT Learn API session. Call before
-  /// any api.learn.mit.edu request that requires auth.
-  Future<void> ensureLearnApiSession({bool force = false}) async {
-    if (!force && _learnSessionRefreshed) return;
-    await establishLearnApiSession();
-    _learnSessionRefreshed = true;
+  /// Eagerly re-bootstrap the api.learn.mit.edu session and verify it's
+  /// actually accepted by the server. Returns `true` if the fresh `session`
+  /// cookie authenticates, `false` if the SSO chain couldn't produce a valid
+  /// session (upstream Keycloak identity expired, network failure, etc).
+  ///
+  /// Why this exists: the userlists endpoint returns 200 with `count: 0`
+  /// when `session` is stale — no 4xx to catch. The probe against
+  /// `/api/v0/users/me/` is the cheapest call that actually exposes
+  /// `is_authenticated`, so we use it as the health check.
+  ///
+  /// Callers: every logical op that touches api.learn.mit.edu should call
+  /// this at its start. A `false` return must be turned into a
+  /// [StaleSessionException] so the manager's escalation chain runs
+  /// (silent WebView bootstrap → reauth dialog).
+  Future<bool> refreshLearnSession() async {
+    try {
+      await establishLearnApiSession();
+    } on Object catch (e, st) {
+      _log.warning('refreshLearnSession: bootstrap chain failed', e, st);
+      return false;
+    }
+    try {
+      final resp = await _learnApiDio.get<dynamic>('/api/v0/users/me/');
+      final body = resp.data;
+      if (body is Map<String, dynamic>) {
+        return body['is_authenticated'] == true;
+      }
+      return false;
+    } on Object catch (e, st) {
+      _log.warning('refreshLearnSession: verify probe failed', e, st);
+      return false;
+    }
   }
 
   /// Save [cookies] for [host] to the in-memory store and persist.
@@ -332,7 +359,6 @@ class DioClient {
   /// Delete all in-memory and persisted cookies.
   Future<void> clearCookies() async {
     _cookies = {};
-    _learnSessionRefreshed = false;
     await _store.deleteAll();
   }
 
