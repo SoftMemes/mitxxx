@@ -203,13 +203,13 @@ class MitxApiClient {
     return resp.data!;
   }
 
-  // ---------------------------------------------------------------------------
-  // MIT Learn (api.learn.mit.edu) APIs
-  // ---------------------------------------------------------------------------
-
+  /// The learn.mit.edu v3 proxy (`/mitxonline/api/v3/enrollments/`) returns
+  /// a trimmed `run.course` (no `feature_image_src`, `description`, or
+  /// `page_url`), so we stay on the mitxonline v1 endpoint which returns
+  /// everything we need in one round trip.
   Future<List<dynamic>> enrollments() async {
-    final resp = await _client.learnApi
-        .get<List<dynamic>>('/mitxonline/api/v3/enrollments/');
+    final resp = await _client.mitxOnline
+        .get<List<dynamic>>('/api/v1/enrollments/');
     return resp.data!;
   }
 

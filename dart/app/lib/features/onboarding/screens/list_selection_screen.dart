@@ -67,7 +67,9 @@ class _ListSelectionScreenState extends ConsumerState<ListSelectionScreen> {
     // Kick off the initial sync immediately so the user sees progress on
     // the home screen instead of an empty list that only starts populating
     // after a pull-to-refresh. Matches the settings Courses `_apply` flow.
-    ref.read(syncManagerOrNullProvider)?.requestFullSync();
+    // Await the manager future so the request isn't dropped if the isolate
+    // is still spawning — common on first login.
+    (await ref.read(syncManagerProvider.future))?.requestFullSync();
 
     if (!mounted) return;
     context.go('/home');
@@ -119,15 +121,23 @@ class _ListSelectionScreenState extends ConsumerState<ListSelectionScreen> {
                         ),
                 ),
               ),
-              SafeArea(
-                top: false,
-                minimum: const EdgeInsets.all(16),
-                child: FilledButton(
-                  onPressed:
-                      _draftSelection.isEmpty ? null : _continue,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text('Continue'),
+              const Divider(height: 1),
+              Material(
+                color: Theme.of(context).colorScheme.surface,
+                elevation: 4,
+                child: SafeArea(
+                  top: false,
+                  minimum: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed:
+                          _draftSelection.isEmpty ? null : _continue,
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Text('Continue'),
+                      ),
+                    ),
                   ),
                 ),
               ),

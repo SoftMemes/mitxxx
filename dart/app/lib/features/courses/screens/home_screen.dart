@@ -129,9 +129,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   const <CachedOcwCourse>[];
 
           if (enrollments.isEmpty && ocwCourses.isEmpty && unsupported.isEmpty) {
+            // Distinguish "loading initial sync" from "genuinely no enrolled
+            // courses". The manager is still spawning on first login (so
+            // isSyncingAll hasn't flipped yet), and even after it spawns
+            // there's a window before reconciliation populates memberships.
+            final managerLoading = ref.watch(syncManagerProvider).isLoading;
+            final isInitialSync = isSyncing || managerLoading;
             return _PullToSyncWrapper(
               onRefresh: restartSync,
-              child: const _NotEnrolledState(),
+              child: isInitialSync
+                  ? const _LoadingCoursesState()
+                  : const _NotEnrolledState(),
             );
           }
 
@@ -302,6 +310,36 @@ class _PullToSyncWrapper extends StatelessWidget {
             constraints: BoxConstraints(minHeight: constraints.maxHeight),
             child: child,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown while the initial sync is still in flight (or the sync isolate is
+/// still spawning) and the database hasn't yet produced any memberships to
+/// derive course tiles from. Replaces `_NotEnrolledState` for that window so
+/// the user doesn't see "Not enrolled" before sync has had a chance to run.
+class _LoadingCoursesState extends StatelessWidget {
+  const _LoadingCoursesState();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(
+              'Loading your courses…',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: cs.onSurfaceVariant),
+            ),
+          ],
         ),
       ),
     );

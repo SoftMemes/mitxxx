@@ -93,14 +93,18 @@ String? parseOcwSlug(String runSlug) {
 // Enrollment fetch
 // ---------------------------------------------------------------------------
 
-/// Fetches enrollments via the MIT Learn API proxy, persists the JSON,
-/// returns parsed list. Throws [StaleSessionException] on 401/403. Callers
-/// must have already ensured a fresh Learn API session upstream.
+/// Fetches enrollments from mitxonline v1, persists the JSON, returns parsed
+/// list. Throws [StaleSessionException] on 401/403.
+///
+/// Uses v1 on mitxonline (not the learn.mit.edu v3 proxy) because v3 strips
+/// `run.course` down to a handful of ids — no `feature_image_src`,
+/// `description`, or `page_url` — which would force a secondary lookup per
+/// course just to render the home screen tiles.
 Future<List<Enrollment>> fetchEnrollments(OpRuntime r) async {
-  _log.info('fetchEnrollments: GET /mitxonline/api/v3/enrollments/');
+  _log.info('fetchEnrollments: GET /api/v1/enrollments/');
   try {
-    final response = await r.client.learnApi.get<dynamic>(
-      '/mitxonline/api/v3/enrollments/',
+    final response = await r.client.mitxOnline.get<dynamic>(
+      '/api/v1/enrollments/',
       cancelToken: r.token,
     );
     final list = response.data as List<dynamic>;
@@ -115,7 +119,7 @@ Future<List<Enrollment>> fetchEnrollments(OpRuntime r) async {
       'fetchEnrollments: DioException status=${e.response?.statusCode}',
       e,
     );
-    throwAsStaleOrRethrow(e, SessionKind.learnApi, st);
+    throwAsStaleOrRethrow(e, SessionKind.mitxonline, st);
   }
 }
 

@@ -59,11 +59,12 @@ class AvailableListsRefreshOp extends LogicalOp {
     final now = DateTime.now();
     final companions = <AvailableListsCompanion>[];
 
-    // "All enrolled" — via the MIT Learn API proxy.
+    // "All enrolled" — from mitxonline v1 (the learn.mit.edu v3 proxy
+    // returns a trimmed payload without course images/descriptions).
     try {
       final t0 = DateTime.now();
-      final resp = await runtime.client.learnApi.get<dynamic>(
-        '/mitxonline/api/v3/enrollments/',
+      final resp = await runtime.client.mitxOnline.get<dynamic>(
+        '/api/v1/enrollments/',
         cancelToken: runtime.token,
       );
       final list = resp.data as List<dynamic>;

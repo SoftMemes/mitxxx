@@ -43,10 +43,10 @@ class AvailableListsController extends _$AvailableListsController {
   void build() {}
 
   Future<void> refresh() async {
-    _log.info('refresh: delegating to sync isolate');
-    final manager = ref.read(syncManagerOrNullProvider);
+    _log.info('refresh: awaiting sync manager');
+    final manager = await ref.read(syncManagerProvider.future);
     if (manager == null) {
-      _log.warning('refresh: syncManager not ready — skipping');
+      _log.warning('refresh: no manager (signed out?) — skipping');
       return;
     }
     await manager.refreshAvailableLists();
