@@ -115,14 +115,20 @@ class _LoginSheetBodyState extends ConsumerState<_LoginSheetBody> {
         barrierColor: const Color(0x99000000),
         builder: (_) => const PopScope(
           canPop: false,
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Signing in…', style: TextStyle(color: Colors.white)),
-              ],
+          child: Material(
+            type: MaterialType.transparency,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text(
+                    'Signing in…',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
