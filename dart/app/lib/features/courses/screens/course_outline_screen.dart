@@ -32,6 +32,9 @@ class CourseOutlineScreen extends ConsumerWidget {
 
     final outlineAsync =
         ref.watch(courseOutlineProvider(courseId: courseId));
+    final scope = ref.watch(courseScopeStateProvider(courseId));
+    final isSyncing = scope.status == ScopeStatus.syncing ||
+        scope.status == ScopeStatus.scheduled;
 
     return Scaffold(
       appBar: AppBar(
@@ -47,6 +50,12 @@ class CourseOutlineScreen extends ConsumerWidget {
           DownloadButton(courseId: courseId),
           const SizedBox(width: 8),
         ],
+        bottom: isSyncing
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(2),
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            : null,
       ),
       body: outlineAsync.when(
         loading: () => const _CourseOutlineSkeleton(),
@@ -507,6 +516,9 @@ class _OcwCourseOutlineView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final courseAsync = ref.watch(ocwCourseProvider(courseId));
+    final scope = ref.watch(courseScopeStateProvider(courseId));
+    final isSyncing = scope.status == ScopeStatus.syncing ||
+        scope.status == ScopeStatus.scheduled;
     return Scaffold(
       appBar: AppBar(
         title: courseAsync.maybeWhen(
@@ -518,6 +530,12 @@ class _OcwCourseOutlineView extends ConsumerWidget {
           DownloadButton(courseId: courseId),
           const SizedBox(width: 8),
         ],
+        bottom: isSyncing
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(2),
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            : null,
       ),
       body: courseAsync.when(
         loading: () => const _CourseOutlineSkeleton(),
