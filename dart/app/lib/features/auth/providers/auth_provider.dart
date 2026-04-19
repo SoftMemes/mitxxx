@@ -296,31 +296,20 @@ class Auth extends _$Auth {
   /// into the Dio CookieJar. Triggers LMS OAuth then marks the user as
   /// authenticated.
   Future<void> onLoginComplete() async {
-    _log.info('onLoginComplete: verifying mitxonline session before LMS OAuth');
+    _log.info('onLoginComplete: checking mitxonline cookies before LMS OAuth');
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       final client = ref.read(dioClientProvider);
 
-      // Sanity-check: hit current_user on mitxonline BEFORE the LMS OAuth.
-      try {
-        final pre = await client.mitxOnline
-            .get<Map<String, dynamic>>('/api/v0/users/current_user/');
-        _log.info(
-          'onLoginComplete: mitxonline pre-check is_authenticated=${pre.data?['is_authenticated']}',
+      // The LMS OAuth redirect chain bounces through mitxonline to pick up
+      // Keycloak identity cookies — if the WebView didn't capture anything
+      // for that host, the chain will definitely fail. Fail fast here
+      // instead of mid-redirect.
+      if (client.cookiesForHost('mitxonline.mit.edu').isEmpty) {
+        throw Exception(
+          'No mitxonline.mit.edu cookies in jar after WebView login. '
+          'LMS OAuth cannot proceed.',
         );
-        if (pre.data?['is_authenticated'] != true) {
-          throw Exception(
-            'mitxonline session cookie not accepted — pre-check returned '
-            'is_authenticated=false. LMS OAuth cannot proceed.',
-          );
-        }
-      } on DioException catch (e, st) {
-        _log.severe(
-          'onLoginComplete: mitxonline pre-check failed status=${e.response?.statusCode}',
-          e,
-          st,
-        );
-        rethrow;
       }
 
       // Trigger LMS OAuth handshake — sets session + JWT cookies on the LMS.
