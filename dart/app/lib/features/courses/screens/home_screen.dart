@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:logging/logging.dart';
 import 'package:omnilect/core/analytics/analytics_events.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/core/storage/app_database.dart';
@@ -15,9 +16,12 @@ import 'package:omnilect/features/courses/providers/enrollments_provider.dart';
 import 'package:omnilect/features/courses/providers/ocw_courses_provider.dart';
 import 'package:omnilect/features/courses/providers/outline_provider.dart';
 import 'package:omnilect/features/courses/providers/unsupported_courses_provider.dart';
-import 'package:omnilect/features/sync/models/course_sync_state.dart';
-import 'package:omnilect/features/sync/providers/sync_controller.dart';
+import 'package:omnilect/features/sync/manager/scope_state.dart';
+import 'package:omnilect/features/sync/providers/sync_providers.dart';
+import 'package:omnilect/flavor_config.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+final _log = Logger('home');
 
 /// MIT Learn dashboard for managing course enrollments.
 const _kManageCoursesUrl = 'https://learn.mit.edu/dashboard';
@@ -37,11 +41,33 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _autoSyncTriggered = false;
 
+  /// Dispatches a full-sync request and logs exactly what happened at the
+  /// gesture boundary so we can distinguish "manager absent" from "message
+  /// sent but isolate silent" when diagnosing pull-to-refresh issues.
+  void _fireFullSync(String trigger) {
+    final async = ref.read(syncManagerProvider);
+    final auth = ref.read(authProvider);
+    final manager = async.value;
+    if (manager == null) {
+      _log.warning(
+        'pull-to-refresh: manager NULL ($trigger) — '
+        'syncManager.isLoading=${async.isLoading} '
+        'hasError=${async.hasError} '
+        'error=${async.error} '
+        'auth.hasValue=${auth.hasValue} '
+        'auth.isLoading=${auth.isLoading} '
+        'auth.value=${auth.value?.username ?? 'null'}',
+      );
+      return;
+    }
+    _log.info('pull-to-refresh: dispatching full-sync ($trigger)');
+    manager.requestFullSync(trigger: trigger);
+  }
+
   @override
   Widget build(BuildContext context) {
     final enrollmentsAsync = ref.watch(activeEnrollmentsProvider);
-    final syncState = ref.watch(syncControllerProvider);
-    final isSyncing = syncState.values.any((s) => s.status == SyncStatus.syncing);
+    final isSyncing = ref.watch(isSyncingAllProvider);
     final isAuthenticated = ref.watch(authProvider).value != null;
 
     // Auto-trigger an initial sync when logged in and there is no cached data
@@ -53,7 +79,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _autoSyncTriggered = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          ref.read(syncControllerProvider.notifier).syncAll(trigger: kTriggerAuto);
+          _fireFullSync(kTriggerAuto);
         }
       });
     }
@@ -62,6 +88,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: const Text('My Courses'),
         actions: [
+          if (FlavorConfig.isDev)
+            IconButton(
+              icon: const Icon(Icons.bug_report_outlined),
+              tooltip: 'Sync debugger',
+              onPressed: () => context.push('/debug/sync'),
+            ),
           IconButton(
             icon: const Icon(Icons.menu),
             onPressed: () => context.push('/settings'),
@@ -79,26 +111,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           : enrollmentsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, _) => _PullToSyncWrapper(
-          onRefresh: () async {
-            final controller =
-                ref.read(syncControllerProvider.notifier);
-            await controller.stopAll();
-            await controller.syncAll(
-              trigger: kTriggerPullToRefresh,
-            );
-          },
+          onRefresh: () async => _fireFullSync(kTriggerPullToRefresh),
           child: _EmptyState(
             isSyncing: isSyncing,
-            onSync: () =>
-                ref.read(syncControllerProvider.notifier).syncAll(),
+            onSync: () => _fireFullSync(kTriggerManual),
           ),
         ),
         data: (enrollments) {
-          Future<void> restartSync() async {
-            final controller = ref.read(syncControllerProvider.notifier);
-            await controller.stopAll();
-            await controller.syncAll(trigger: kTriggerPullToRefresh);
-          }
+          Future<void> restartSync() async =>
+              _fireFullSync(kTriggerPullToRefresh);
 
           final unsupported =
               ref.watch(unsupportedCoursesProvider).asData?.value ??
@@ -130,10 +151,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       if (index < enrollments.length) {
                         final enrollment = enrollments[index];
                         final courseId = enrollment.run.coursewareId;
-                        final courseSyncState = syncState[courseId];
                         return _CourseTile(
                           enrollment: enrollment,
-                          syncState: courseSyncState,
                           onTap: () {
                             ref.read(analyticsServiceProvider).logCourseView(
                                   courseId: courseId,
@@ -146,10 +165,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       final afterEnrolled = index - enrollments.length;
                       if (afterEnrolled < ocwCourses.length) {
                         final course = ocwCourses[afterEnrolled];
-                        final courseSyncState = syncState[course.courseId];
                         return _OcwCourseTile(
                           course: course,
-                          syncState: courseSyncState,
                           onTap: () {
                             ref.read(analyticsServiceProvider).logCourseView(
                                   courseId: course.courseId,
@@ -415,22 +432,22 @@ class _UnsupportedCourseTile extends StatelessWidget {
 class _CourseTile extends ConsumerWidget {
   const _CourseTile({
     required this.enrollment,
-    required this.syncState,
     required this.onTap,
   });
 
   final Enrollment enrollment;
-  final CourseSyncState? syncState;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final run = enrollment.run;
     final courseId = run.coursewareId;
-    final status = syncState?.status ?? SyncStatus.idle;
-    final isSyncing = status == SyncStatus.syncing;
-    final hasError = status == SyncStatus.error;
-    final lastSynced = syncState?.lastSyncedAt;
+    final scope = ref.watch(courseScopeStateProvider(courseId));
+    final status = scope.status;
+    final isSyncing = status == ScopeStatus.syncing ||
+        status == ScopeStatus.scheduled;
+    final hasError = status == ScopeStatus.error;
+    final lastSynced = scope.lastSyncedAt;
     final cs = Theme.of(context).colorScheme;
 
     // "Ready" means the outline itself has been cached, so tapping the tile
@@ -446,10 +463,6 @@ class _CourseTile extends ConsumerWidget {
     // while the outline isn't cached yet so the "not ready to open" state
     // reads clearly as disabled rather than as secondary text.
     final disabledFg = cs.onSurface.withValues(alpha: 0.38);
-
-    // Aggregate per-sequence sync state into a course-level progress fraction.
-    final progress =
-        isSyncing ? _computeCourseProgress(ref, courseId) : 0.0;
 
     String? dateRange;
     if (run.startDate != null || run.endDate != null) {
@@ -476,21 +489,12 @@ class _CourseTile extends ConsumerWidget {
 
     return Stack(
       children: [
-        // Full-row background progress fill — only while actively syncing.
-        // Matches _SequenceTile in course_outline_screen.dart.
+        // Indeterminate background tint while syncing — the per-scope bool
+        // status is all the UI exposes; numeric progress is debugger-only.
         if (isSyncing)
           Positioned.fill(
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: progress),
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOut,
-              builder: (_, v, _) => FractionallySizedBox(
-                alignment: Alignment.centerLeft,
-                widthFactor: v,
-                child: ColoredBox(
-                  color: cs.primaryContainer.withValues(alpha: 0.45),
-                ),
-              ),
+            child: ColoredBox(
+              color: cs.primaryContainer.withValues(alpha: 0.25),
             ),
           ),
         InkWell(
@@ -579,41 +583,6 @@ class _CourseTile extends ConsumerWidget {
     );
   }
 
-  /// Aggregates per-sequence sync state into a 0..1 course-level progress
-  /// fraction. Returns 0 when the outline isn't cached yet (sync has just
-  /// started and the sequence list is unknown).
-  double _computeCourseProgress(WidgetRef ref, String courseId) {
-    final outline = ref
-        .watch(courseOutlineProvider(courseId: courseId))
-        .maybeWhen(data: (o) => o, orElse: () => null);
-    if (outline == null) return 0;
-
-    final sequenceIds = <String>[
-      for (final section in outline.outline.sections) ...section.sequenceIds,
-    ];
-    if (sequenceIds.isEmpty) return 0;
-
-    final seqStates = ref.watch(sequenceSyncControllerProvider);
-
-    var sum = 0.0;
-    for (final seqId in sequenceIds) {
-      final s = seqStates[seqId];
-      if (s == null) continue;
-      switch (s.status) {
-        case SequenceSyncStatus.synced:
-          sum += 1;
-        case SequenceSyncStatus.syncing:
-          if (s.totalTasks > 0) {
-            sum += (s.completedTasks / s.totalTasks).clamp(0.0, 1.0);
-          }
-        case SequenceSyncStatus.idle:
-        case SequenceSyncStatus.error:
-          break;
-      }
-    }
-    return (sum / sequenceIds.length).clamp(0.0, 1.0);
-  }
-
   String? _formatDate(String? dateStr) {
     if (dateStr == null) return null;
     try {
@@ -696,20 +665,20 @@ class _ArtworkPlaceholder extends StatelessWidget {
 class _OcwCourseTile extends ConsumerWidget {
   const _OcwCourseTile({
     required this.course,
-    required this.syncState,
     required this.onTap,
   });
 
   final CachedOcwCourse course;
-  final CourseSyncState? syncState;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final status = syncState?.status ?? SyncStatus.idle;
-    final isSyncing = status == SyncStatus.syncing;
-    final hasError = status == SyncStatus.error;
-    final lastSynced = syncState?.lastSyncedAt;
+    final scope = ref.watch(courseScopeStateProvider(course.courseId));
+    final status = scope.status;
+    final isSyncing = status == ScopeStatus.syncing ||
+        status == ScopeStatus.scheduled;
+    final hasError = status == ScopeStatus.error;
+    final lastSynced = scope.lastSyncedAt;
     final cs = Theme.of(context).colorScheme;
 
     final syncLabel = isSyncing

@@ -173,6 +173,29 @@ class VideoDownloadManager {
     await _db.deleteDownloadedVideo(url);
   }
 
+  /// Reacts to a sync-isolate `RemovedVideoUrls` event: cancels any in-flight
+  /// background_downloader task for each url, removes the [courseId] ref from
+  /// the download row, and deletes the file on disk if [courseId] was the last
+  /// reference.
+  ///
+  /// Idempotent — safe to call even when the sync isolate has already pruned
+  /// the DB rows (the per-url removeCourseFromDownload then returns null).
+  Future<void> onRemovedVideoUrls(List<String> urls, String courseId) async {
+    if (urls.isEmpty) return;
+    final taskIds = [for (final url in urls) urlToSha1(url)];
+    await FileDownloader().cancelTasksWithIds(taskIds);
+    for (final url in urls) {
+      final orphanedPath = await _db.removeCourseFromDownload(url, courseId);
+      if (orphanedPath != null && orphanedPath.isNotEmpty) {
+        try {
+          File(orphanedPath).deleteSync();
+        } on Object catch (e) {
+          _log.warning('Could not delete orphaned file $orphanedPath: $e');
+        }
+      }
+    }
+  }
+
   /// Deletes downloaded video(s) for the given scope.
   /// Removes the [courseId] reference from each URL; deletes the file + row if
   /// no other course references it.

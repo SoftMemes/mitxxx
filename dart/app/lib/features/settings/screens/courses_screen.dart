@@ -3,13 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:logging/logging.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/features/courses/models/list_source.dart';
 import 'package:omnilect/features/courses/providers/available_lists_provider.dart';
 import 'package:omnilect/features/courses/providers/selected_lists_provider.dart';
 import 'package:omnilect/features/courses/widgets/list_picker.dart';
-import 'package:omnilect/features/sync/providers/sync_controller.dart';
+import 'package:omnilect/features/sync/providers/sync_providers.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+final _log = Logger('settings.courses');
 
 const String _kManageListsUrl = 'https://learn.mit.edu/dashboard/my-lists';
 
@@ -45,11 +48,31 @@ class _CoursesScreenState extends ConsumerState<CoursesScreen> {
   }
 
   Future<void> _refresh() async {
+    // Guard against overlapping pulls. Each refresh runs on the main
+    // isolate (HTTP + cookie jar IO), so stacking them saturates the main
+    // thread and leaves the RefreshIndicator unable to animate its
+    // completion.
+    if (_refreshing) {
+      _log.info('pull-to-refresh: ignored — refresh already in flight');
+      return;
+    }
+    final started = DateTime.now();
+    _log.info('pull-to-refresh: START');
     setState(() => _refreshing = true);
     try {
       await ref.read(availableListsControllerProvider.notifier).refresh();
+      _log.info(
+        'pull-to-refresh: refresh() returned '
+        'after ${DateTime.now().difference(started).inMilliseconds}ms',
+      );
+    } on Object catch (e, st) {
+      _log.warning('pull-to-refresh: refresh() failed', e, st);
     } finally {
       if (mounted) setState(() => _refreshing = false);
+      _log.info(
+        'pull-to-refresh: END (mounted=$mounted) '
+        'total ${DateTime.now().difference(started).inMilliseconds}ms',
+      );
     }
   }
 
@@ -76,16 +99,8 @@ class _CoursesScreenState extends ConsumerState<CoursesScreen> {
     );
 
     // Restart sync from the top so the new selection takes effect
-    // immediately — existing in-flight work is cancelled first.
-    final syncController = ref.read(syncControllerProvider.notifier);
-    unawaited(() async {
-      try {
-        await syncController.stopAll();
-        await syncController.syncAll();
-      } on Object catch (e, st) {
-        debugPrint('courses apply: sync kickoff failed: $e\n$st');
-      }
-    }());
+    // immediately — cancel-and-replace is implicit in requestFullSync.
+    ref.read(syncManagerOrNullProvider)?.requestFullSync();
 
     if (!mounted) return;
     // Apply closes straight back to the home screen so the user sees the

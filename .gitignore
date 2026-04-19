@@ -1,6 +1,7 @@
 captures
 .idea
 .claude/*.lock
+scratch
 
 # Flutter
 **/android/.gradle/

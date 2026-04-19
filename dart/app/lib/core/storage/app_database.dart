@@ -950,6 +950,20 @@ LazyDatabase _openConnection() {
     await applyWorkaroundToOpenSqlite3OnOldAndroidVersions();
     final dbFolder = await getApplicationDocumentsDirectory();
     final file = File(p.join(dbFolder.path, 'emajtee.db'));
-    return NativeDatabase.createInBackground(file);
+    return NativeDatabase.createInBackground(
+      file,
+      // WAL lets the main and sync isolates open independent connections
+      // to the same file without blocking each other on simple reads;
+      // busy_timeout makes the writer wait for the lock instead of
+      // failing immediately with SQLITE_BUSY when both isolates commit
+      // concurrently. synchronous=NORMAL is the documented safe setting
+      // under WAL (FULL is for rollback journals).
+      setup: (db) {
+        db
+          ..execute('PRAGMA journal_mode = WAL')
+          ..execute('PRAGMA synchronous = NORMAL')
+          ..execute('PRAGMA busy_timeout = 5000');
+      },
+    );
   });
 }

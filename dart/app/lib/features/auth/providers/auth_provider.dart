@@ -13,7 +13,7 @@ import 'package:omnilect/features/auth/providers/reauth_provider.dart';
 import 'package:omnilect/features/auth/utils/learn_api_session_bootstrap.dart'
     as learn_bootstrap;
 import 'package:omnilect/features/downloads/providers/video_download_manager.dart';
-import 'package:omnilect/features/sync/providers/sync_controller.dart';
+import 'package:omnilect/features/sync/providers/sync_providers.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'auth_provider.g.dart';
@@ -68,9 +68,7 @@ class Auth extends _$Auth {
       // out — their cached content is still usable offline.
       ..addAuthInterceptor(
         onAuthFailed: () => Future<void>.delayed(Duration.zero, () {
-          ref
-              .read(reauthControllerProvider.notifier)
-              .request(const SyncAllOperation());
+          ref.read(reauthControllerProvider.notifier).request();
         }),
       );
     // Order matters: attach the headers interceptor BEFORE the auth one so
@@ -285,9 +283,7 @@ class Auth extends _$Auth {
             // Defer the reauth notification so we don't run it inside the
             // interceptor handler (matches the LMS interceptor pattern).
             Future<void>.delayed(Duration.zero, () {
-              ref
-                  .read(reauthControllerProvider.notifier)
-                  .request(const SyncAllOperation());
+              ref.read(reauthControllerProvider.notifier).request();
             });
             return handler.next(err);
           }
@@ -367,6 +363,13 @@ class Auth extends _$Auth {
     final client = ref.read(dioClientProvider);
     final db = ref.read(appDatabaseProvider);
 
+    // Stop the sync isolate and wait for any in-flight op to drain, so a
+    // late write can't land after db.clearAll() below.
+    final manager = ref.read(syncManagerOrNullProvider);
+    if (manager != null) {
+      await manager.stopAndWait();
+    }
+
     // Clear Dio cookie store (also wipes the SecureCookieStore entry).
     await client.clearCookies();
     // Reset the learnApi warm-up gate so the next sign-in re-runs the
@@ -382,11 +385,6 @@ class Auth extends _$Auth {
 
     // Clear all cached course data (and the now-empty download rows) from Drift.
     await db.clearAll();
-
-    // Reset per-sequence in-memory sync state — otherwise its stale `synced`
-    // entries cause the next sign-in's syncCourse run to skip every sequence
-    // and finalise immediately with nothing actually fetched.
-    ref.invalidate(sequenceSyncControllerProvider);
 
     state = const AsyncData(null);
   }
