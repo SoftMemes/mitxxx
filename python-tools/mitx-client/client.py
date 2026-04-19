@@ -236,9 +236,12 @@ class MITxClient:
         """
         Fetch mitxonline enrollments via the MIT Learn API proxy (v3).
 
-        Same shape as mitxonline.mit.edu/api/v1/enrollments/ but proxied through
-        api.learn.mit.edu/mitxonline/api/v3/enrollments/. Useful for consistency
-        when the app is already talking to api.learn.mit.edu for userlists.
+        v1 (enrollments()) is being deprecated upstream, so new consumers
+        should call this. Caveat: v3 strips run.course down to
+        `{id, title, readable_id, type, include_in_learn_catalog}`, dropping
+        feature_image_src, description, page_url, instructors, and pricing.
+        Callers that need full course metadata must pair this with
+        /api/v1/learning_resources/?readable_id=... per course.
         """
         return self._learn_get("/mitxonline/api/v3/enrollments/").json()
 
