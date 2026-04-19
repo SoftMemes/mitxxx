@@ -166,6 +166,12 @@ class SyncManager {
       _isolateExited = true;
       if (!_ready.isCompleted) _ready.complete();
     }
+    if (event is ScopeStateChanged && event.scopeId.startsWith('lecture:')) {
+      _log.info(
+        'recv ScopeStateChanged ${event.scopeId} status=${event.state.status} '
+        'lastSyncedAt=${event.state.lastSyncedAt}',
+      );
+    }
     _eventsController.add(event);
     final next = _apply(_state, event);
     if (!identical(next, _state)) {

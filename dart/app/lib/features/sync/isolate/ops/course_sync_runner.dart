@@ -94,6 +94,8 @@ Future<CourseSyncOutcome> syncSingleCourse(
       } on Object catch (e, st) {
         _log.warning('sequence $sequenceId failed', e, st);
         hadError = true;
+        await r.db
+            .putLectureSyncError(sequenceId, courseId, _shortErrorMessage(e));
         _publishScope(
           r,
           lectureScope,
@@ -131,6 +133,11 @@ Future<CourseSyncOutcome> syncSingleCourse(
       }
 
       if (sequenceErrored) {
+        await r.db.putLectureSyncError(
+          sequenceId,
+          courseId,
+          'One or more content blocks failed to sync',
+        );
         _publishScope(
           r,
           lectureScope,
@@ -140,12 +147,12 @@ Future<CourseSyncOutcome> syncSingleCourse(
           ),
         );
       } else {
+        final now = DateTime.now();
+        await r.db.putLectureSyncSuccess(sequenceId, courseId, now);
         _publishScope(
           r,
           lectureScope,
-          ScopeState(
-            lastSyncedAt: DateTime.now(),
-          ),
+          ScopeState(lastSyncedAt: now),
         );
       }
     },
@@ -197,6 +204,12 @@ Future<void> _finaliseCourse(
 }
 
 void _publishScope(OpRuntime r, String scope, ScopeState state) {
+  if (scope.startsWith('lecture:')) {
+    _log.info(
+      'emit ScopeStateChanged $scope status=${state.status} '
+      'lastSyncedAt=${state.lastSyncedAt}',
+    );
+  }
   r.events.add(ScopeStateChanged(scope, state));
 }
 

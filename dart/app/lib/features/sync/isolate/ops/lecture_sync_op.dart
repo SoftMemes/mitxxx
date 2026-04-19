@@ -58,6 +58,8 @@ class LectureSyncOp extends LogicalOp {
       rethrow;
     } on Object catch (e, st) {
       _log.warning('lectureSync($sequenceId): metadata failed', e, st);
+      await runtime.ctx.db
+          .putLectureSyncError(sequenceId, courseId, e.toString());
       runtime.events.add(ScopeStateChanged(
         scope,
         ScopeState(status: ScopeStatus.error, errorMessage: e.toString()),
@@ -92,6 +94,11 @@ class LectureSyncOp extends LogicalOp {
     }
 
     if (hadError) {
+      await runtime.db.putLectureSyncError(
+        sequenceId,
+        courseId,
+        'Some content failed to sync',
+      );
       runtime.events.add(ScopeStateChanged(
         scope,
         const ScopeState(
@@ -107,9 +114,11 @@ class LectureSyncOp extends LogicalOp {
         errorKind: 'unknown',
       );
     } else {
+      final now = DateTime.now();
+      await runtime.db.putLectureSyncSuccess(sequenceId, courseId, now);
       runtime.events.add(ScopeStateChanged(
         scope,
-        ScopeState(lastSyncedAt: DateTime.now()),
+        ScopeState(lastSyncedAt: now),
       ));
       runtime.analytics.logSyncComplete(
         scope: 'section',

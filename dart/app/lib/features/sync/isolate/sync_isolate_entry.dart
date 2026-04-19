@@ -19,6 +19,7 @@ import 'package:omnilect/features/sync/isolate/ops/logical_op.dart';
 import 'package:omnilect/features/sync/isolate/ops/op_context.dart';
 import 'package:omnilect/features/sync/isolate/sync_manager_core.dart';
 import 'package:omnilect/features/sync/isolate/sync_messages.dart';
+import 'package:omnilect/features/sync/manager/scope_state.dart';
 
 /// Payload passed into the isolate on spawn.
 class SpawnBundle {
@@ -112,6 +113,18 @@ Future<void> syncIsolateEntry(SpawnBundle bundle) async {
 
   final core = SyncManagerCore(events: eventSink, opFactory: buildOp);
 
+  // Hydrate persisted sync state before announcing readiness so the main
+  // isolate's SyncManagerState is populated *before* any UI provider builds
+  // from it. Emitting via the same event sink the ops use keeps the mirror
+  // logic (ScopeStateChanged → withScope) as the single source of truth.
+  try {
+    await _hydrateScopeStates(db, eventSink, log);
+  } on Object catch (e, st) {
+    // A failed hydration shouldn't prevent sync from working — log and
+    // proceed with empty in-memory state.
+    log.warning('hydrateScopeStates failed', e, st);
+  }
+
   toMain.send(const IsolateReady());
   log.info('sync isolate ready');
 
@@ -145,6 +158,44 @@ Future<void> syncIsolateEntry(SpawnBundle bundle) async {
       break;
     }
   }
+}
+
+/// Replays persisted per-course + per-lecture sync state as [ScopeStateChanged]
+/// events so `SyncManager._apply` populates `scopeStates` before the first UI
+/// read. Runs once, synchronously (from the isolate's perspective) before
+/// [IsolateReady] is sent.
+Future<void> _hydrateScopeStates(
+  AppDatabase db,
+  EventSink<SyncEvent> events,
+  Logger log,
+) async {
+  final courseRows = await db.getAllCourseSyncState();
+  for (final row in courseRows) {
+    final state = _scopeStateForRow(row.lastSyncedAt, row.lastError);
+    if (state == null) continue;
+    events.add(ScopeStateChanged(ScopeIds.course(row.courseId), state));
+  }
+  final lectureRows = await db.getAllLectureSyncState();
+  for (final row in lectureRows) {
+    final state = _scopeStateForRow(row.lastSyncedAt, row.lastError);
+    if (state == null) continue;
+    events.add(ScopeStateChanged(ScopeIds.lecture(row.sequenceId), state));
+  }
+  log.info(
+    'hydrateScopeStates: ${courseRows.length} course row(s), '
+    '${lectureRows.length} lecture row(s) replayed',
+  );
+}
+
+/// Maps a persisted (lastSyncedAt, lastError) pair back to an in-memory
+/// [ScopeState]. A row with neither value is nothing worth restoring — the
+/// main-isolate mirror treats an empty default-state event as a removal.
+ScopeState? _scopeStateForRow(DateTime? lastSyncedAt, String? lastError) {
+  if (lastSyncedAt == null && lastError == null) return null;
+  if (lastSyncedAt == null && lastError != null) {
+    return ScopeState(status: ScopeStatus.error, errorMessage: lastError);
+  }
+  return ScopeState(lastSyncedAt: lastSyncedAt, errorMessage: lastError);
 }
 
 Future<void> _reloadCookies(OpContext ctx, Logger log) async {

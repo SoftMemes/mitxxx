@@ -83,6 +83,21 @@ class CachedCourseSync extends Table {
   Set<Column> get primaryKey => {courseId};
 }
 
+/// Persists the last-synced timestamp and last error per lecture
+/// (sequence block). Mirrors [CachedCourseSync] but at sequence granularity so
+/// the outline UI can render each lecture's "synced / not synced / error"
+/// state correctly after an app restart. The in-memory sync status
+/// (idle/syncing/scheduled) lives in `SyncManagerState` only.
+class CachedLectureSync extends Table {
+  TextColumn get sequenceId => text()();
+  TextColumn get courseId => text()();
+  DateTimeColumn get lastSyncedAt => dateTime().nullable()();
+  TextColumn get lastError => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {sequenceId};
+}
+
 /// User state: which lists the user has opted to sync. Presence of a row means
 /// selected. Persists across schema upgrades like [DownloadedVideos].
 /// [listId] is a synthetic id: `"all-enrolled"` for the system list, otherwise
@@ -268,6 +283,7 @@ const _cacheTables = [
   CachedXblocks,
   CachedSanitizedXblocks,
   CachedCourseSync,
+  CachedLectureSync,
   DownloadedVideos,
   CourseImages,
   SelectedLists,
@@ -287,7 +303,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -471,6 +487,67 @@ class AppDatabase extends _$AppDatabase {
           lastError: Value(error),
         ),
       );
+
+  /// Returns every row in [cachedCourseSync]. Used at sync-isolate startup to
+  /// hydrate the in-memory `SyncManagerState` so the UI shows persisted
+  /// "synced <time> ago" / error state immediately after app restart.
+  Future<List<CachedCourseSyncData>> getAllCourseSyncState() =>
+      select(cachedCourseSync).get();
+
+  // --- Lecture sync state (keyed by sequenceId) ---
+
+  Future<({DateTime? lastSyncedAt, String? lastError})?> getLectureSyncState(
+    String sequenceId,
+  ) async {
+    final row = await (select(cachedLectureSync)
+          ..where((t) => t.sequenceId.equals(sequenceId)))
+        .getSingleOrNull();
+    if (row == null) return null;
+    return (lastSyncedAt: row.lastSyncedAt, lastError: row.lastError);
+  }
+
+  /// Returns every row in [cachedLectureSync]. Used at sync-isolate startup
+  /// to hydrate per-lecture scope state.
+  Future<List<CachedLectureSyncData>> getAllLectureSyncState() =>
+      select(cachedLectureSync).get();
+
+  /// Records a successful lecture sync. Clears any previous error.
+  Future<void> putLectureSyncSuccess(
+    String sequenceId,
+    String courseId,
+    DateTime lastSyncedAt,
+  ) =>
+      into(cachedLectureSync).insertOnConflictUpdate(
+        CachedLectureSyncCompanion.insert(
+          sequenceId: sequenceId,
+          courseId: courseId,
+          lastSyncedAt: Value(lastSyncedAt),
+          lastError: const Value(null),
+        ),
+      );
+
+  /// Records a lecture sync error. Preserves lastSyncedAt from the previous
+  /// success so a partial failure doesn't roll the lecture back to "never
+  /// synced".
+  Future<void> putLectureSyncError(
+    String sequenceId,
+    String courseId,
+    String error,
+  ) =>
+      into(cachedLectureSync).insertOnConflictUpdate(
+        CachedLectureSyncCompanion.insert(
+          sequenceId: sequenceId,
+          courseId: courseId,
+          lastError: Value(error),
+        ),
+      );
+
+  /// Clears all lecture sync rows for a course. Called from
+  /// [deleteCourseCache] so dropped courses don't leave orphan rows.
+  Future<void> deleteLectureSyncForCourse(String courseId) =>
+      (delete(cachedLectureSync)
+            ..where((t) => t.courseId.equals(courseId)))
+          .go();
 
   // --- Downloaded Videos ---
 
@@ -682,6 +759,12 @@ class AppDatabase extends _$AppDatabase {
     for (final r in syncRows) {
       known.add(r.read(cachedCourseSync.courseId)!);
     }
+    final lectureSyncRows = await (selectOnly(cachedLectureSync, distinct: true)
+          ..addColumns([cachedLectureSync.courseId]))
+        .get();
+    for (final r in lectureSyncRows) {
+      known.add(r.read(cachedLectureSync.courseId)!);
+    }
     final ocwRows = await (selectOnly(cachedOcwCourses)
           ..addColumns([cachedOcwCourses.courseId]))
         .get();
@@ -697,6 +780,9 @@ class AppDatabase extends _$AppDatabase {
   /// even if nothing exists.
   Future<void> deleteCourseCache(String courseId) => transaction(() async {
         await (delete(cachedCourseSync)
+              ..where((t) => t.courseId.equals(courseId)))
+            .go();
+        await (delete(cachedLectureSync)
               ..where((t) => t.courseId.equals(courseId)))
             .go();
         await (delete(cachedOutlines)
@@ -928,6 +1014,7 @@ class AppDatabase extends _$AppDatabase {
     await delete(cachedXblocks).go();
     await delete(cachedSanitizedXblocks).go();
     await delete(cachedCourseSync).go();
+    await delete(cachedLectureSync).go();
     await delete(selectedLists).go();
     await delete(availableLists).go();
     await delete(courseListMemberships).go();
