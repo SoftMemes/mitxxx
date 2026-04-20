@@ -524,6 +524,8 @@ class LecturePlayer extends _$LecturePlayer {
   Future<void> selectSegment(int index) async {
     if (!state.hasValue) return;
     final seg = state.requireValue.segments[index];
+    _log.info('selectSegment($index): globalStartTime=${seg.globalStartTime} '
+        'videoUrl=${seg.videoUrl} controller=${_playbackController != null}');
     await _playbackController?.seekGlobal(seg.globalStartTime);
     unawaited(ref.read(progressTrackerProvider).flushPosition(
           courseId: courseId,
