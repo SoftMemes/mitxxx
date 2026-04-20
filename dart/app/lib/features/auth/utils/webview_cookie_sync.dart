@@ -1,6 +1,6 @@
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:logging/logging.dart';
-import 'package:mitx_api/mitx_api.dart';
+import 'package:omnilect/core/network/dio_client.dart';
 
 final _log = Logger('auth.cookie_sync');
 

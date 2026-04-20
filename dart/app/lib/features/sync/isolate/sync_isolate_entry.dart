@@ -4,7 +4,7 @@ import 'dart:isolate';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart' show BackgroundIsolateBinaryMessenger, RootIsolateToken;
 import 'package:logging/logging.dart';
-import 'package:mitx_api/mitx_api.dart';
+import 'package:omnilect/core/network/dio_client.dart';
 import 'package:omnilect/core/network/secure_cookie_store.dart';
 import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/features/sync/fetchers/ocw_course_fetcher.dart';

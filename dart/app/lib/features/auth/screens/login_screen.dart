@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
-import 'package:mitx_api/mitx_api.dart';
+import 'package:omnilect/core/network/api_constants.dart';
 import 'package:omnilect/core/network/dio_client_provider.dart';
 import 'package:omnilect/core/router/app_router.dart';
 import 'package:omnilect/core/screenshots/screenshot_mode.dart';

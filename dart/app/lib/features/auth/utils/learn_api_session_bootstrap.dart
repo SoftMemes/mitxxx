@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:logging/logging.dart';
-import 'package:mitx_api/mitx_api.dart';
+import 'package:omnilect/core/network/dio_client.dart';
 import 'package:omnilect/features/auth/utils/webview_cookie_sync.dart';
 
 final _log = Logger('auth.learn_bootstrap');

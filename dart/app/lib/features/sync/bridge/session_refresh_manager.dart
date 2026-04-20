@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:logging/logging.dart';
-import 'package:mitx_api/mitx_api.dart';
+import 'package:omnilect/core/network/dio_client.dart';
 import 'package:omnilect/features/auth/providers/reauth_provider.dart';
 import 'package:omnilect/features/auth/utils/learn_api_session_bootstrap.dart'
     as learn_bootstrap;
