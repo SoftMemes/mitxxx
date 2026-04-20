@@ -150,10 +150,12 @@ Future<Set<String>> reconcileMembership(
     'reconcile: ${selection.length} selected list(s): '
     '${selection.map((s) => '${s.listId}(${s.source})').toList()}',
   );
-  if (selection.isEmpty) {
-    _log.warning('reconcile: no selected lists — returning empty target set');
-    return const <String>{};
-  }
+
+  // Prune memberships and unsupported-item rows for lists the user has
+  // removed. Without this, getCoursesNotInSelection() still treats their
+  // courses as in-selection and the drop-cascade below skips them — so the
+  // courses' downloaded videos would never be deleted.
+  await r.db.pruneOrphanListData({for (final s in selection) s.listId});
 
   final enrolledIds = {for (final e in enrollments) e.run.coursewareId};
   _log.info('reconcile: ${enrolledIds.length} enrolled courseware id(s)');

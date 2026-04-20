@@ -150,6 +150,41 @@ void main() {
       expect(await db.getCoursePosition('c2'), isNull);
     });
 
+    test(
+      'pruneOrphanListData drops memberships for delisted lists',
+      () async {
+        await seedSelection(['list-a', 'list-b']);
+        await db.rebuildMembershipForList('list-a', ['c1']);
+        await db.rebuildMembershipForList('list-b', ['c2']);
+        await seedCourseCache('c1');
+        await seedCourseCache('c2');
+
+        // User deselects list-a; selection now only contains list-b.
+        await seedSelection(['list-b']);
+        await db.pruneOrphanListData({'list-b'});
+
+        // c1's membership should be gone, so c1 is in the drop set.
+        expect(await db.getCourseIdsInSelection(), {'c2'});
+        expect(await db.getCoursesNotInSelection(), {'c1'});
+      },
+    );
+
+    test(
+      'pruneOrphanListData with empty selection clears all memberships',
+      () async {
+        await seedSelection(['list-a']);
+        await db.rebuildMembershipForList('list-a', ['c1', 'c2']);
+        await seedCourseCache('c1');
+        await seedCourseCache('c2');
+
+        await db.replaceSelectedLists([]);
+        await db.pruneOrphanListData(const <String>{});
+
+        expect(await db.getCourseIdsInSelection(), isEmpty);
+        expect(await db.getCoursesNotInSelection(), {'c1', 'c2'});
+      },
+    );
+
     test('replaceSelectedLists removes prior rows transactionally', () async {
       await seedSelection(['list-a', 'list-b', 'list-c']);
       expect((await db.getSelectedLists()).map((r) => r.listId).toSet(),

@@ -737,6 +737,26 @@ class AppDatabase extends _$AppDatabase {
         }
       });
 
+  /// Deletes membership and unsupported-item rows for any list whose
+  /// `listId` isn't in [keepListIds] — i.e. lists the user has removed from
+  /// selection. Without this pruning, [getCoursesNotInSelection] still sees
+  /// dropped lists' courses as "in selection" and never schedules them for
+  /// drop-cascade, so their downloaded videos linger on disk.
+  Future<void> pruneOrphanListData(Set<String> keepListIds) =>
+      transaction(() async {
+        if (keepListIds.isEmpty) {
+          await delete(courseListMemberships).go();
+          await delete(unsupportedListItems).go();
+          return;
+        }
+        await (delete(courseListMemberships)
+              ..where((t) => t.listId.isNotIn(keepListIds)))
+            .go();
+        await (delete(unsupportedListItems)
+              ..where((t) => t.listId.isNotIn(keepListIds)))
+            .go();
+      });
+
   Stream<List<UnsupportedListItem>> watchUnsupportedListItems() =>
       select(unsupportedListItems).watch();
 
