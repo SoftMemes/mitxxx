@@ -30,11 +30,18 @@ final activeOcwCoursesProvider =
       .get();
 });
 
-/// Stream of one OCW course by id. Null until the sync pipeline has written
-/// a `cached_ocw_courses` row for it.
+/// One OCW course by id. Null until the sync pipeline has written a
+/// `cached_ocw_courses` row for it.
+///
+/// Implemented as a `FutureProvider` (not a Drift `watch()` stream) because
+/// `cached_ocw_courses` is written exclusively by the sync isolate; Drift's
+/// stream cache on the main isolate doesn't pick up cross-isolate writes.
+/// The bridge fires `ref.invalidate(ocwCourseProvider(courseId))` on
+/// DbInvalidated('ocwCourse', courseId), which rebuilds this provider and
+/// re-runs the direct query against SQLite.
 // ignore: specify_nonobvious_property_types
-final ocwCourseProvider = StreamProvider.autoDispose
+final ocwCourseProvider = FutureProvider.autoDispose
     .family<CachedOcwCourse?, String>((ref, courseId) {
   final db = ref.read(appDatabaseProvider);
-  return db.watchOcwCourse(courseId);
+  return db.getOcwCourse(courseId);
 });

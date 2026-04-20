@@ -13,23 +13,30 @@ final _log = Logger('available_lists');
 const String kAllEnrolledListId = 'all-enrolled';
 const String kAllEnrolledDisplayName = 'Enrolled';
 
-/// Watches the cached list-of-lists. UI subscribes to this; the underlying
-/// table is populated by [AvailableListsController.refresh].
+/// The cached list-of-lists. UI reads this; the underlying table is
+/// populated by [AvailableListsController.refresh] via the sync isolate.
+///
+/// Implemented as a `Future` (not a Drift `watch()` stream) because the
+/// `available_lists` table is written exclusively by the sync isolate;
+/// Drift's stream cache on the main isolate doesn't pick up cross-isolate
+/// writes. The bridge fires `ref.invalidate(availableListsProvider)` on
+/// DbInvalidated('availableLists'), which rebuilds this provider and
+/// re-runs the direct query against SQLite (WAL makes sync-isolate commits
+/// visible).
 @riverpod
-Stream<List<AppListSummary>> availableLists(Ref ref) {
+Future<List<AppListSummary>> availableLists(Ref ref) async {
   final db = ref.read(appDatabaseProvider);
-  return db.watchAvailableLists().map(
-        (rows) => rows
-            .map(
-              (row) => AppListSummary(
-                id: row.listId,
-                source: ListSource.fromStorage(row.source),
-                name: row.name,
-                totalCourseCount: row.totalCourseCount,
-              ),
-            )
-            .toList(),
-      );
+  final rows = await db.select(db.availableLists).get();
+  return rows
+      .map(
+        (row) => AppListSummary(
+          id: row.listId,
+          source: ListSource.fromStorage(row.source),
+          name: row.name,
+          totalCourseCount: row.totalCourseCount,
+        ),
+      )
+      .toList();
 }
 
 /// Refreshes the list-of-lists via the sync isolate. The actual HTTP +
