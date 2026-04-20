@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:mitx_api/mitx_api.dart';
+import 'package:omnilect/core/network/cookie_store.dart';
 
 /// [CookieStore] implementation that persists cookies in [FlutterSecureStorage]
 /// (Keychain on iOS, EncryptedSharedPreferences on Android).

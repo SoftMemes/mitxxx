@@ -28,8 +28,8 @@ class ScopeState {
   final DateTime? lastSyncedAt;
   final String? errorMessage;
 
-  /// Sub-task counters — used by the dev debugger. UI surfaces only show the
-  /// boolean status per spec.
+  /// Sub-task counters — drive the fractional-fill progress bar on course
+  /// and lecture rows, and the dev debugger.
   final int completed;
   final int total;
 

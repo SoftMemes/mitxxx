@@ -129,15 +129,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   const <CachedOcwCourse>[];
 
           if (enrollments.isEmpty && ocwCourses.isEmpty && unsupported.isEmpty) {
-            // Distinguish "loading initial sync" from "genuinely no enrolled
-            // courses". The manager is still spawning on first login (so
-            // isSyncingAll hasn't flipped yet), and even after it spawns
-            // there's a window before reconciliation populates memberships.
+            // "Loading your courses…" is reserved for the very first
+            // list-fetch: before enrollments have ever been cached. Once
+            // fetchEnrollments commits (full_sync_op fires
+            // DbInvalidated('enrollments') immediately after), the home
+            // switches to the list view even if reconciliation +
+            // per-course content sync are still running — individual
+            // tiles expose their own syncing state.
             final managerLoading = ref.watch(syncManagerProvider).isLoading;
-            final isInitialSync = isSyncing || managerLoading;
+            final enrollmentsCached =
+                ref.watch(enrollmentsProvider).hasValue;
+            final isInitialListFetch = !enrollmentsCached &&
+                (isSyncing || managerLoading);
             return _PullToSyncWrapper(
               onRefresh: restartSync,
-              child: isInitialSync
+              child: isInitialListFetch
                   ? const _LoadingCoursesState()
                   : const _NotEnrolledState(),
             );
@@ -482,11 +488,16 @@ class _CourseTile extends ConsumerWidget {
     final courseId = run.coursewareId;
     final scope = ref.watch(courseScopeStateProvider(courseId));
     final status = scope.status;
-    final isSyncing = status == ScopeStatus.syncing ||
-        status == ScopeStatus.scheduled;
+    final isScheduled = status == ScopeStatus.scheduled;
+    final isActivelySyncing = status == ScopeStatus.syncing;
+    final isSyncing = isActivelySyncing || isScheduled;
     final hasError = status == ScopeStatus.error;
     final lastSynced = scope.lastSyncedAt;
     final cs = Theme.of(context).colorScheme;
+
+    final progress = scope.total == 0
+        ? 0.0
+        : (scope.completed / scope.total).clamp(0.0, 1.0);
 
     // "Ready" means the outline itself has been cached, so tapping the tile
     // opens a meaningful course overview — even if individual verticals are
@@ -527,12 +538,29 @@ class _CourseTile extends ConsumerWidget {
 
     return Stack(
       children: [
-        // Indeterminate background tint while syncing — the per-scope bool
-        // status is all the UI exposes; numeric progress is debugger-only.
-        if (isSyncing)
+        // Scheduled = queued but not yet running: faint full-row tint so the
+        // user sees "this one is in line". Syncing = actively working: a
+        // fractional fill whose width tracks completed/total sub-tasks (number
+        // of sequences for MITx, or a single step for the OCW one-shot fetch).
+        if (isScheduled)
           Positioned.fill(
             child: ColoredBox(
-              color: cs.primaryContainer.withValues(alpha: 0.25),
+              color: cs.primaryContainer.withValues(alpha: 0.15),
+            ),
+          ),
+        if (isActivelySyncing)
+          Positioned.fill(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: progress),
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              builder: (_, v, _) => FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: v,
+                child: ColoredBox(
+                  color: cs.primaryContainer.withValues(alpha: 0.45),
+                ),
+              ),
             ),
           ),
         InkWell(
@@ -713,11 +741,16 @@ class _OcwCourseTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final scope = ref.watch(courseScopeStateProvider(course.courseId));
     final status = scope.status;
-    final isSyncing = status == ScopeStatus.syncing ||
-        status == ScopeStatus.scheduled;
+    final isScheduled = status == ScopeStatus.scheduled;
+    final isActivelySyncing = status == ScopeStatus.syncing;
+    final isSyncing = isActivelySyncing || isScheduled;
     final hasError = status == ScopeStatus.error;
     final lastSynced = scope.lastSyncedAt;
     final cs = Theme.of(context).colorScheme;
+
+    final progress = scope.total == 0
+        ? 0.0
+        : (scope.completed / scope.total).clamp(0.0, 1.0);
 
     final syncLabel = isSyncing
         ? 'Syncing…'
@@ -727,64 +760,89 @@ class _OcwCourseTile extends ConsumerWidget {
                 ? 'Synced ${_relativeLabel(lastSynced)}'
                 : 'Not synced';
 
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: _CourseArtwork(networkUrl: course.imageUrl),
+    return Stack(
+      children: [
+        if (isScheduled)
+          Positioned.fill(
+            child: ColoredBox(
+              color: cs.primaryContainer.withValues(alpha: 0.15),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    course.title,
-                    style: Theme.of(context).textTheme.titleMedium,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    course.courseNumber,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: cs.onSurface.withValues(alpha: 0.6),
-                        ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
+          ),
+        if (isActivelySyncing)
+          Positioned.fill(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: progress),
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              builder: (_, v, _) => FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: v,
+                child: ColoredBox(
+                  color: cs.primaryContainer.withValues(alpha: 0.45),
+                ),
+              ),
+            ),
+          ),
+        InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: _CourseArtwork(networkUrl: course.imageUrl),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (hasError)
-                        Icon(Icons.error_outline, size: 14, color: cs.error)
-                      else
-                        Icon(Icons.check_circle_outline,
-                            size: 14,
-                            color: lastSynced != null
-                                ? Colors.green
-                                : cs.onSurfaceVariant),
-                      const SizedBox(width: 4),
                       Text(
-                        syncLabel,
-                        style:
-                            Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: hasError
-                                      ? cs.error
-                                      : cs.onSurfaceVariant,
-                                ),
+                        course.title,
+                        style: Theme.of(context).textTheme.titleMedium,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        course.courseNumber,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: cs.onSurface.withValues(alpha: 0.6),
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (hasError)
+                            Icon(Icons.error_outline, size: 14, color: cs.error)
+                          else
+                            Icon(Icons.check_circle_outline,
+                                size: 14,
+                                color: lastSynced != null
+                                    ? Colors.green
+                                    : cs.onSurfaceVariant),
+                          const SizedBox(width: 4),
+                          Text(
+                            syncLabel,
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: hasError
+                                          ? cs.error
+                                          : cs.onSurfaceVariant,
+                                    ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+                Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+              ],
             ),
-            Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }

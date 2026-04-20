@@ -1,11 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:logging/logging.dart';
 
-import 'constants.dart';
-import 'cookie_store.dart';
-
-export 'constants.dart';
-export 'cookie_store.dart';
+import 'package:omnilect/core/network/api_constants.dart';
+import 'package:omnilect/core/network/cookie_store.dart';
 
 final _log = Logger('http');
 
@@ -327,7 +324,7 @@ class DioClient {
   ///
   /// Callers: every logical op that touches api.learn.mit.edu should call
   /// this at its start. A `false` return must be turned into a
-  /// [StaleSessionException] so the manager's escalation chain runs
+  /// `StaleSessionException` so the manager's escalation chain runs
   /// (silent WebView bootstrap → reauth dialog).
   Future<bool> refreshLearnSession() async {
     try {

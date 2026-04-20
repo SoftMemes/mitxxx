@@ -9,9 +9,13 @@ abstract class SequenceItem with _$SequenceItem {
     required String id,
     required String type,
     required String pageTitle,
-    required bool complete,
-    required bool bookmarked,
     required String path,
+    // `complete` was dropped from the LMS sequence response; `bookmarked` can
+    // also be absent on unauthenticated/limited responses. Default both to
+    // `false` rather than crashing fromJson with a "null is not a subtype of
+    // bool" cast on the lecture screen.
+    @Default(false) bool complete,
+    @Default(false) bool bookmarked,
   }) = _SequenceItem;
 
   factory SequenceItem.fromJson(Map<String, dynamic> json) =>

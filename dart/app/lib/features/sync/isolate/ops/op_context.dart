@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:mitx_api/mitx_api.dart';
+import 'package:omnilect/core/network/dio_client.dart';
 import 'package:omnilect/core/storage/app_database.dart';
 import 'package:omnilect/features/sync/fetchers/ocw_course_fetcher.dart';
 import 'package:omnilect/features/sync/isolate/isolate_analytics.dart';

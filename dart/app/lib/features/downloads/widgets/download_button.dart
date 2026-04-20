@@ -151,9 +151,12 @@ class _ButtonForState extends StatelessWidget {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Always indeterminate — a small ring can't meaningfully
-                // convey aggregate progress across many files.
-                const CircularProgressIndicator(strokeWidth: 2),
+                CircularProgressIndicator(
+                  value: state.requestedProgress > 0
+                      ? state.requestedProgress
+                      : null,
+                  strokeWidth: 2,
+                ),
                 _DownloadArrow(size: _innerArrowSize, color: iconColor),
               ],
             ),
