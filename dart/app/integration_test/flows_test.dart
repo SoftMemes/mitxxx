@@ -87,16 +87,18 @@ void main() {
 
         // ── 5. Initial sync + home baseline ─────────────────────────────
         step('step 5: waiting for My Courses + baseline tiles');
-        await waitFor($, find.text('My Courses'));
+        await waitFor($, find.text('My Courses'), label: '"My Courses" app bar');
         await waitFor(
           $,
           byTypeName('_CourseTile'),
           timeout: _kSyncTimeout,
-          label: 'first course tile',
+          label: 'first _CourseTile (sync populated)',
         );
+        // Let late tiles paint in before snapshotting the baseline.
         await $.tester.pump(const Duration(seconds: 2));
         final baselineTiles = _currentCourseTileTitles($.tester);
-        step('step 5: baseline tiles = $baselineTiles');
+        step('step 5: baseline tiles (${baselineTiles.length}) = '
+            '${baselineTiles.toList()..sort()}');
         expect(baselineTiles, isNotEmpty, reason: 'baseline tile set empty');
 
         // ── 6. Open target course ───────────────────────────────────────
@@ -108,15 +110,29 @@ void main() {
               'INTEGRATION_COURSE_TITLE "${IntegrationEnv.courseTitle}" not '
               'among baseline tiles $baselineTiles — check env or account.',
         );
-        await $.tester.tap(_courseTileByTitle(IntegrationEnv.courseTitle));
+        final courseFinder = _courseTileByTitle(IntegrationEnv.courseTitle);
+        await waitFor(
+          $,
+          courseFinder,
+          label: '_CourseTile titled "${IntegrationEnv.courseTitle}"',
+        );
+        step('step 6: tapping _CourseTile');
+        await $.tester.tap(courseFinder.first);
+        await $.tester.pump(const Duration(milliseconds: 500));
         await waitFor(
           $,
           byTypeName('_SequenceTile'),
-          label: 'first sequence tile',
+          timeout: _kSyncTimeout,
+          label: 'first _SequenceTile in course outline',
         );
+        final sequenceTitles = _visibleSequenceTileTitles($.tester);
+        step('step 6: outline sequence tiles (${sequenceTitles.length}) = '
+            '${sequenceTitles.take(8).toList()}'
+            '${sequenceTitles.length > 8 ? " ..." : ""}');
 
         // ── 7. Open target lecture ──────────────────────────────────────
-        step('step 7: waiting for "${IntegrationEnv.lectureTitle}" to sync');
+        step('step 7: waiting for "${IntegrationEnv.lectureTitle}" to finish '
+            'sync (unsynced tiles snackbar "Queued" on tap)');
         final lectureTile = find.ancestor(
           of: find.text(IntegrationEnv.lectureTitle),
           matching: byTypeName('_SequenceTile'),
@@ -129,8 +145,10 @@ void main() {
           $,
           syncedLectureButton,
           timeout: _kLectureSyncTimeout,
-          label: 'synced "${IntegrationEnv.lectureTitle}" tile',
+          label: 'DownloadButton under _SequenceTile '
+              '"${IntegrationEnv.lectureTitle}" (= synced)',
         );
+        step('step 7: tapping lecture tile');
         await $.tester.tap(lectureTile.first);
 
         // ── 8. Video playback ───────────────────────────────────────────
@@ -253,6 +271,22 @@ Future<void> _toggleList(
 bool _isChecked(WidgetTester tester, Finder tileFinder) {
   final tile = tester.widget<CheckboxListTile>(tileFinder.first);
   return tile.value ?? false;
+}
+
+List<String> _visibleSequenceTileTitles(WidgetTester tester) {
+  final titles = <String>[];
+  for (final element in byTypeName('_SequenceTile').evaluate()) {
+    final textFinder = find.descendant(
+      of: find.byWidget(element.widget),
+      matching: find.byType(Text),
+    );
+    final matches = textFinder.evaluate().toList();
+    if (matches.isEmpty) continue;
+    final widget = matches.first.widget as Text;
+    final data = widget.data;
+    if (data != null && data.isNotEmpty) titles.add(data);
+  }
+  return titles;
 }
 
 Set<String> _currentCourseTileTitles(WidgetTester tester) {

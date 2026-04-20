@@ -100,20 +100,49 @@ SCREENCAP_AWK='
 
 # patrol test's own `--uninstall` (default on) performs the same adb
 # uninstall we would run manually, so we leave it to patrol.
-set +e
-fvm dart run patrol_cli:main test \
-  --target="$TARGET" \
-  --flavor=dev \
-  "${DEVICE_ARGS[@]}" \
-  --dart-define="INTEGRATION_EMAIL=$INTEGRATION_EMAIL" \
-  --dart-define="INTEGRATION_PASSWORD=$INTEGRATION_PASSWORD" \
-  --dart-define="INTEGRATION_LIST_NAMES=${INTEGRATION_LIST_NAMES:-}" \
-  --dart-define="INTEGRATION_LIST_NAMES_ALT=${INTEGRATION_LIST_NAMES_ALT:-}" \
-  --dart-define="INTEGRATION_COURSE_TITLE=${INTEGRATION_COURSE_TITLE:-}" \
-  --dart-define="INTEGRATION_LECTURE_TITLE=${INTEGRATION_LECTURE_TITLE:-}" \
-  2>&1 | awk "$SCREENCAP_AWK"
-STATUS=${PIPESTATUS[0]}
-set -e
+run_patrol() {
+  set +e
+  local attempt="$1"
+  local log_file="$2"
+  echo "[integration.sh] attempt $attempt"
+  fvm dart run patrol_cli:main test \
+    --target="$TARGET" \
+    --flavor=dev \
+    "${DEVICE_ARGS[@]}" \
+    --dart-define="INTEGRATION_EMAIL=$INTEGRATION_EMAIL" \
+    --dart-define="INTEGRATION_PASSWORD=$INTEGRATION_PASSWORD" \
+    --dart-define="INTEGRATION_LIST_NAMES=${INTEGRATION_LIST_NAMES:-}" \
+    --dart-define="INTEGRATION_LIST_NAMES_ALT=${INTEGRATION_LIST_NAMES_ALT:-}" \
+    --dart-define="INTEGRATION_COURSE_TITLE=${INTEGRATION_COURSE_TITLE:-}" \
+    --dart-define="INTEGRATION_LECTURE_TITLE=${INTEGRATION_LECTURE_TITLE:-}" \
+    2>&1 | tee "$log_file" | awk "$SCREENCAP_AWK"
+  local status=${PIPESTATUS[0]}
+  set -e
+  return "$status"
+}
+
+# The "Total: 0 … Gradle test execution failed" mode is the known flaky
+# android-reinstall path — patrol reports it but no test body ran. Retry
+# once on that specific signature only; real test failures propagate as-is.
+is_flaky_zero_tests() {
+  local log_file="$1"
+  grep -q "Total: 0" "$log_file" \
+    && grep -q "Gradle test execution failed" "$log_file"
+}
+
+LOG_FILE="$(mktemp)"
+trap 'rm -f "$LOG_FILE"' EXIT
+
+STATUS=0
+run_patrol 1 "$LOG_FILE" || STATUS=$?
+
+if [[ "$STATUS" -ne 0 ]] && is_flaky_zero_tests "$LOG_FILE"; then
+  echo ""
+  echo "[integration.sh] patrol reported 0 tests (flaky reinstall). retrying once…"
+  sleep 2
+  STATUS=0
+  run_patrol 2 "$LOG_FILE" || STATUS=$?
+fi
 
 echo ""
 if [[ "$MODE" == "screenshots" ]]; then

@@ -41,17 +41,26 @@ Future<void> waitFor(
   Duration timeout = kInteractionTimeout,
   String? label,
 }) async {
-  final deadline = DateTime.now().add(timeout);
+  final desc = label ?? finder.toString();
+  step('waitFor: "$desc" (timeout=${_fmtDuration(timeout)})');
+  final started = DateTime.now();
+  final deadline = started.add(timeout);
   var i = 0;
   while (DateTime.now().isBefore(deadline)) {
     await $.tester.pump(const Duration(milliseconds: 250));
-    if (finder.evaluate().isNotEmpty) return;
+    if (finder.evaluate().isNotEmpty) {
+      final elapsed = DateTime.now().difference(started);
+      step('waitFor: "$desc" ✓ after ${_fmtDuration(elapsed)}');
+      return;
+    }
     if (++i % 20 == 0) {
-      step('still waiting for ${label ?? finder}');
+      final elapsed = DateTime.now().difference(started);
+      step('waitFor: still waiting for "$desc" '
+          '(${_fmtDuration(elapsed)} / ${_fmtDuration(timeout)})');
     }
   }
   throw TimeoutException(
-    'Timed out after $timeout waiting for ${label ?? finder}',
+    'Timed out after ${_fmtDuration(timeout)} waiting for "$desc"',
   );
 }
 
@@ -63,18 +72,36 @@ Future<void> waitUntil(
   Duration timeout = kInteractionTimeout,
   String? label,
 }) async {
-  final deadline = DateTime.now().add(timeout);
+  final desc = label ?? 'predicate';
+  step('waitUntil: "$desc" (timeout=${_fmtDuration(timeout)})');
+  final started = DateTime.now();
+  final deadline = started.add(timeout);
   var i = 0;
   while (DateTime.now().isBefore(deadline)) {
     await $.tester.pump(const Duration(milliseconds: 250));
-    if (predicate()) return;
+    if (predicate()) {
+      final elapsed = DateTime.now().difference(started);
+      step('waitUntil: "$desc" ✓ after ${_fmtDuration(elapsed)}');
+      return;
+    }
     if (++i % 20 == 0) {
-      step('still waiting for ${label ?? 'predicate'}');
+      final elapsed = DateTime.now().difference(started);
+      step('waitUntil: still waiting for "$desc" '
+          '(${_fmtDuration(elapsed)} / ${_fmtDuration(timeout)})');
     }
   }
   throw TimeoutException(
-    'Timed out after $timeout waiting for ${label ?? 'predicate'}',
+    'Timed out after ${_fmtDuration(timeout)} waiting for "$desc"',
   );
+}
+
+String _fmtDuration(Duration d) {
+  if (d.inMinutes >= 1) {
+    final m = d.inMinutes;
+    final s = d.inSeconds - m * 60;
+    return '${m}m${s.toString().padLeft(2, '0')}s';
+  }
+  return '${d.inSeconds}s';
 }
 
 /// Matches widgets by the string name of their runtime type. Used to reach

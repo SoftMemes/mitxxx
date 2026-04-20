@@ -45,15 +45,12 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // Patrol's native test runner. The `clearPackageData` arg tells the
-        // orchestrator to wipe app data between test cases (it's what gives
-        // our flows test its "blank slate every run" guarantee).
+        // Patrol's native test runner. Our suite is a single mega-flow, so
+        // we skip `clearPackageData=true` + ANDROIDX_TEST_ORCHESTRATOR —
+        // those exist to isolate multiple test cases and were a frequent
+        // source of "fails mid-reinstall" flakiness. `patrol test`'s own
+        // --uninstall (default on) still gives us the blank-slate run.
         testInstrumentationRunner = "pl.leancode.patrol.PatrolJUnitRunner"
-        testInstrumentationRunnerArguments["clearPackageData"] = "true"
-    }
-
-    testOptions {
-        execution = "ANDROIDX_TEST_ORCHESTRATOR"
     }
 
     flavorDimensions += "flavor"
@@ -84,8 +81,4 @@ android {
 
 flutter {
     source = "../.."
-}
-
-dependencies {
-    androidTestUtil("androidx.test:orchestrator:1.5.1")
 }
