@@ -143,16 +143,19 @@ Future<void> keycloakLogin(
   await $.tester.pump(const Duration(seconds: 2));
   // ignore: deprecated_member_use
   await $.native.enterTextByIndex(email, index: 0);
-  // The visible button label differs between Keycloak's username and
-  // password pages. Try a short list of likely labels before giving up —
-  // this absorbs small upstream copy changes.
-  await _tapKeycloakSubmit($, ['Next', 'Sign in', 'Sign In', 'Continue']);
+  // MIT's Keycloak labels both submit buttons "Next" (username page +
+  // password page). Extra fallbacks are kept for small upstream copy
+  // changes.
+  await _tapKeycloakSubmit($, ['Next', 'Continue', 'Sign in', 'Sign In']);
 
   step('keycloak: entering password');
   await $.tester.pump(const Duration(seconds: 2));
   // ignore: deprecated_member_use
   await $.native.enterTextByIndex(password, index: 0);
-  await _tapKeycloakSubmit($, ['Sign in', 'Sign In', 'Log in', 'Log In']);
+  await _tapKeycloakSubmit(
+    $,
+    ['Next', 'Sign in', 'Sign In', 'Log in', 'Log In'],
+  );
   step('keycloak: submitted');
 }
 

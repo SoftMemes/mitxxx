@@ -81,3 +81,8 @@ flutter:
   assets:
     - assets/icons/
     - assets/js/
+
+patrol:
+  # Spec keeps the tests under integration_test/ (next to support/ helpers).
+  # Override patrol's default `patrol_test/` so the bundler finds them.
+  test_directory: integration_test
