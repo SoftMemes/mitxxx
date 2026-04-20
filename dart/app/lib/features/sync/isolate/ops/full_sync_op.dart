@@ -47,6 +47,17 @@ class FullSyncOp extends LogicalOp {
       rethrow;
     }
 
+    // Eagerly verify the courses.learn.mit.edu (LMS) session. A stale LMS
+    // session lets sequence/xblock fetches return trimmed/redirected
+    // responses (no 401), so we'd cache login-page HTML as lecture content
+    // and a "successful" sync would leave the user with empty videos.
+    try {
+      await ensureFreshLmsSession(runtime);
+    } on StaleSessionException {
+      _publishScope(runtime, ScopeIds.allCourses, const ScopeState());
+      rethrow;
+    }
+
     // Fetch enrollments.
     List<Enrollment> enrollments;
     try {

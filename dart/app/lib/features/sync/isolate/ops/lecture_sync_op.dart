@@ -51,6 +51,16 @@ class LectureSyncOp extends LogicalOp {
       const ScopeState(status: ScopeStatus.syncing),
     ));
 
+    // A stale LMS session would silently return trimmed sequence data and
+    // 302-to-login on xblock fetches, both surfacing as "no videos / no
+    // content" in the UI. Probe up-front so the manager can re-auth.
+    try {
+      await ensureFreshLmsSession(runtime);
+    } on StaleSessionException {
+      runtime.events.add(ScopeStateChanged(scope, const ScopeState()));
+      rethrow;
+    }
+
     List<String> vertIds;
     try {
       vertIds = await fetchSequenceMetadata(runtime, sequenceId);

@@ -66,6 +66,34 @@ Future<void> ensureFreshLearnSession(OpRuntime r) async {
   }
 }
 
+/// Probes courses.learn.mit.edu auth via `/api/user/v1/me` (returns 401 when
+/// the LMS session is stale). Throws [StaleSessionException(SessionKind.lms)]
+/// if the probe fails — the session-refresh manager handles that by
+/// re-running `establishLmsSession` and reloading cookies.
+///
+/// Why probe instead of relying on per-request 401 retries: the
+/// `/api/courseware/sequence/...` endpoint returns 200 with a *trimmed*
+/// response when the session is stale (no `complete` field, etc.), and
+/// `/xblock/{id}` 302-redirects to the login page (which Dio silently
+/// follows, then we cache the resulting login HTML as if it were lecture
+/// content). Both bypass any 401-only re-auth path, so the only way to
+/// detect a dead session is to ask explicitly.
+Future<void> ensureFreshLmsSession(OpRuntime r) async {
+  try {
+    await r.client.lms.get<dynamic>(
+      '/api/user/v1/me',
+      cancelToken: r.token,
+    );
+  } on DioException catch (e) {
+    if (isStaleStatus(e)) {
+      _log.info('ensureFreshLmsSession: LMS probe got '
+          '${e.response?.statusCode} → stale');
+      throw const StaleSessionException(SessionKind.lms);
+    }
+    rethrow;
+  }
+}
+
 /// Build `If-None-Match` / `If-Modified-Since` conditional request headers.
 Map<String, String>? conditionalHeaders({
   String? etag,
