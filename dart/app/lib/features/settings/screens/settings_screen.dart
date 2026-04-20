@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:omnilect/features/auth/providers/auth_provider.dart';
+import 'package:omnilect/features/sync/providers/sync_providers.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -70,6 +71,11 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               );
               if (confirmed ?? false) {
+                // Drain any in-flight sync op before signing out so a late
+                // write can't land after signOut's db.clearAll(). Done here
+                // (not inside signOut) to avoid a circular provider dep:
+                // syncManagerProvider watches authProvider.
+                await ref.read(syncManagerOrNullProvider)?.stopAndWait();
                 await ref.read(authProvider.notifier).signOut();
               }
             },

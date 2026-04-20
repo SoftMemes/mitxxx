@@ -351,7 +351,7 @@ A short scripted e2e lives in the spec folder for QA: "force a 401 via expired c
 - **Lifecycle**
   - `dart/app/lib/features/sync/providers/sync_providers.dart` — `syncManagerProvider` became a `Future<SyncManager?>` keyed on `authProvider`. When auth becomes non-null, it spawns the isolate, awaits `IsolateReady`, wires `SessionRefreshManager` + `SyncEventBridge`. On sign-out the provider is disposed, which tears everything down.
   - `dart/app/lib/features/sync/manager/sync_lifecycle_observer.dart` — thin `keepAlive` wrapper watched by `OmnilectApp.initState` so the isolate exists from app start (not just on first UI read).
-  - `dart/app/lib/features/auth/providers/auth_provider.dart` `signOut()` calls `syncManager.stopAndWait()` before `db.clearAll()`.
+  - Sign-out drains the isolate before clearing the DB: the settings screen's sign-out tap calls `syncManager.stopAndWait()` and then `Auth.signOut()` (which runs `db.clearAll()`). This lives at the call site, not inside `signOut()`, because `syncManagerProvider` watches `authProvider` — reading the manager from inside the auth notifier would be a circular provider dep.
 
 - **UI rewire** — home, course outline, lecture, onboarding list selection, settings Courses, settings Data Usage. All `syncControllerProvider` / `sequenceSyncControllerProvider` usages replaced with `isSyncingAllProvider`, `courseScopeStateProvider(courseId)`, `lectureScopeStateProvider(sequenceId)`, and the new `syncManagerOrNullProvider` for request calls. Old tap-to-prioritise became `requestLectureSync` (cancel-and-replace is implicit).
 

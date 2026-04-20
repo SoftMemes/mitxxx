@@ -13,7 +13,6 @@ import 'package:omnilect/features/auth/providers/reauth_provider.dart';
 import 'package:omnilect/features/auth/utils/learn_api_session_bootstrap.dart'
     as learn_bootstrap;
 import 'package:omnilect/features/downloads/providers/video_download_manager.dart';
-import 'package:omnilect/features/sync/providers/sync_providers.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'auth_provider.g.dart';
@@ -346,18 +345,16 @@ class Auth extends _$Auth {
   }
 
   /// Sign out: clears all cookies, cached data, and secure storage.
+  ///
+  /// The caller must drain the sync manager (`stopAndWait()`) before calling
+  /// this — we can't do it here because `syncManagerProvider` watches
+  /// `authProvider`, so reading it from inside this notifier trips a
+  /// Riverpod circular-dependency check.
   Future<void> signOut() async {
     unawaited(ref.read(analyticsServiceProvider).logLogout());
     _log.info('signOut: clearing session');
     final client = ref.read(dioClientProvider);
     final db = ref.read(appDatabaseProvider);
-
-    // Stop the sync isolate and wait for any in-flight op to drain, so a
-    // late write can't land after db.clearAll() below.
-    final manager = ref.read(syncManagerOrNullProvider);
-    if (manager != null) {
-      await manager.stopAndWait();
-    }
 
     // Clear Dio cookie store (also wipes the SecureCookieStore entry).
     await client.clearCookies();
