@@ -1,7 +1,7 @@
 # App Integration Tests Specification
 
 > **Version**: 1.0 (April 2026)
-> **Status**: Ready for Implementation
+> **Status**: Implemented
 > **Last Updated**: 2026-04-20
 
 ## Description
@@ -355,3 +355,52 @@ Referenced (not modified):
   (position advances, no controller error).
 - Offline/airplane-mode flows.
 - Per-flow test split once the suite outgrows a single file.
+
+## Implementation Notes
+
+**Implemented**: April 2026
+
+**Key changes**:
+
+- Added `patrol` + `patrol_cli` to `dart/app/pubspec.yaml` dev_dependencies.
+- New shared support lib at `dart/app/integration_test/support/`:
+  - `env.dart` — typed `INTEGRATION_*` accessors.
+  - `steps.dart` — `waitFor` / `waitUntil` / `byTypeName` / `suppressFrameworkErrors` / `runWithFailureScreenshot` / `keycloakLogin` / `captureScreenshot`.
+- New mega-flow test `dart/app/integration_test/flows_test.dart` implementing
+  the eleven-step blank-slate critical flow.
+- `screenshots_test.dart` rewritten on top of patrol + the new support lib;
+  the five store PNGs keep the same names (`01_onboarding` … `05_lecture`).
+- `dart/app/scripts/integration.sh` is the single run script with a `flows`
+  (default) / `screenshots` mode flag. `scripts/screenshots.sh` is a thin
+  shim for backwards compatibility.
+- `.integration.env.example` checked in; `.screenshots.env.example` removed.
+  Developers migrate `.screenshots.env` → `.integration.env` locally.
+- `dart/app/lib/core/screenshots/screenshot_mode.dart` deleted, along with
+  all `SCREENSHOT_MODE` / `ScreenshotMode` call-sites in `main.dart` and
+  `login_screen.dart`. Keycloak is now driven natively via patrol.
+- `dart/app/test_driver/integration_test.dart` removed — patrol does not
+  use `flutter drive`, so the extended driver is dead code.
+- `dart/app/.gitignore` now ignores `/screenshots/failures/` alongside
+  `/screenshots/raw/`.
+
+**Deviations from spec**:
+
+- **Screenshot capture mechanism.** `patrol` 4.5.0 does not expose
+  `binding.takeScreenshot()` — its `PatrolBinding` extends
+  `LiveTestWidgetsFlutterBinding`, not `IntegrationTestWidgetsFlutterBinding`,
+  so there is no on-device callback for pulling PNG bytes to the host.
+  Instead, the Dart test prints a `[patrol] SCREENSHOT <subdir> <name>`
+  marker line and sleeps 1.5 s; `scripts/integration.sh` tails stdout via
+  `awk` and runs `adb exec-out screencap -p > screenshots/<subdir>/<name>.png`.
+  The failure-screenshot path uses the same mechanism with
+  `subdir=failures`. As a consequence, the helpers no longer require
+  `IntegrationTestWidgetsFlutterBinding.convertFlutterSurfaceToImage()`
+  or an extended test driver.
+- **Blank-slate uninstall.** Relies on `patrol test`'s own default
+  `--uninstall` behaviour (adb-uninstall before + after) rather than an
+  explicit `adb uninstall` in the run script. The effect is identical
+  (fresh install every run) with one less thing for the script to own.
+- **List toggling.** The test taps the whole `CheckboxListTile` rather
+  than its leading `Checkbox` subwidget. Both paths toggle the selection
+  identically (per `list_picker.dart`) and the tile is a bigger hit target
+  for the patrol native tap, which makes the tests more robust.

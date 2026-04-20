@@ -12,7 +12,6 @@ import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/core/logging.dart';
 import 'package:omnilect/core/network/dio_client_provider.dart';
 import 'package:omnilect/core/router/app_router.dart';
-import 'package:omnilect/core/screenshots/screenshot_mode.dart';
 import 'package:omnilect/core/storage/shared_preferences_provider.dart';
 import 'package:omnilect/core/theme/app_theme.dart';
 import 'package:omnilect/features/auth/widgets/reauth_gate.dart';
@@ -37,16 +36,14 @@ Future<void> bootstrap() async {
       // Only report crashes from release builds; debug crashes go to console.
       await FirebaseCrashlytics.instance
           .setCrashlyticsCollectionEnabled(!kDebugMode);
-      // Skip error-handler overrides under the integration_test screenshot
-      // harness — the test binding owns FlutterError.onError and replacing
-      // it causes `_pendingExceptionDetails != null` assertion failures.
-      if (!ScreenshotMode.enabled) {
-        FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterError;
-        PlatformDispatcher.instance.onError = (error, stack) {
-          FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-          return true;
-        };
-      }
+      // Integration tests override these from inside the test body
+      // (see integration_test/support/steps.dart::suppressFrameworkErrors)
+      // so they run last and win over these production defaults.
+      FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterError;
+      PlatformDispatcher.instance.onError = (error, stack) {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+        return true;
+      };
 
       final dioClient = await buildDioClient();
       final prefs = await SharedPreferences.getInstance();

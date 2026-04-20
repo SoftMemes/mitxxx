@@ -53,6 +53,8 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   json_serializable: ^6.9.4
+  patrol: ^4.5.0
+  patrol_cli: ^4.3.1
   riverpod_generator: ^4.0.0
   rps: ^0.7.0
   very_good_analysis: ^8.0.0
