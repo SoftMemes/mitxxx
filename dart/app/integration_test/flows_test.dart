@@ -100,6 +100,22 @@ void main() {
         step('step 5: baseline tiles (${baselineTiles.length}) = '
             '${baselineTiles.toList()..sort()}');
         expect(baselineTiles, isNotEmpty, reason: 'baseline tile set empty');
+        // Regression guard: after the first reconciliation sync lands, both
+        // MITx-enrolled and userlist-sourced courses must be visible — the
+        // `activeOcwCoursesProvider` invalidation on `DbInvalidated('ocwCourse')`
+        // (sync_event_bridge.dart) was silently missing before this test,
+        // which left favourites-sourced OCW tiles off the home screen until
+        // the widget remounted. Configure INTEGRATION_LIST_NAMES so the
+        // test account resolves to ≥ 2 distinct course tiles (mix
+        // enrolled + favourites for the strongest guard).
+        expect(
+          baselineTiles.length,
+          greaterThanOrEqualTo(2),
+          reason:
+              'First-sync baseline has only ${baselineTiles.length} tile(s) '
+              'on My Courses. Expected ≥ 2. Tiles seen: '
+              '${baselineTiles.toList()..sort()}.',
+        );
 
         // ── 6. Open target course ───────────────────────────────────────
         step('step 6: opening course "${IntegrationEnv.courseTitle}"');
@@ -291,21 +307,23 @@ List<String> _visibleSequenceTileTitles(WidgetTester tester) {
 
 Set<String> _currentCourseTileTitles(WidgetTester tester) {
   final titles = <String>{};
-  for (final element in byTypeName('_CourseTile').evaluate()) {
-    // Title is the first descendant Text widget in each tile (the
-    // `run.title` slot — see dart/app/lib/features/courses/screens/
-    // home_screen.dart). `_OcwCourseTile` follows the same convention,
-    // but this test scopes to MITx enrollments via `_CourseTile`.
-    final textFinder = find.descendant(
-      of: find.byWidget(element.widget),
-      matching: find.byType(Text),
-    );
-    final matches = textFinder.evaluate().toList();
-    if (matches.isEmpty) continue;
-    final widget = matches.first.widget as Text;
-    final data = widget.data;
-    if (data != null && data.isNotEmpty) {
-      titles.add(data);
+  // Collect titles from both MITx (_CourseTile) and OCW (_OcwCourseTile)
+  // rows — both render on the home screen when a favourites list pulls
+  // in OCW content. Title is the first descendant Text widget in each
+  // tile (the `run.title` / `course.title` slot in home_screen.dart).
+  for (final typeName in const ['_CourseTile', '_OcwCourseTile']) {
+    for (final element in byTypeName(typeName).evaluate()) {
+      final textFinder = find.descendant(
+        of: find.byWidget(element.widget),
+        matching: find.byType(Text),
+      );
+      final matches = textFinder.evaluate().toList();
+      if (matches.isEmpty) continue;
+      final widget = matches.first.widget as Text;
+      final data = widget.data;
+      if (data != null && data.isNotEmpty) {
+        titles.add(data);
+      }
     }
   }
   return titles;

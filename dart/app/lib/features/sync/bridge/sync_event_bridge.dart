@@ -148,6 +148,16 @@ class SyncEventBridge {
         if (arg != null) {
           ref.invalidate(ocwCourseProvider(arg));
         }
+        // Home-screen OCW list reads `cached_ocw_courses` + memberships.
+        // Memberships are written during reconciliation (and invalidate
+        // activeOcwCoursesProvider via the 'memberships' branch above),
+        // but the course rows themselves land here — one per OCW course
+        // as `_fetchOcwCourse` completes. Without this invalidation, a
+        // first-sync that added a new OCW course to the user's selection
+        // leaves the home list showing 0 OCW tiles until the widget
+        // remounts: the `memberships` invalidation fired before the rows
+        // existed, and nothing re-queries after the rows land.
+        ref.invalidate(activeOcwCoursesProvider);
       case 'sequenceDetail':
         if (arg != null) {
           ref.invalidate(sequenceDetailProvider(blockId: arg));
