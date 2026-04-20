@@ -7,29 +7,27 @@ import 'package:omnilect/core/storage/database_provider.dart';
 /// blob — OCW metadata lives in its own `cached_ocw_courses` table, populated
 /// by `_fetchOcwCourse` in the sync pipeline.
 ///
-/// Yields an empty list before the first reconciliation sync completes.
+/// Returns an empty list before the first reconciliation sync completes.
 ///
-/// Implemented as a plain `StreamProvider` (not `@riverpod`-generated) to
-/// avoid a known build-order bug where `riverpod_generator` can't resolve
-/// Drift-generated table row classes on a clean build.
+/// Implemented as a `FutureProvider` (not a Drift `watch()` stream) because
+/// memberships + OCW rows are written by the sync isolate; Drift's stream
+/// cache on the main isolate doesn't pick up cross-isolate writes. The
+/// bridge fires `ref.invalidate(activeOcwCoursesProvider)` on
+/// DbInvalidated('memberships') and DbInvalidated('ocwCourse'), which
+/// rebuilds this provider and re-runs direct queries against SQLite.
 // ignore: specify_nonobvious_property_types
 final activeOcwCoursesProvider =
-    StreamProvider.autoDispose<List<CachedOcwCourse>>((ref) async* {
+    FutureProvider.autoDispose<List<CachedOcwCourse>>((ref) async {
   final db = ref.read(appDatabaseProvider);
-  await for (final memberships in db.select(db.courseListMemberships).watch()) {
-    final allowed = memberships
-        .map((m) => m.courseId)
-        .where((id) => id.startsWith('ocw:'))
-        .toSet();
-    if (allowed.isEmpty) {
-      yield const [];
-      continue;
-    }
-    final rows = await (db.select(db.cachedOcwCourses)
-          ..where((t) => t.courseId.isIn(allowed)))
-        .get();
-    yield rows;
-  }
+  final memberships = await db.select(db.courseListMemberships).get();
+  final allowed = memberships
+      .map((m) => m.courseId)
+      .where((id) => id.startsWith('ocw:'))
+      .toSet();
+  if (allowed.isEmpty) return const [];
+  return (db.select(db.cachedOcwCourses)
+        ..where((t) => t.courseId.isIn(allowed)))
+      .get();
 });
 
 /// Stream of one OCW course by id. Null until the sync pipeline has written

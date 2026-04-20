@@ -35,38 +35,39 @@ Future<List<Enrollment>> enrollments(Ref ref) async {
 /// Before the first reconciliation sync completes after onboarding the
 /// membership table is still empty, so this provider yields an empty list.
 /// The home screen handles that by auto-triggering sync.
+///
+/// Implemented as a `Future` (not a Drift `watch()` stream) because
+/// memberships are written by the sync isolate; Drift's stream cache on the
+/// main isolate doesn't pick up cross-isolate writes. The bridge fires
+/// `ref.invalidate(activeEnrollmentsProvider)` on DbInvalidated('memberships'),
+/// which rebuilds this provider and re-runs the direct query against SQLite
+/// (WAL makes the sync-isolate commits visible).
 @riverpod
-Stream<List<Enrollment>> activeEnrollments(Ref ref) async* {
+Future<List<Enrollment>> activeEnrollments(Ref ref) async {
   final db = ref.read(appDatabaseProvider);
-  _log.info('activeEnrollments: subscribing to memberships watch');
-
-  // Drive on membership changes so removing a list in settings updates the
-  // home view as soon as reconciliation commits.
-  await for (final memberships in db.select(db.courseListMemberships).watch()) {
-    final allowedCourseIds = memberships.map((m) => m.courseId).toSet();
-    final cached = await db.getEnrollments();
-    if (cached == null) {
-      _log.info(
-        'activeEnrollments: memberships=${memberships.length} '
-        'but no cached enrollments — yielding []',
-      );
-      yield const [];
-      continue;
-    }
-    final list = jsonDecode(cached.data) as List<dynamic>;
-    final all = list
-        .map((e) => Enrollment.fromJson(e as Map<String, dynamic>))
-        .toList();
-    final filtered = all
-        .where((e) => allowedCourseIds.contains(e.run.coursewareId))
-        .toList();
+  final memberships = await db.select(db.courseListMemberships).get();
+  final allowedCourseIds = memberships.map((m) => m.courseId).toSet();
+  final cached = await db.getEnrollments();
+  if (cached == null) {
     _log.info(
       'activeEnrollments: memberships=${memberships.length} '
-      '(${allowedCourseIds.take(5).toList()}…) '
-      'cached=${all.length} '
-      '(${all.take(3).map((e) => e.run.coursewareId).toList()}…) '
-      '→ yielding ${filtered.length}',
+      'but no cached enrollments — returning []',
     );
-    yield filtered;
+    return const [];
   }
+  final list = jsonDecode(cached.data) as List<dynamic>;
+  final all = list
+      .map((e) => Enrollment.fromJson(e as Map<String, dynamic>))
+      .toList();
+  final filtered = all
+      .where((e) => allowedCourseIds.contains(e.run.coursewareId))
+      .toList();
+  _log.info(
+    'activeEnrollments: memberships=${memberships.length} '
+    '(${allowedCourseIds.take(5).toList()}…) '
+    'cached=${all.length} '
+    '(${all.take(3).map((e) => e.run.coursewareId).toList()}…) '
+    '→ returning ${filtered.length}',
+  );
+  return filtered;
 }

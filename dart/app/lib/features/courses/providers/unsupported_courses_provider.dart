@@ -31,25 +31,30 @@ class UnsupportedCourse {
   }
 }
 
-/// Streams the deduplicated union of unsupported list items across every
+/// The deduplicated union of unsupported list items across every
 /// currently-selected list. If the same resource appears in multiple lists
 /// it's shown once.
+///
+/// Implemented as a `Future` (not a Drift `watch()` stream) because the
+/// underlying table is written by the sync isolate; Drift's stream cache on
+/// the main isolate doesn't pick up cross-isolate writes. The bridge fires
+/// `ref.invalidate(unsupportedCoursesProvider)` on DbInvalidated('unsupported'),
+/// which rebuilds this provider and re-runs the direct query against SQLite.
 @riverpod
-Stream<List<UnsupportedCourse>> unsupportedCourses(Ref ref) {
+Future<List<UnsupportedCourse>> unsupportedCourses(Ref ref) async {
   final db = ref.read(appDatabaseProvider);
-  return db.watchUnsupportedListItems().map((rows) {
-    final seen = <String, UnsupportedCourse>{};
-    for (final row in rows) {
-      seen.putIfAbsent(
-        row.courseId,
-        () => UnsupportedCourse(
-          id: row.courseId,
-          title: row.title,
-          platformCode: row.platformCode,
-        ),
-      );
-    }
-    return seen.values.toList()
-      ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-  });
+  final rows = await db.select(db.unsupportedListItems).get();
+  final seen = <String, UnsupportedCourse>{};
+  for (final row in rows) {
+    seen.putIfAbsent(
+      row.courseId,
+      () => UnsupportedCourse(
+        id: row.courseId,
+        title: row.title,
+        platformCode: row.platformCode,
+      ),
+    );
+  }
+  return seen.values.toList()
+    ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
 }
