@@ -31,6 +31,12 @@ class DownloadButton extends ConsumerWidget {
       verticalId: verticalId,
     ));
 
+    // Match the spinner to the ambient icon color so it stays visible on any
+    // background — in an AppBar the IconTheme resolves to the foreground
+    // (white on a red bar); in list tiles it falls back to the theme primary.
+    final spinnerColor =
+        IconTheme.of(context).color ?? Theme.of(context).colorScheme.onSurface;
+
     return stateAsync.when(
       loading: () => SizedBox(
         width: iconSize + 8,
@@ -39,7 +45,10 @@ class DownloadButton extends ConsumerWidget {
           child: SizedBox(
             width: iconSize,
             height: iconSize,
-            child: const CircularProgressIndicator(strokeWidth: 2),
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: spinnerColor,
+            ),
           ),
         ),
       ),
@@ -156,6 +165,7 @@ class _ButtonForState extends StatelessWidget {
                       ? state.requestedProgress
                       : null,
                   strokeWidth: 2,
+                  color: iconColor,
                 ),
                 _DownloadArrow(size: _innerArrowSize, color: iconColor),
               ],
