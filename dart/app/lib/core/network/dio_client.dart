@@ -168,8 +168,10 @@ class DioClient {
     }
 
     var nextUrl = '$kLmsBaseUrl/auth/login/ol-oauth2/?auth_entry=login';
+    var lastUri = Uri.parse(nextUrl);
     for (var hop = 0; hop < 15; hop++) {
       final uri = Uri.parse(nextUrl);
+      lastUri = uri;
 
       // Domain-suffix matching: include cookies stored under parent domains.
       final host = uri.host;
@@ -220,6 +222,25 @@ class DioClient {
       _cookies.putIfAbsent(entry.key, () => {}).addAll(entry.value);
     }
     await _store.saveAll(_cookies);
+
+    // A successful handshake always terminates on courses.learn.mit.edu (the
+    // OAuth callback completes there and the LMS session cookies are set in
+    // the same response). Landing anywhere else — most often sso.ol.mit.edu
+    // (Keycloak login form) or mitxonline.mit.edu/login — means the
+    // mitxonline session is stale and no amount of silent refresh will fix
+    // it. Throw so `_runLms` escalates to the mitxonline reauth dialog
+    // instead of signalling success and spinning on the same 401 forever.
+    if (lastUri.host != 'courses.learn.mit.edu') {
+      _log.warning(
+        'establishLmsSession: handshake did not complete on LMS '
+        '(final hop: ${lastUri.host}${lastUri.path}) — mitxonline reauth '
+        'required',
+      );
+      throw StateError(
+        'LMS handshake terminated on ${lastUri.host}; mitxonline session '
+        'appears stale',
+      );
+    }
     _log.info('establishLmsSession: complete');
   }
 
