@@ -23,6 +23,7 @@ Future<CourseSyncOutcome> syncSingleCourse(
 }) async {
   final scope = ScopeIds.course(courseId);
   final started = DateTime.now();
+  final isOcw = courseId.startsWith('ocw:');
 
   _log.info('syncCourse: START $courseId');
   _publishScope(r, scope, const ScopeState(status: ScopeStatus.syncing));
@@ -32,6 +33,14 @@ Future<CourseSyncOutcome> syncSingleCourse(
     courseId: courseId,
     trigger: trigger,
   );
+
+  // OCW courses download in a single API call, so honest progress is only
+  // "fetching / done". Seed 0/1 up-front so the course-row progress bar
+  // shows an empty state during the fetch; we flip to 1/1 at finalise.
+  // MITx progress is seeded below once we know the sequence count.
+  if (isOcw) {
+    _publishSubtaskProgress(r, scope, 0, 1);
+  }
 
   // Phase 1: outline.
   List<String> sequenceIds;
@@ -64,11 +73,16 @@ Future<CourseSyncOutcome> syncSingleCourse(
 
   if (sequenceIds.isEmpty) {
     // OCW (no sequence tree) — already done inside fetchOutline.
+    _publishSubtaskProgress(r, scope, 1, 1);
     await _finaliseCourse(r, courseId, const [], started);
     return CourseSyncOutcome.completed;
   }
 
   // Phase 2: sequences + xblocks, bounded concurrency.
+  final totalSeqs = sequenceIds.length;
+  var doneSeqs = 0;
+  _publishSubtaskProgress(r, scope, doneSeqs, totalSeqs);
+
   final collectedVerticalIds = <String>[];
   final collectedVerticalsLock = <String>{};
   var hadError = false;
@@ -86,74 +100,88 @@ Future<CourseSyncOutcome> syncSingleCourse(
         const ScopeState(status: ScopeStatus.syncing),
       );
 
-      List<String> vertIds;
       try {
-        vertIds = await fetchSequenceMetadata(r, sequenceId);
-      } on StaleSessionException {
-        rethrow;
-      } on Object catch (e, st) {
-        _log.warning('sequence $sequenceId failed', e, st);
-        hadError = true;
-        await r.db
-            .putLectureSyncError(sequenceId, courseId, _shortErrorMessage(e));
-        _publishScope(
-          r,
-          lectureScope,
-          ScopeState(
-            status: ScopeStatus.error,
-            errorMessage: _shortErrorMessage(e),
-          ),
-        );
-        return;
-      }
-
-      for (final v in vertIds) {
-        if (!collectedVerticalsLock.add(v)) continue;
-        collectedVerticalIds.add(v);
-      }
-
-      final total = vertIds.length + 1;
-      var completed = 1;
-      _publishSubtaskProgress(r, lectureScope, completed, total);
-
-      var sequenceErrored = false;
-      for (final vertId in vertIds) {
-        if (r.token.isCancelled) break;
+        List<String> vertIds;
         try {
-          await fetchAndCacheXblock(r, vertId, courseId: courseId);
+          vertIds = await fetchSequenceMetadata(r, sequenceId);
         } on StaleSessionException {
           rethrow;
         } on Object catch (e, st) {
-          _log.warning('xblock $vertId failed', e, st);
-          sequenceErrored = true;
+          _log.warning('sequence $sequenceId failed', e, st);
           hadError = true;
+          await r.db.putLectureSyncError(
+            sequenceId,
+            courseId,
+            _shortErrorMessage(e),
+          );
+          _publishScope(
+            r,
+            lectureScope,
+            ScopeState(
+              status: ScopeStatus.error,
+              errorMessage: _shortErrorMessage(e),
+            ),
+          );
+          return;
         }
-        completed++;
-        _publishSubtaskProgress(r, lectureScope, completed, total);
-      }
 
-      if (sequenceErrored) {
-        await r.db.putLectureSyncError(
-          sequenceId,
-          courseId,
-          'One or more content blocks failed to sync',
-        );
-        _publishScope(
-          r,
-          lectureScope,
-          const ScopeState(
-            status: ScopeStatus.error,
-            errorMessage: 'One or more content blocks failed to sync',
-          ),
-        );
-      } else {
-        final now = DateTime.now();
-        await r.db.putLectureSyncSuccess(sequenceId, courseId, now);
-        _publishScope(
-          r,
-          lectureScope,
-          ScopeState(lastSyncedAt: now),
-        );
+        for (final v in vertIds) {
+          if (!collectedVerticalsLock.add(v)) continue;
+          collectedVerticalIds.add(v);
+        }
+
+        final total = vertIds.length + 1;
+        var completed = 1;
+        _publishSubtaskProgress(r, lectureScope, completed, total);
+
+        var sequenceErrored = false;
+        for (final vertId in vertIds) {
+          if (r.token.isCancelled) break;
+          try {
+            await fetchAndCacheXblock(r, vertId, courseId: courseId);
+          } on StaleSessionException {
+            rethrow;
+          } on Object catch (e, st) {
+            _log.warning('xblock $vertId failed', e, st);
+            sequenceErrored = true;
+            hadError = true;
+          }
+          completed++;
+          _publishSubtaskProgress(r, lectureScope, completed, total);
+        }
+
+        if (sequenceErrored) {
+          await r.db.putLectureSyncError(
+            sequenceId,
+            courseId,
+            'One or more content blocks failed to sync',
+          );
+          _publishScope(
+            r,
+            lectureScope,
+            const ScopeState(
+              status: ScopeStatus.error,
+              errorMessage: 'One or more content blocks failed to sync',
+            ),
+          );
+        } else {
+          final now = DateTime.now();
+          await r.db.putLectureSyncSuccess(sequenceId, courseId, now);
+          _publishScope(
+            r,
+            lectureScope,
+            ScopeState(lastSyncedAt: now),
+          );
+        }
+      } finally {
+        // Tick the course-scope progress bar once per sequence, regardless
+        // of success or per-lecture error — the lecture is "done" from the
+        // course's point of view either way. Cancelled workers skip the
+        // tick so we don't count aborted work.
+        if (!r.token.isCancelled) {
+          doneSeqs++;
+          _publishSubtaskProgress(r, scope, doneSeqs, totalSeqs);
+        }
       }
     },
   );
