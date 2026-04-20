@@ -129,15 +129,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   const <CachedOcwCourse>[];
 
           if (enrollments.isEmpty && ocwCourses.isEmpty && unsupported.isEmpty) {
-            // Distinguish "loading initial sync" from "genuinely no enrolled
-            // courses". The manager is still spawning on first login (so
-            // isSyncingAll hasn't flipped yet), and even after it spawns
-            // there's a window before reconciliation populates memberships.
+            // "Loading your courses…" is reserved for the very first
+            // list-fetch: before enrollments have ever been cached. Once
+            // fetchEnrollments commits (full_sync_op fires
+            // DbInvalidated('enrollments') immediately after), the home
+            // switches to the list view even if reconciliation +
+            // per-course content sync are still running — individual
+            // tiles expose their own syncing state.
             final managerLoading = ref.watch(syncManagerProvider).isLoading;
-            final isInitialSync = isSyncing || managerLoading;
+            final enrollmentsCached =
+                ref.watch(enrollmentsProvider).hasValue;
+            final isInitialListFetch = !enrollmentsCached &&
+                (isSyncing || managerLoading);
             return _PullToSyncWrapper(
               onRefresh: restartSync,
-              child: isInitialSync
+              child: isInitialListFetch
                   ? const _LoadingCoursesState()
                   : const _NotEnrolledState(),
             );
