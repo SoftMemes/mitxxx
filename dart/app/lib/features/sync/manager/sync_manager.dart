@@ -168,8 +168,7 @@ class SyncManager {
     }
     if (event is ScopeStateChanged && event.scopeId.startsWith('lecture:')) {
       _log.info(
-        'recv ScopeStateChanged ${event.scopeId} status=${event.state.status} '
-        'lastSyncedAt=${event.state.lastSyncedAt}',
+        'recv ScopeStateChanged ${event.scopeId} status=${event.state.status}',
       );
     }
     _eventsController.add(event);

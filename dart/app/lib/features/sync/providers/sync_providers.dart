@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'package:logging/logging.dart';
 import 'package:omnilect/core/network/dio_client_provider.dart';
+import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/auth/providers/auth_provider.dart';
 import 'package:omnilect/features/auth/providers/reauth_provider.dart';
 import 'package:omnilect/features/sync/bridge/session_refresh_manager.dart';
@@ -110,20 +111,64 @@ bool isSyncingAll(Ref ref) {
   return op is FullSyncOpInfo || op is ListsRefreshOpInfo;
 }
 
-/// Per-course scope state (idle / scheduled / syncing / error).
+/// Persisted per-course sync record (lastSyncedAt + lastError) read from
+/// the DB. Invalidated by [SyncEventBridge] whenever the sync isolate emits
+/// a `DbInvalidated('courseSync', courseId)` event, so writes on the sync
+/// isolate become visible to the main-isolate UI.
 @riverpod
-ScopeState courseScopeState(Ref ref, String courseId) {
-  final state = ref.watch(syncManagerStateProvider).value;
-  if (state == null) return const ScopeState();
-  return state.scope(ScopeIds.course(courseId));
+Future<({DateTime? lastSyncedAt, String? lastError})?> courseSyncRecord(
+  Ref ref,
+  String courseId,
+) async {
+  final db = ref.read(appDatabaseProvider);
+  return db.getSyncState(courseId);
 }
 
-/// Per-sequence (lecture) scope state.
+/// Persisted per-lecture sync record (lastSyncedAt + lastError) read from
+/// the DB. Invalidated by [SyncEventBridge] on
+/// `DbInvalidated('lectureSync', sequenceId)`.
 @riverpod
-ScopeState lectureScopeState(Ref ref, String sequenceId) {
+Future<({DateTime? lastSyncedAt, String? lastError})?> lectureSyncRecord(
+  Ref ref,
+  String sequenceId,
+) async {
+  final db = ref.read(appDatabaseProvider);
+  return db.getLectureSyncState(sequenceId);
+}
+
+/// Combined view of a course's sync state — ephemeral in-memory status +
+/// progress from [SyncManagerState] merged with the persisted DB record.
+/// This is what the UI should watch. Because `lastSyncedAt` / `errorMessage`
+/// come from the DB (authoritative), a transient sync failure no longer
+/// wipes the "Synced X ago" label from the UI.
+@riverpod
+ScopeDisplay courseScopeState(Ref ref, String courseId) {
   final state = ref.watch(syncManagerStateProvider).value;
-  if (state == null) return const ScopeState();
-  return state.scope(ScopeIds.lecture(sequenceId));
+  final scope = state?.scope(ScopeIds.course(courseId)) ?? const ScopeState();
+  final record = ref.watch(courseSyncRecordProvider(courseId)).value;
+  return ScopeDisplay(
+    status: scope.status,
+    completed: scope.completed,
+    total: scope.total,
+    lastSyncedAt: record?.lastSyncedAt,
+    errorMessage: record?.lastError,
+  );
+}
+
+/// Combined view of a lecture's sync state. See [courseScopeState].
+@riverpod
+ScopeDisplay lectureScopeState(Ref ref, String sequenceId) {
+  final state = ref.watch(syncManagerStateProvider).value;
+  final scope =
+      state?.scope(ScopeIds.lecture(sequenceId)) ?? const ScopeState();
+  final record = ref.watch(lectureSyncRecordProvider(sequenceId)).value;
+  return ScopeDisplay(
+    status: scope.status,
+    completed: scope.completed,
+    total: scope.total,
+    lastSyncedAt: record?.lastSyncedAt,
+    errorMessage: record?.lastError,
+  );
 }
 
 /// Raw event stream for the dev debugger / bridge dispatchers. Consumers

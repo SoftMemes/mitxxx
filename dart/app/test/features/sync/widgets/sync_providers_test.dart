@@ -8,7 +8,8 @@ void main() {
       const s = SyncManagerState();
       final scope = s.scope(ScopeIds.course('c1'));
       expect(scope.status, ScopeStatus.idle);
-      expect(scope.lastSyncedAt, isNull);
+      expect(scope.completed, 0);
+      expect(scope.total, 0);
     });
 
     test('returns stored ScopeState when key is present', () {
@@ -24,7 +25,7 @@ void main() {
   });
 
   group('SyncManagerState.withScope', () {
-    test('drops an idle+no-metadata scope from the map', () {
+    test('drops an idle+no-progress scope from the map', () {
       final s = SyncManagerState(
         scopeStates: {
           ScopeIds.course('c1'):
@@ -34,24 +35,32 @@ void main() {
       expect(s.scopeStates, isEmpty);
     });
 
-    test('keeps a scope that carries lastSyncedAt', () {
-      final now = DateTime.now();
+    test('keeps a scope with a non-idle status', () {
       final s = const SyncManagerState().withScope(
         ScopeIds.course('c1'),
-        ScopeState(lastSyncedAt: now),
+        const ScopeState(status: ScopeStatus.syncing),
       );
-      expect(s.scope(ScopeIds.course('c1')).lastSyncedAt, now);
+      expect(
+        s.scope(ScopeIds.course('c1')).status,
+        ScopeStatus.syncing,
+      );
     });
 
-    test('keeps an error scope even with no lastSyncedAt', () {
+    test('keeps an error scope', () {
       final s = const SyncManagerState().withScope(
         ScopeIds.course('c1'),
-        const ScopeState(
-          status: ScopeStatus.error,
-          errorMessage: 'boom',
-        ),
+        const ScopeState(status: ScopeStatus.error),
       );
       expect(s.scope(ScopeIds.course('c1')).status, ScopeStatus.error);
+    });
+
+    test('keeps a scope with progress counters even when idle', () {
+      final s = const SyncManagerState().withScope(
+        ScopeIds.course('c1'),
+        const ScopeState(completed: 2, total: 5),
+      );
+      expect(s.scope(ScopeIds.course('c1')).completed, 2);
+      expect(s.scope(ScopeIds.course('c1')).total, 5);
     });
   });
 

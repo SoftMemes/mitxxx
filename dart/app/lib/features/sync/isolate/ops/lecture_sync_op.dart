@@ -70,9 +70,10 @@ class LectureSyncOp extends LogicalOp {
       _log.warning('lectureSync($sequenceId): metadata failed', e, st);
       await runtime.ctx.db
           .putLectureSyncError(sequenceId, courseId, e.toString());
+      runtime.events.add(DbInvalidated('lectureSync', sequenceId));
       runtime.events.add(ScopeStateChanged(
         scope,
-        ScopeState(status: ScopeStatus.error, errorMessage: e.toString()),
+        const ScopeState(status: ScopeStatus.error),
       ));
       runtime.analytics.logSyncFailure(
         scope: 'section',
@@ -109,12 +110,10 @@ class LectureSyncOp extends LogicalOp {
         courseId,
         'Some content failed to sync',
       );
+      runtime.events.add(DbInvalidated('lectureSync', sequenceId));
       runtime.events.add(ScopeStateChanged(
         scope,
-        const ScopeState(
-          status: ScopeStatus.error,
-          errorMessage: 'Some content failed to sync',
-        ),
+        const ScopeState(status: ScopeStatus.error),
       ));
       runtime.analytics.logSyncFailure(
         scope: 'section',
@@ -126,10 +125,8 @@ class LectureSyncOp extends LogicalOp {
     } else {
       final now = DateTime.now();
       await runtime.db.putLectureSyncSuccess(sequenceId, courseId, now);
-      runtime.events.add(ScopeStateChanged(
-        scope,
-        ScopeState(lastSyncedAt: now),
-      ));
+      runtime.events.add(DbInvalidated('lectureSync', sequenceId));
+      runtime.events.add(ScopeStateChanged(scope, const ScopeState()));
       runtime.analytics.logSyncComplete(
         scope: 'section',
         courseId: courseId,

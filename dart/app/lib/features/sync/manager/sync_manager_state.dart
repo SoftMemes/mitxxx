@@ -75,8 +75,8 @@ class SyncManagerState {
   SyncManagerState withScope(String scopeId, ScopeState state) {
     final next = Map<String, ScopeState>.from(scopeStates);
     if (state.status == ScopeStatus.idle &&
-        state.lastSyncedAt == null &&
-        state.errorMessage == null) {
+        state.completed == 0 &&
+        state.total == 0) {
       next.remove(scopeId);
     } else {
       next[scopeId] = state;

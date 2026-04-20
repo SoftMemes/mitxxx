@@ -70,10 +70,7 @@ class FullSyncOp extends LogicalOp {
       _publishScope(
         runtime,
         ScopeIds.allCourses,
-        ScopeState(
-          status: ScopeStatus.error,
-          errorMessage: e.toString(),
-        ),
+        const ScopeState(status: ScopeStatus.error),
       );
       runtime.analytics.logSyncFailure(
         scope: 'all_courses',
@@ -110,10 +107,7 @@ class FullSyncOp extends LogicalOp {
       _publishScope(
         runtime,
         ScopeIds.allCourses,
-        ScopeState(
-          status: ScopeStatus.error,
-          errorMessage: e.toString(),
-        ),
+        const ScopeState(status: ScopeStatus.error),
       );
       runtime.analytics.logSyncFailure(
         scope: 'all_courses',
@@ -131,11 +125,7 @@ class FullSyncOp extends LogicalOp {
 
     if (targetCourseIds.isEmpty) {
       _log.info('fullSync: empty target set — nothing to sync');
-      _publishScope(
-        runtime,
-        ScopeIds.allCourses,
-        ScopeState(lastSyncedAt: DateTime.now()),
-      );
+      _publishScope(runtime, ScopeIds.allCourses, const ScopeState());
       runtime.analytics.logSyncComplete(
         scope: 'all_courses',
         durationMs: DateTime.now().difference(started).inMilliseconds,
@@ -174,11 +164,7 @@ class FullSyncOp extends LogicalOp {
       return;
     }
 
-    _publishScope(
-      runtime,
-      ScopeIds.allCourses,
-      ScopeState(lastSyncedAt: DateTime.now()),
-    );
+    _publishScope(runtime, ScopeIds.allCourses, const ScopeState());
 
     final durationMs = DateTime.now().difference(started).inMilliseconds;
     _log.info(

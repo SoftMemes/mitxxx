@@ -17,6 +17,7 @@ import 'package:omnilect/features/progress/providers/progress_tracker_provider.d
 import 'package:omnilect/features/sync/isolate/isolate_logger_bridge.dart';
 import 'package:omnilect/features/sync/isolate/sync_messages.dart';
 import 'package:omnilect/features/sync/manager/sync_manager.dart';
+import 'package:omnilect/features/sync/providers/sync_providers.dart';
 
 final _log = Logger('sync.bridge');
 
@@ -165,6 +166,22 @@ class SyncEventBridge {
       case 'xblockContent':
         if (arg != null) {
           ref.invalidate(xblockContentProvider(blockId: arg));
+        }
+      case 'courseSync':
+        // Persisted per-course lastSyncedAt/lastError — UI reads this via
+        // courseSyncRecordProvider (family keyed on courseId). With arg:
+        // one course changed; without: a bulk refresh (e.g. post-sign-in).
+        if (arg != null) {
+          ref.invalidate(courseSyncRecordProvider(arg));
+        } else {
+          ref.invalidate(courseSyncRecordProvider);
+        }
+      case 'lectureSync':
+        // Persisted per-lecture lastSyncedAt/lastError.
+        if (arg != null) {
+          ref.invalidate(lectureSyncRecordProvider(arg));
+        } else {
+          ref.invalidate(lectureSyncRecordProvider);
         }
       default:
         _log.warning('unknown DbInvalidated family: ${event.family}');

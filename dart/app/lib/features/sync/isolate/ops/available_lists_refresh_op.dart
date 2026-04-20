@@ -172,9 +172,9 @@ class AvailableListsRefreshOp extends LogicalOp {
     // happens on THIS isolate — emit an invalidation event instead.
     runtime.events.add(const DbInvalidated('availableLists'));
 
-    runtime.events.add(ScopeStateChanged(
+    runtime.events.add(const ScopeStateChanged(
       ScopeIds.availableLists,
-      ScopeState(lastSyncedAt: DateTime.now()),
+      ScopeState(),
     ));
 
     final durationMs = DateTime.now().difference(started).inMilliseconds;

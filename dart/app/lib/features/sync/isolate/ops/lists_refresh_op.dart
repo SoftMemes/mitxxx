@@ -53,9 +53,9 @@ class ListsRefreshOp extends LogicalOp {
       rethrow;
     } on Object catch (e, st) {
       _log.warning('listsRefresh: enrollment fetch failed', e, st);
-      runtime.events.add(ScopeStateChanged(
+      runtime.events.add(const ScopeStateChanged(
         ScopeIds.lists,
-        ScopeState(status: ScopeStatus.error, errorMessage: e.toString()),
+        ScopeState(status: ScopeStatus.error),
       ));
       runtime.analytics.logSyncFailure(
         scope: 'lists',
@@ -73,9 +73,9 @@ class ListsRefreshOp extends LogicalOp {
       rethrow;
     } on Object catch (e, st) {
       _log.warning('listsRefresh: reconciliation failed', e, st);
-      runtime.events.add(ScopeStateChanged(
+      runtime.events.add(const ScopeStateChanged(
         ScopeIds.lists,
-        ScopeState(status: ScopeStatus.error, errorMessage: e.toString()),
+        ScopeState(status: ScopeStatus.error),
       ));
       runtime.analytics.logSyncFailure(
         scope: 'lists',
@@ -86,10 +86,7 @@ class ListsRefreshOp extends LogicalOp {
       return;
     }
 
-    runtime.events.add(ScopeStateChanged(
-      ScopeIds.lists,
-      ScopeState(lastSyncedAt: DateTime.now()),
-    ));
+    runtime.events.add(const ScopeStateChanged(ScopeIds.lists, ScopeState()));
     runtime.analytics.logSyncComplete(
       scope: 'lists',
       durationMs: DateTime.now().difference(started).inMilliseconds,

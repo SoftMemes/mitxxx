@@ -13,9 +13,15 @@ final _log = Logger('sync.course');
 /// Runs the per-course sync work for a single course. Used by both
 /// `CourseSyncOp` (directly) and `FullSyncOp` (looped per course).
 ///
-/// Emits [ScopeStateChanged] events for the course and each of its sequences.
-/// Sub-task errors are logged and per-scope error state is published; only
-/// [StaleSessionException] aborts the whole course sync.
+/// Emits [ScopeStateChanged] events for the course and each of its sequences
+/// to drive in-memory status/progress. Persistent `lastSyncedAt` /
+/// `lastError` are written to the DB (`cached_course_sync` /
+/// `cached_lecture_sync`) and surfaced to the UI via
+/// [DbInvalidated] — the bridge invalidates `courseSyncRecordProvider` /
+/// `lectureSyncRecordProvider`, which the combined UI provider recombines
+/// with in-memory status. Sub-task errors are logged and per-scope error
+/// state is published; only [StaleSessionException] aborts the whole course
+/// sync.
 Future<CourseSyncOutcome> syncSingleCourse(
   OpRuntime r, {
   required String courseId,
@@ -51,14 +57,8 @@ Future<CourseSyncOutcome> syncSingleCourse(
   } on Object catch (e, st) {
     _log.warning('syncCourse($courseId): outline fetch failed', e, st);
     await r.db.putSyncError(courseId, e.toString());
-    _publishScope(
-      r,
-      scope,
-      ScopeState(
-        status: ScopeStatus.error,
-        errorMessage: _shortErrorMessage(e),
-      ),
-    );
+    r.events.add(DbInvalidated('courseSync', courseId));
+    _publishScope(r, scope, const ScopeState(status: ScopeStatus.error));
     r.analytics.logSyncFailure(
       scope: 'course',
       courseId: courseId,
@@ -114,13 +114,11 @@ Future<CourseSyncOutcome> syncSingleCourse(
             courseId,
             _shortErrorMessage(e),
           );
+          r.events.add(DbInvalidated('lectureSync', sequenceId));
           _publishScope(
             r,
             lectureScope,
-            ScopeState(
-              status: ScopeStatus.error,
-              errorMessage: _shortErrorMessage(e),
-            ),
+            const ScopeState(status: ScopeStatus.error),
           );
           return;
         }
@@ -156,22 +154,17 @@ Future<CourseSyncOutcome> syncSingleCourse(
             courseId,
             'One or more content blocks failed to sync',
           );
+          r.events.add(DbInvalidated('lectureSync', sequenceId));
           _publishScope(
             r,
             lectureScope,
-            const ScopeState(
-              status: ScopeStatus.error,
-              errorMessage: 'One or more content blocks failed to sync',
-            ),
+            const ScopeState(status: ScopeStatus.error),
           );
         } else {
           final now = DateTime.now();
           await r.db.putLectureSyncSuccess(sequenceId, courseId, now);
-          _publishScope(
-            r,
-            lectureScope,
-            ScopeState(lastSyncedAt: now),
-          );
+          r.events.add(DbInvalidated('lectureSync', sequenceId));
+          _publishScope(r, lectureScope, const ScopeState());
         }
       } finally {
         // Tick the course-scope progress bar once per sequence, regardless
@@ -223,20 +216,14 @@ Future<void> _finaliseCourse(
   }
   final now = DateTime.now();
   await r.db.putSyncSuccess(courseId, now);
-  _publishScope(
-    r,
-    ScopeIds.course(courseId),
-    ScopeState(lastSyncedAt: now),
-  );
+  r.events.add(DbInvalidated('courseSync', courseId));
+  _publishScope(r, ScopeIds.course(courseId), const ScopeState());
   r.events.add(ValidateTrackedLecture(courseId));
 }
 
 void _publishScope(OpRuntime r, String scope, ScopeState state) {
   if (scope.startsWith('lecture:')) {
-    _log.info(
-      'emit ScopeStateChanged $scope status=${state.status} '
-      'lastSyncedAt=${state.lastSyncedAt}',
-    );
+    _log.info('emit ScopeStateChanged $scope status=${state.status}');
   }
   r.events.add(ScopeStateChanged(scope, state));
 }
