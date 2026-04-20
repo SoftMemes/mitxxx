@@ -108,6 +108,7 @@ run_patrol() {
   fvm dart run patrol_cli:main test \
     --target="$TARGET" \
     --flavor=dev \
+    --show-flutter-logs \
     "${DEVICE_ARGS[@]}" \
     --dart-define="INTEGRATION_EMAIL=$INTEGRATION_EMAIL" \
     --dart-define="INTEGRATION_PASSWORD=$INTEGRATION_PASSWORD" \
