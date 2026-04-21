@@ -117,18 +117,18 @@ packages:
     dependency: "direct main"
     description:
       name: audio_session
-      sha256: "2b7fff16a552486d078bfc09a8cde19f426dc6d6329262b684182597bec5b1ac"
+      sha256: "7217b229db57cc4dc577a8abb56b7429a5a212b978517a5be578704bfe5e568b"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.25"
+    version: "0.2.3"
   background_downloader:
     dependency: "direct main"
     description:
       name: background_downloader
-      sha256: c3814aa0466368a4c1c32d24bc73ded752edacf06731ead43857a3ac992ed52d
+      sha256: "4cb23d9ad4f5060944f38164e7b90d4bf99b57b2472a3bd4676e59b2db4afd06"
       url: "https://pub.dev"
     source: hosted
-    version: "8.9.5"
+    version: "9.5.4"
   boolean_selector:
     dependency: transitive
     description:
@@ -285,10 +285,10 @@ packages:
     dependency: "direct main"
     description:
       name: connectivity_plus
-      sha256: b5e72753cf63becce2c61fd04dfe0f1c430cc5278b53a1342dc5ad839eab29ec
+      sha256: "62ffa266d9a23b79fb3fcbc206afc00bb979417ba57b1324c546b5aab95ba057"
       url: "https://pub.dev"
     source: hosted
-    version: "6.1.5"
+    version: "7.1.1"
   connectivity_plus_platform_interface:
     dependency: transitive
     description:
@@ -734,10 +734,10 @@ packages:
     dependency: "direct main"
     description:
       name: go_router
-      sha256: f02fd7d2a4dc512fec615529824fdd217fecb3a3d3de68360293a551f21634b3
+      sha256: "08b742eef4f71c9df5af543751cd0b7f1c679c4088488f4223ecaddc1a813b79"
       url: "https://pub.dev"
     source: hosted
-    version: "14.8.1"
+    version: "17.2.2"
   graphs:
     dependency: transitive
     description:
@@ -1191,6 +1191,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.0.5"
+  prompts:
+    dependency: transitive
+    description:
+      name: prompts
+      sha256: "3773b845e85a849f01e793c4fc18a45d52d7783b4cb6c0569fad19f9d0a774a1"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.0"
   provider:
     dependency: transitive
     description:
@@ -1275,10 +1283,10 @@ packages:
     dependency: "direct dev"
     description:
       name: rps
-      sha256: "7a2b9a1751506a9fcaba0af11e0d84115295a7a4b8cbf84ea178283588f7c010"
+      sha256: "0ace6102743504a790f509056a03284386fa8c3164f43613e40c8422d879c96e"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.0"
+    version: "0.10.1"
   rxdart:
     dependency: transitive
     description:
