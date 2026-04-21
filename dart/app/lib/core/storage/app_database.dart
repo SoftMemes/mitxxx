@@ -299,7 +299,7 @@ class AppDatabase extends _$AppDatabase {
 
   /// Test constructor. Use with `NativeDatabase.memory()` to get an in-memory
   /// DB for unit tests.
-  AppDatabase.forTesting(super.executor);
+  AppDatabase.forTesting(super.e);
 
   @override
   int get schemaVersion => 12;

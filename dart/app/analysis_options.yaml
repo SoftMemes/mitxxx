@@ -16,3 +16,10 @@ linter:
     document_ignores: false
     lines_longer_than_80_chars: false
     public_member_api_docs: false
+    # Fire-and-forget is the deliberate pattern for UI event handlers,
+    # stream listeners, and bootstrap — chasing this with `unawaited()`
+    # at ~60 sites is noise for no behavior change.
+    discarded_futures: false
+    # The codebase consistently uses `for (final x in xs)` loops, which
+    # Dart effective-style also prefers over `.forEach` for side effects.
+    prefer_foreach: false
