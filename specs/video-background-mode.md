@@ -492,7 +492,9 @@ platform plumbing is hard to exercise in a Flutter test harness.
 
 ### Manual QA checklist
 
-On a physical iPhone and a physical Android device:
+On a physical iPhone and a physical Android device, run the checklist
+below once with an MITx lecture and once with an OCW lecture (step 4 is
+MITx-only since OCW is single-segment):
 
 1. Start a lecture playing, press side button. Verify audio keeps
    playing. Verify lock-screen artwork, title, course, duration, and
@@ -568,7 +570,8 @@ v1.
   the handler.
 - `dart/app/lib/features/player/background/media_item_builder.dart` —
   builds a `MediaItem` from course + lecture metadata (resolves artwork
-  URI with local-file fallback).
+  URI with local-file fallback). Dispatches on `courseId.startsWith('ocw:')`
+  to read from MITx vs. OCW course models.
 - `dart/app/test/features/player/background/lecture_audio_handler_test.dart`
 - `dart/app/test/features/player/background/audio_session_controller_test.dart`
 
