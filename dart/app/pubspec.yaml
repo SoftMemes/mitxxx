@@ -9,6 +9,8 @@ environment:
 
 dependencies:
   advertising_id: ^2.7.1
+  audio_service: ^0.18.15
+  audio_session: ^0.1.21
   background_downloader: ^8.0.0
   chewie: ^1.8.5
   connectivity_plus: ^6.1.3

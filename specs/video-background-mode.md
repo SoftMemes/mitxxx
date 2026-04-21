@@ -1,7 +1,7 @@
 # Video Background Mode Specification
 
 > **Version**: 1.0 (April 2026)
-> **Status**: Ready for Implementation
+> **Status**: Implemented
 > **Last Updated**: 2026-04-21
 
 ## Overview / Goals
@@ -601,3 +601,76 @@ v1.
 - Progress tracking providers / tables — continue to work unchanged
   because they subscribe to the same `PlaybackSnapshot` notifier that the
   audio handler reads from.
+
+## Implementation Notes
+
+**Implemented**: April 2026
+
+### Key changes
+
+- `dart/app/pubspec.yaml` — added `audio_service ^0.18.15` (resolved to
+  0.18.18) and `audio_session ^0.1.21` (resolved to 0.1.25).
+- New `dart/app/lib/features/player/background/` directory with four
+  files:
+  - `lecture_audio_handler.dart` — `BaseAudioHandler` adapter; forwards
+    `play` / `pause` / `seek` / `fastForward` / `rewind` to the currently
+    attached `LecturePlaybackController` and mirrors its
+    `PlaybackSnapshot` into `playbackState`.
+  - `audio_session_controller.dart` — subscribes to `audio_session`'s
+    interruption and becoming-noisy streams; pauses on interruption
+    begin, auto-resumes only when the platform signals `shouldResume` /
+    `AUDIOFOCUS_GAIN` (modelled as `AudioInterruptionType.pause` on end)
+    and no intervening noisy event cleared the auto-resume flag.
+  - `media_item_builder.dart` — builds the lock-screen `MediaItem` from
+    Drift caches. Dispatches on `courseId.startsWith('ocw:')` to read
+    from the OCW or MITx sources; resolves artwork against the
+    `courseImages` table (preferring a local `file://` URI) and falls
+    back to the remote URL.
+  - `audio_service_provider.dart` — `@Riverpod(keepAlive: true)`
+    provider that throws unless overridden in the `ProviderScope`. Kept
+    as an abstraction point for tests.
+- `dart/app/lib/main.dart` — in `bootstrap()` calls
+  `AudioService.init(...)` + `AudioSession.instance.configure(speech())`
+  once, retains an `AudioSessionController.forSession(...)` for the
+  process lifetime, and overrides `lectureAudioHandlerProvider` in the
+  root `ProviderScope`.
+- `dart/app/lib/features/player/providers/lecture_player_provider.dart`
+  — added a `_wireBackgroundAudio` helper called from both the MITx
+  `build()` path and `_buildOcw()`. It awaits the `MediaItem`, attaches
+  to the handler when the cast session is not connected, listens to
+  `castControllerProvider` to detach on cast-connect and re-attach on
+  cast-disconnect, and registers `handler.detach` on provider dispose.
+
+### Tests
+
+- `test/features/player/background/lecture_audio_handler_test.dart` —
+  12 tests covering attach/detach lifecycle, snapshot propagation,
+  play/pause/seek/fast-forward/rewind delegation and clamping,
+  seek-to-0 on replay from a completed snapshot, and no-op behaviour
+  when no controller is attached.
+- `test/features/player/background/audio_session_controller_test.dart` —
+  5 tests driving fake `AudioInterruptionEvent` and becoming-noisy
+  streams through the controller to verify pause / auto-resume /
+  stay-paused semantics.
+
+Full suite: 112 / 112 passing. `flutter analyze` clean.
+
+### Deviations from spec
+
+- `AudioSessionController` takes raw
+  `Stream<AudioInterruptionEvent>` + `Stream<void>` streams rather than
+  an `AudioSession` so it can be unit-tested without a live platform
+  channel. The production path uses
+  `AudioSessionController.forSession(...)` which wires up the real
+  session.
+- The `AudioServiceConfig` in `bootstrap()` omits
+  `androidNotificationIcon`, `androidStopForegroundOnPause`, and
+  `rewindInterval` because they match `audio_service`'s own defaults.
+  The lints (`avoid_redundant_argument_values`) were flagging them —
+  behaviour is identical.
+- `fvm` is referenced in the project `CLAUDE.md` but is not installed
+  on this machine. Implementation was verified with the system Flutter
+  at `/Users/kristian/opt/flutter/bin/flutter` (3.38.5, Dart 3.10.4),
+  which satisfies the `pubspec.yaml` SDK constraint (`^3.10.4`). The
+  repo pins Flutter 3.41.0 via `.fvmrc`; a final check under that
+  exact toolchain is still pending.

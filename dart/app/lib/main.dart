@@ -1,5 +1,8 @@
+// ignore_for_file: uri_has_not_been_generated
 import 'dart:async';
 
+import 'package:audio_service/audio_service.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -16,6 +19,9 @@ import 'package:omnilect/core/storage/shared_preferences_provider.dart';
 import 'package:omnilect/core/theme/app_theme.dart';
 import 'package:omnilect/features/auth/widgets/reauth_gate.dart';
 import 'package:omnilect/features/courses/providers/legacy_selection_migration.dart';
+import 'package:omnilect/features/player/background/audio_service_provider.dart';
+import 'package:omnilect/features/player/background/audio_session_controller.dart';
+import 'package:omnilect/features/player/background/lecture_audio_handler.dart';
 import 'package:omnilect/features/sync/manager/sync_lifecycle_observer.dart';
 import 'package:omnilect/firebase_options_dev.dart';
 import 'package:omnilect/firebase_options_prod.dart';
@@ -47,11 +53,36 @@ Future<void> bootstrap() async {
 
       final dioClient = await buildDioClient();
       final prefs = await SharedPreferences.getInstance();
+
+      // Initialise background audio plumbing. `AudioService.init` must be
+      // called exactly once before `runApp`. The returned handler is later
+      // attached to a live `LecturePlaybackController` by `LecturePlayer`
+      // whenever a lecture is opened — see `lecture_player_provider.dart`.
+      final lectureAudioHandler = await AudioService.init(
+        builder: LectureAudioHandler.new,
+        config: const AudioServiceConfig(
+          androidNotificationChannelId: 'app.omnilect.lecture_audio',
+          androidNotificationChannelName: 'Lecture playback',
+          androidNotificationOngoing: true,
+          preloadArtwork: true,
+          fastForwardInterval: LectureAudioHandler.fastForwardInterval,
+        ),
+      );
+      final audioSession = await AudioSession.instance;
+      await audioSession.configure(const AudioSessionConfiguration.speech());
+      // Retain the session/handler bridge for the process lifetime.
+      AudioSessionController.forSession(
+        session: audioSession,
+        handler: lectureAudioHandler,
+      );
+
       runApp(
         ProviderScope(
           overrides: [
             dioClientProvider.overrideWithValue(dioClient),
             sharedPreferencesProvider.overrideWithValue(prefs),
+            lectureAudioHandlerProvider
+                .overrideWithValue(lectureAudioHandler),
           ],
           child: const OmnilectApp(),
         ),

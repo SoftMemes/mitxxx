@@ -1,8 +1,11 @@
 // ignore_for_file: uri_has_not_been_generated
+import 'package:audio_service/audio_service.dart';
 import 'package:logging/logging.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/cast/models/cast_queue_item.dart';
+import 'package:omnilect/features/cast/models/cast_state.dart';
+import 'package:omnilect/features/cast/providers/cast_controller.dart';
 import 'package:omnilect/features/courses/models/ocw_course.dart';
 import 'package:omnilect/features/courses/models/xblock_content.dart';
 import 'package:omnilect/features/courses/providers/sequence_provider.dart';
@@ -10,6 +13,9 @@ import 'package:omnilect/features/courses/providers/xblock_provider.dart';
 import 'package:omnilect/features/courses/utils/ocw_resource_html_builder.dart';
 import 'package:omnilect/features/courses/utils/xblock_parser.dart';
 import 'package:omnilect/features/downloads/utils/resolve_playable_uri.dart';
+import 'package:omnilect/features/player/background/audio_service_provider.dart';
+import 'package:omnilect/features/player/background/lecture_audio_handler.dart';
+import 'package:omnilect/features/player/background/media_item_builder.dart';
 import 'package:omnilect/features/player/controllers/lecture_playback_controller.dart';
 import 'package:omnilect/features/player/models/lecture_player_state.dart';
 import 'package:omnilect/features/player/models/vertical_segment.dart';
@@ -215,6 +221,18 @@ class LecturePlayer extends _$LecturePlayer {
     controller.snapshot.addListener(onPlaybackChange);
     ref.onDispose(() => controller.snapshot.removeListener(onPlaybackChange));
 
+    _wireBackgroundAudio(
+      controller: controller,
+      mediaItemFuture: MediaItemBuilder(db).buildMitx(
+        courseId: courseId,
+        sequenceId: sequenceId,
+        durationSeconds: videoSchedule.fold<double>(
+          0,
+          (sum, e) => sum + e.duration,
+        ),
+      ),
+    );
+
     unawaited(_startControllerInitialization(controller));
 
     return LecturePlayerState(
@@ -352,6 +370,16 @@ class LecturePlayer extends _$LecturePlayer {
     controller.snapshot.addListener(onPlaybackChange);
     ref.onDispose(() => controller.snapshot.removeListener(onPlaybackChange));
 
+    final ocwSlug = lectureSlug;
+    _wireBackgroundAudio(
+      controller: controller,
+      mediaItemFuture: MediaItemBuilder(db).buildOcw(
+        courseId: courseId,
+        lectureSlug: ocwSlug,
+        durationSeconds: duration,
+      ),
+    );
+
     unawaited(_startControllerInitialization(controller));
 
     return LecturePlayerState(segments: segments);
@@ -382,6 +410,52 @@ class LecturePlayer extends _$LecturePlayer {
 
     if (!state.hasValue) return;
     state = AsyncData(state.requireValue.copyWith(controllerReady: true));
+  }
+
+  /// Wire the live [LecturePlaybackController] into the app-global
+  /// [LectureAudioHandler] so lock-screen / media-notification controls
+  /// target this lecture, and keep the attachment in sync with the cast
+  /// session (detached while casting, re-attached on disconnect).
+  ///
+  /// The handler is detached on provider dispose so the media session goes
+  /// away when the user leaves the lecture.
+  void _wireBackgroundAudio({
+    required LecturePlaybackController controller,
+    required Future<MediaItem> mediaItemFuture,
+  }) {
+    final handler = ref.read(lectureAudioHandlerProvider);
+    MediaItem? resolvedItem;
+
+    void attachIfNotCasting() {
+      if (_buildDisposed) return;
+      final item = resolvedItem;
+      if (item == null) return;
+      final castState = ref.read(castControllerProvider);
+      if (castState.status == CastConnectionStatus.connected) return;
+      handler.attach(controller: controller, item: item);
+    }
+
+    unawaited(mediaItemFuture.then((item) {
+      if (_buildDisposed) return;
+      resolvedItem = item;
+      attachIfNotCasting();
+    }));
+
+    ref
+      ..listen<CastState>(castControllerProvider, (previous, next) {
+        final prevStatus =
+            previous?.status ?? CastConnectionStatus.disconnected;
+        if (prevStatus != CastConnectionStatus.connected &&
+            next.status == CastConnectionStatus.connected) {
+          // Phone becomes a remote for the cast receiver — shed the local
+          // media session so it doesn't confuse the user.
+          handler.detach();
+        } else if (prevStatus == CastConnectionStatus.connected &&
+            next.status != CastConnectionStatus.connected) {
+          attachIfNotCasting();
+        }
+      })
+      ..onDispose(handler.detach);
   }
 
   OcwResourceType _decodeOcwType(String name) {
