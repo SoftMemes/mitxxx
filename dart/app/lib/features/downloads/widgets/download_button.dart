@@ -55,6 +55,23 @@ class DownloadButton extends ConsumerWidget {
       error: (_, _) => Icon(Icons.error_outline, size: iconSize),
       data: (state) {
         if (state.isEmpty) return const SizedBox.shrink();
+
+        // Course-level, some-but-not-all downloaded, nothing in flight: show
+        // a split "half-done" icon that opens a download-all / remove-all
+        // dialog rather than silently re-downloading the remainder.
+        final isCourseScope = sequenceId == null && verticalId == null;
+        final isPartialCourse = isCourseScope &&
+            state.downloaded > 0 &&
+            state.downloaded < state.total &&
+            state.status == DownloadStatus.notDownloaded;
+
+        if (isPartialCourse) {
+          return _PartialCourseButton(
+            iconSize: iconSize,
+            onTap: () => _confirmPartialCourse(context, ref),
+          );
+        }
+
         return _ButtonForState(
           state: state,
           iconSize: iconSize,
@@ -67,6 +84,48 @@ class DownloadButton extends ConsumerWidget {
         );
       },
     );
+  }
+
+  Future<void> _confirmPartialCourse(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final action = await showDialog<_PartialCourseAction>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Partially downloaded'),
+        content: const Text(
+          'Some videos for this course are downloaded. '
+          'Download the remaining videos, or remove all downloads?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(ctx).pop(_PartialCourseAction.remove),
+            child: const Text('Remove all'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(ctx).pop(_PartialCourseAction.download),
+            child: const Text('Download all'),
+          ),
+        ],
+      ),
+    );
+
+    final manager = ref.read(videoDownloadManagerProvider);
+    switch (action) {
+      case _PartialCourseAction.download:
+        await manager.enqueueScope(courseId: courseId);
+      case _PartialCourseAction.remove:
+        await manager.deleteScope(courseId: courseId);
+      case null:
+        break;
+    }
   }
 
   Future<void> _confirmDelete(
@@ -160,6 +219,43 @@ class DownloadButton extends ConsumerWidget {
 }
 
 enum _CourseDownloadingAction { stop, deleteAll }
+
+enum _PartialCourseAction { download, remove }
+
+/// Split-state icon shown for a course whose videos are partially downloaded:
+/// top half mirrors the solid-green "downloaded" disc, bottom half is the
+/// arrowhead from the "download" icon.
+class _PartialCourseButton extends StatelessWidget {
+  const _PartialCourseButton({required this.iconSize, required this.onTap});
+
+  final double iconSize;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final boxSize = iconSize + 8;
+    final iconColor =
+        IconTheme.of(context).color ?? Theme.of(context).colorScheme.onSurface;
+
+    return IconButton(
+      padding: EdgeInsets.zero,
+      constraints: BoxConstraints(minWidth: boxSize, minHeight: boxSize),
+      style: IconButton.styleFrom(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      tooltip: 'Partially downloaded — tap to manage',
+      onPressed: onTap,
+      icon: SizedBox(
+        width: iconSize,
+        height: iconSize,
+        child: CustomPaint(
+          size: Size(iconSize, iconSize),
+          painter: _PartialDownloadedPainter(arrowColor: iconColor),
+        ),
+      ),
+    );
+  }
+}
 
 class _ButtonForState extends StatelessWidget {
   const _ButtonForState({
@@ -389,4 +485,47 @@ class _DownloadArrowPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DownloadArrowPainter old) => old.color != color;
+}
+
+/// Paints the top half of the downloaded disc (green semicircle + white stem)
+/// on top, and the bottom half of the download arrow (arrowhead only) below.
+class _PartialDownloadedPainter extends CustomPainter {
+  const _PartialDownloadedPainter({required this.arrowColor});
+
+  final Color arrowColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
+    // Top half: green semicircle with the white arrow stem inside.
+    final stemW = w * 0.28;
+    final stemLeft = (w - stemW) / 2;
+    canvas
+      ..save()
+      ..clipRect(Rect.fromLTWH(0, 0, w, h / 2))
+      ..drawCircle(
+        Offset(w / 2, h / 2),
+        w / 2,
+        Paint()..color = Colors.green,
+      )
+      ..drawRect(
+        Rect.fromLTWH(stemLeft, h * 0.06, stemW, h * 0.44),
+        Paint()..color = Colors.white,
+      )
+      ..restore();
+
+    // Bottom half: plain arrowhead in the ambient icon color.
+    final path = Path()
+      ..moveTo(0, h * 0.5)
+      ..lineTo(w, h * 0.5)
+      ..lineTo(w / 2, h * 0.94)
+      ..close();
+    canvas.drawPath(path, Paint()..color = arrowColor);
+  }
+
+  @override
+  bool shouldRepaint(_PartialDownloadedPainter old) =>
+      old.arrowColor != arrowColor;
 }
