@@ -222,6 +222,48 @@ class VideoDownloadManager {
     }
   }
 
+  /// Cancels in-flight downloads (pending / queued / downloading) for the
+  /// given scope while leaving already-downloaded videos intact.
+  Future<void> stopDownloadsInScope({
+    required String courseId,
+    String? sequenceId,
+    String? verticalId,
+  }) async {
+    final urls = await _collectUrls(
+      courseId: courseId,
+      sequenceId: sequenceId,
+      verticalId: verticalId,
+    );
+
+    final inFlight = <String>[];
+    for (final url in urls) {
+      final row = await _db.getDownloadedVideo(url);
+      if (row == null) continue;
+      final status = DownloadStatus.fromName(row.status);
+      if (status == DownloadStatus.pending ||
+          status == DownloadStatus.queued ||
+          status == DownloadStatus.downloading) {
+        inFlight.add(url);
+      }
+    }
+
+    if (inFlight.isEmpty) return;
+
+    final taskIds = [for (final url in inFlight) urlToSha1(url)];
+    await FileDownloader().cancelTasksWithIds(taskIds);
+
+    for (final url in inFlight) {
+      final orphanedPath = await _db.removeCourseFromDownload(url, courseId);
+      if (orphanedPath != null && orphanedPath.isNotEmpty) {
+        try {
+          File(orphanedPath).deleteSync();
+        } on Object catch (e) {
+          _log.warning('Could not delete partial file $orphanedPath: $e');
+        }
+      }
+    }
+  }
+
   /// Cancels every active/queued background download task. DB rows and files
   /// are left intact — callers that want to wipe those should call the
   /// corresponding DB/file delete paths themselves. Pair this with a DB wipe

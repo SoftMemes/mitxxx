@@ -74,7 +74,51 @@ class DownloadButton extends ConsumerWidget {
     WidgetRef ref,
     ScopeDownloadState state,
   ) async {
-    final isActive = state.isDownloading;
+    final isActive = state.isDownloading || state.isPending;
+    final isCourseScope = sequenceId == null && verticalId == null;
+
+    // Course-level button mid-download: offer to stop without wiping what's
+    // already on disk, as a separate choice from deleting everything.
+    if (isCourseScope && isActive) {
+      final action = await showDialog<_CourseDownloadingAction>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Downloading…'),
+          content: const Text(
+            'Stop downloading and keep the videos already downloaded, '
+            'or delete all downloads for this course?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Keep downloading'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(ctx).pop(_CourseDownloadingAction.stop),
+              child: const Text('Stop downloading'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(ctx).pop(_CourseDownloadingAction.deleteAll),
+              child: const Text('Delete all'),
+            ),
+          ],
+        ),
+      );
+
+      final manager = ref.read(videoDownloadManagerProvider);
+      switch (action) {
+        case _CourseDownloadingAction.stop:
+          await manager.stopDownloadsInScope(courseId: courseId);
+        case _CourseDownloadingAction.deleteAll:
+          await manager.deleteScope(courseId: courseId);
+        case null:
+          break;
+      }
+      return;
+    }
+
     final label = verticalId != null
         ? 'this video'
         : sequenceId != null
@@ -114,6 +158,8 @@ class DownloadButton extends ConsumerWidget {
     }
   }
 }
+
+enum _CourseDownloadingAction { stop, deleteAll }
 
 class _ButtonForState extends StatelessWidget {
   const _ButtonForState({
