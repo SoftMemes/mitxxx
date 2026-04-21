@@ -25,7 +25,7 @@ dependencies:
   flutter_chrome_cast: ^1.4.5
   flutter_inappwebview: ^6.1.5
   flutter_riverpod: ^3.0.0
-  flutter_secure_storage: ^9.2.2
+  flutter_secure_storage: ^10.0.0
   flutter_to_airplay: ^2.1.0
   freezed_annotation: ^3.1.0
   go_router: ^17.2.2

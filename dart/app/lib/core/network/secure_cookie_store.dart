@@ -4,15 +4,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:omnilect/core/network/cookie_store.dart';
 
 /// [CookieStore] implementation that persists cookies in [FlutterSecureStorage]
-/// (Keychain on iOS, EncryptedSharedPreferences on Android).
+/// (Keychain on iOS, Keystore-backed AES-GCM on Android).
 ///
 /// All cookies are stored as a single JSON blob under the key [_kKey].
 /// This avoids the dart:io Cookie class entirely — values are raw strings.
 class SecureCookieStore implements CookieStore {
-  SecureCookieStore()
-      : _storage = const FlutterSecureStorage(
-          aOptions: AndroidOptions(encryptedSharedPreferences: true),
-        );
+  SecureCookieStore() : _storage = const FlutterSecureStorage();
 
   static const _kKey = 'mitx_cookies_v2';
   final FlutterSecureStorage _storage;
