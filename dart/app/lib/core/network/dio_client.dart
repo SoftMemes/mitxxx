@@ -168,10 +168,20 @@ class DioClient {
     }
 
     var nextUrl = '$kLmsBaseUrl/auth/login/ol-oauth2/?auth_entry=login';
-    var lastUri = Uri.parse(nextUrl);
+    var oauthCallbackReached = false;
     for (var hop = 0; hop < 15; hop++) {
       final uri = Uri.parse(nextUrl);
-      lastUri = uri;
+
+      // The LMS OAuth callback is where the session cookies
+      // (`mitxonline-production-edx-lms-sessionid`, JWT pair) are minted in
+      // response to a code from mitxonline. Reaching it means mitxonline
+      // accepted our session and issued a valid code; if we never reach it
+      // the chain has diverted to Keycloak / mitxonline login and the
+      // session is stale.
+      if (uri.host == 'courses.learn.mit.edu' &&
+          uri.path.startsWith('/auth/complete/ol-oauth2/')) {
+        oauthCallbackReached = true;
+      }
 
       // Domain-suffix matching: include cookies stored under parent domains.
       final host = uri.host;
@@ -223,22 +233,24 @@ class DioClient {
     }
     await _store.saveAll(_cookies);
 
-    // A successful handshake always terminates on courses.learn.mit.edu (the
-    // OAuth callback completes there and the LMS session cookies are set in
-    // the same response). Landing anywhere else — most often sso.ol.mit.edu
-    // (Keycloak login form) or mitxonline.mit.edu/login — means the
-    // mitxonline session is stale and no amount of silent refresh will fix
-    // it. Throw so `_runLms` escalates to the mitxonline reauth dialog
-    // instead of signalling success and spinning on the same 401 forever.
-    if (lastUri.host != 'courses.learn.mit.edu') {
+    // A successful handshake must pass through the LMS OAuth callback
+    // (`courses.learn.mit.edu/auth/complete/ol-oauth2/`) — that's the hop
+    // that mints the LMS session cookies. The chain after that hop is
+    // post-login navigation (typically `/dashboard` →
+    // `learn.mit.edu/dashboard`) and is irrelevant to session validity,
+    // so the terminal URL isn't a reliable signal. If we never reach the
+    // callback, mitxonline refused to issue a code (Keycloak or
+    // mitxonline-login intercepted), the session is stale, and we need
+    // to escalate to the reauth dialog instead of signalling success
+    // and spinning on the same 401 forever.
+    if (!oauthCallbackReached) {
       _log.warning(
-        'establishLmsSession: handshake did not complete on LMS '
-        '(final hop: ${lastUri.host}${lastUri.path}) — mitxonline reauth '
-        'required',
+        'establishLmsSession: OAuth callback never reached — mitxonline '
+        'reauth required',
       );
       throw StateError(
-        'LMS handshake terminated on ${lastUri.host}; mitxonline session '
-        'appears stale',
+        'LMS handshake did not reach the OAuth callback; mitxonline '
+        'session appears stale',
       );
     }
     _log.info('establishLmsSession: complete');

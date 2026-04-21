@@ -335,7 +335,22 @@ class VideoDownloadManager {
 
     switch (status) {
       case TaskStatus.complete:
-        final localPath = await localPathForUrl(url);
+        // Ask background_downloader itself for the resolved path rather than
+        // recomputing it — guarantees the DB points at wherever the plugin
+        // actually wrote the bytes, even if the two side's resolutions of
+        // `BaseDirectory.applicationSupport` ever diverge.
+        final localPath = await task.filePath();
+        final exists = File(localPath).existsSync();
+        if (!exists) {
+          _log.warning(
+            'Download reported complete but file is missing at $localPath '
+            'for $url — marking failed so the UI retries instead of '
+            'pretending playback will work offline',
+          );
+          await _db.markDownloadFailed(url);
+          _onVideoFailed(url, 'missing-file');
+          return;
+        }
         await _db.markDownloadComplete(url, localPath);
         _log.fine('Download complete: $url → $localPath');
         _onVideoComplete(url);
