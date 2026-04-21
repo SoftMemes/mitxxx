@@ -38,6 +38,14 @@ dependencies:
   path_provider: ^2.1.5
   riverpod_annotation: ^4.0.0
   shared_preferences: ^2.3.0
+  # Held back: this package is marked end-of-life as of 0.6.0+eol — the
+  # native-lib bundling moved into `sqlite3 3.x`. Migrating requires
+  # drift/drift_dev ^2.32, which pull analyzer ^10.0.0, and
+  # riverpod_generator (latest 4.0.3) still pins analyzer ^9.0.0. Revisit
+  # once riverpod_generator accepts analyzer 10; then drop this dep, add
+  # `sqlite3: ^3.x`, bump drift/drift_dev, and remove the
+  # `applyWorkaroundToOpenSqlite3OnOldAndroidVersions()` call in
+  # `lib/core/storage/app_database.dart`.
   sqlite3_flutter_libs: ^0.5.25
   url_launcher: ^6.3.2
   video_player: ^2.9.2
