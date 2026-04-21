@@ -1,4 +1,3 @@
-// ignore_for_file: uri_has_not_been_generated
 import 'package:advertising_id/advertising_id.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 

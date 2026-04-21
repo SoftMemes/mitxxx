@@ -21,8 +21,8 @@ class IsolateAnalytics {
   }) {
     _events.add(AnalyticsEventForwarded(kEventSyncStart, {
       kParamScope: scope,
-      if (courseId != null) kParamCourseId: courseId,
-      if (blockId != null) kParamBlockId: blockId,
+      kParamCourseId: ?courseId,
+      kParamBlockId: ?blockId,
       kParamTrigger: trigger,
     }));
   }
@@ -35,8 +35,8 @@ class IsolateAnalytics {
   }) {
     _events.add(AnalyticsEventForwarded(kEventSyncComplete, {
       kParamScope: scope,
-      if (courseId != null) kParamCourseId: courseId,
-      if (blockId != null) kParamBlockId: blockId,
+      kParamCourseId: ?courseId,
+      kParamBlockId: ?blockId,
       kParamDurationMs: durationMs,
       kParamItemsSynced: itemsSynced,
     }));
@@ -49,8 +49,8 @@ class IsolateAnalytics {
   }) {
     _events.add(AnalyticsEventForwarded(kEventSyncFailure, {
       kParamScope: scope,
-      if (courseId != null) kParamCourseId: courseId,
-      if (blockId != null) kParamBlockId: blockId,
+      kParamCourseId: ?courseId,
+      kParamBlockId: ?blockId,
       kParamDurationMs: durationMs,
       kParamStage: stage,
       kParamErrorKind: errorKind,

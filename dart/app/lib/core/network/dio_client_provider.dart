@@ -1,4 +1,3 @@
-// ignore_for_file: uri_has_not_been_generated
 import 'package:omnilect/core/network/dio_client.dart';
 import 'package:omnilect/core/network/secure_cookie_store.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';

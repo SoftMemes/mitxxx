@@ -1,4 +1,3 @@
-// ignore_for_file: uri_has_not_been_generated
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:omnilect/features/player/models/vertical_segment.dart';
 

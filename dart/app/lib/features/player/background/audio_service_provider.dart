@@ -1,4 +1,3 @@
-// ignore_for_file: uri_has_not_been_generated
 import 'package:omnilect/features/player/background/lecture_audio_handler.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 

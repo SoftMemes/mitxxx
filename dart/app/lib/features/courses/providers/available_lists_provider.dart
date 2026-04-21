@@ -1,4 +1,3 @@
-// ignore_for_file: uri_has_not_been_generated
 import 'package:logging/logging.dart';
 import 'package:omnilect/core/storage/database_provider.dart';
 import 'package:omnilect/features/courses/models/list_source.dart';

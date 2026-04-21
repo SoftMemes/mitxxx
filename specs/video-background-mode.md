@@ -378,14 +378,18 @@ Already has:
 
 Needs to be added:
 
-- `audio_service`'s own `AudioServiceActivity` is not required — we stay
-  on the standard `MainActivity`. The `audio_service` plugin contributes
-  its own `<service>` + `<receiver>` entries via manifest merging; nothing
-  extra required beyond what the plugin declares.
-- Verify `android:foregroundServiceType="mediaPlayback"` is applied to the
-  `audio_service`-provided service (plugin does this automatically on
-  recent versions; double-check in a merged-manifest inspection at
-  implementation time).
+- `MainActivity.kt` must extend `com.ryanheise.audioservice.AudioServiceActivity`
+  rather than the default `io.flutter.embedding.android.FlutterActivity`.
+  Without this, `AudioService.init()` throws "The Activity class declared
+  in your AndroidManifest.xml is wrong or has not provided the correct
+  FlutterEngine" on launch.
+- `AndroidManifest.xml` must declare the plugin's `<service>` and
+  `<receiver>` inside `<application>` (the plugin does not auto-merge
+  them). Without these, `AudioService.init()` throws "Unable to bind to
+  AudioService". The service needs
+  `android:foregroundServiceType="mediaPlayback"` for Android 14+.
+  The receiver handles hardware media-button intents. Reference snippet
+  lives in the audio_service README.
 - Target SDK: unchanged. The `POST_NOTIFICATIONS` permission is already
   declared — on Android 13+ the system will auto-prompt the first time
   the foreground service posts its notification, which is acceptable.

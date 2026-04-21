@@ -1,4 +1,3 @@
-// ignore_for_file: uri_has_not_been_generated
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -386,7 +385,7 @@ class VideoDownloadManager {
   void _advanceJobs(String url, {
     required bool completed,
     required int bytes,
-    String? errorKind,  // ignore: always_put_required_named_parameters_first
+    String? errorKind,
   }) {
     final analytics = _ref.read(analyticsServiceProvider);
     final toRemove = <String>[];

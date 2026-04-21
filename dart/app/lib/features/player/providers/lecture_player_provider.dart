@@ -1,4 +1,3 @@
-// ignore_for_file: uri_has_not_been_generated
 import 'package:audio_service/audio_service.dart';
 import 'package:logging/logging.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';

@@ -1,4 +1,4 @@
-// ignore_for_file: uri_has_not_been_generated, avoid_positional_boolean_parameters
+// ignore_for_file: avoid_positional_boolean_parameters
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

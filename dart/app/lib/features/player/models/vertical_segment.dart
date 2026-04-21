@@ -1,4 +1,3 @@
-// ignore_for_file: uri_has_not_been_generated
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'vertical_segment.freezed.dart';

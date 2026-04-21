@@ -65,7 +65,7 @@ dev_dependencies:
   patrol_cli: ^4.3.1
   riverpod_generator: ^4.0.0
   rps: ^0.10.1
-  very_good_analysis: ^8.0.0
+  very_good_analysis: ^10.2.0
 
 scripts:
   codegen: fvm dart run build_runner build --delete-conflicting-outputs

@@ -16,7 +16,6 @@ import 'package:omnilect/features/sync/manager/scope_state.dart';
 import 'package:omnilect/features/sync/providers/sync_providers.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// ignore_for_file: uri_has_not_been_generated
 
 class CourseOutlineScreen extends ConsumerWidget {
   const CourseOutlineScreen({required this.courseId, super.key});

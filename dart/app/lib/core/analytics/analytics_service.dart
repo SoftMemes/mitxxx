@@ -1,4 +1,3 @@
-// ignore_for_file: uri_has_not_been_generated
 import 'dart:io';
 
 import 'package:firebase_analytics/firebase_analytics.dart';
@@ -85,7 +84,7 @@ class AnalyticsService {
   }) =>
       _emit(kEventSyncStart, {
         kParamScope: scope,
-        if (courseId != null) kParamCourseId: courseId,
+        kParamCourseId: ?courseId,
         kParamTrigger: trigger,
       });
 
@@ -97,7 +96,7 @@ class AnalyticsService {
   }) =>
       _emit(kEventSyncComplete, {
         kParamScope: scope,
-        if (courseId != null) kParamCourseId: courseId,
+        kParamCourseId: ?courseId,
         kParamDurationMs: durationMs,
         kParamItemsSynced: itemsSynced,
       });
@@ -111,7 +110,7 @@ class AnalyticsService {
   }) =>
       _emit(kEventSyncFailure, {
         kParamScope: scope,
-        if (courseId != null) kParamCourseId: courseId,
+        kParamCourseId: ?courseId,
         kParamDurationMs: durationMs,
         kParamStage: stage,
         kParamErrorKind: errorKind,
@@ -162,7 +161,7 @@ class AnalyticsService {
       _emit(kEventDownloadStart, {
         kParamScope: scope,
         kParamCourseId: courseId,
-        if (blockId != null) kParamBlockId: blockId,
+        kParamBlockId: ?blockId,
         kParamVideoCount: videoCount,
       });
 
@@ -177,7 +176,7 @@ class AnalyticsService {
       _emit(kEventDownloadComplete, {
         kParamScope: scope,
         kParamCourseId: courseId,
-        if (blockId != null) kParamBlockId: blockId,
+        kParamBlockId: ?blockId,
         kParamDurationMs: durationMs,
         kParamBytesDownloaded: bytesDownloaded,
         kParamVideoCount: videoCount,
@@ -194,7 +193,7 @@ class AnalyticsService {
       _emit(kEventDownloadFailure, {
         kParamScope: scope,
         kParamCourseId: courseId,
-        if (blockId != null) kParamBlockId: blockId,
+        kParamBlockId: ?blockId,
         kParamErrorKind: errorKind,
         kParamVideosCompleted: videosCompleted,
         kParamVideosTotal: videosTotal,

@@ -73,7 +73,7 @@ class SyncManagerCore {
     switch (s) {
       case _Idle():
         _start(req);
-      case _Running(op: final op):
+      case _Running(: final op):
         if (op.request.sameAs(req)) {
           _log.fine('debounced request for ${req.scopeId}');
           return;
@@ -132,7 +132,7 @@ class SyncManagerCore {
     switch (s) {
       case _Idle():
         return;
-      case _Running(op: final op):
+      case _Running(: final op):
         _state = _Cancelling(op, null);
         op.cancelToken.cancel('stopAndWait');
       case _Cancelling():

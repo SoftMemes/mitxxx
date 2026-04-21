@@ -1,4 +1,3 @@
-// ignore_for_file: uri_has_not_been_generated
 import 'dart:async';
 
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';

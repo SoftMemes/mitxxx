@@ -1,4 +1,3 @@
-// ignore_for_file: uri_has_not_been_generated
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
