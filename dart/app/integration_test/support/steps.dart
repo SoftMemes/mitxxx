@@ -164,38 +164,52 @@ Future<void> keycloakLogin(
       '(got ${Platform.operatingSystem}).',
     );
   }
+  // Patrol's iOS automator scopes every native action to a bundleId
+  // (Android auto-discovers the foreground app, iOS does not). For MITxxx
+  // that's `app.omnilect.dev` (dev flavor) — matches `PRODUCT_BUNDLE_IDENTIFIER`
+  // in `ios/Runner.xcodeproj/project.pbxproj`. Passing null on Android
+  // keeps the existing auto-discovery behavior unchanged.
+  final appId = Platform.isIOS ? 'app.omnilect.dev' : null;
+
   step('keycloak: entering username');
   // Give the WebView a moment to render before the automator reaches in.
   // iOS XCUITest seems to need a touch longer than Android before WKWebView
   // fields become addressable.
   await $.tester.pump(Duration(seconds: Platform.isIOS ? 3 : 2));
   // ignore: deprecated_member_use
-  await $.native.enterTextByIndex(email, index: 0);
+  await $.native.enterTextByIndex(email, index: 0, appId: appId);
   // MIT's Keycloak labels both submit buttons "Next" (username page +
   // password page). Extra fallbacks are kept for small upstream copy
   // changes.
-  await _tapKeycloakSubmit($, ['Next', 'Continue', 'Sign in', 'Sign In']);
+  await _tapKeycloakSubmit(
+    $,
+    const ['Next', 'Continue', 'Sign in', 'Sign In'],
+    appId: appId,
+  );
 
   step('keycloak: entering password');
   await $.tester.pump(Duration(seconds: Platform.isIOS ? 3 : 2));
   // ignore: deprecated_member_use
-  await $.native.enterTextByIndex(password, index: 0);
+  await $.native.enterTextByIndex(password, index: 0, appId: appId);
   await _tapKeycloakSubmit(
     $,
-    ['Next', 'Sign in', 'Sign In', 'Log in', 'Log In'],
+    const ['Next', 'Sign in', 'Sign In', 'Log in', 'Log In'],
+    appId: appId,
   );
   step('keycloak: submitted');
 }
 
 Future<void> _tapKeycloakSubmit(
   PatrolIntegrationTester $,
-  List<String> candidates,
-) async {
+  List<String> candidates, {
+  String? appId,
+}) async {
   for (final label in candidates) {
     try {
       // ignore: deprecated_member_use
       await $.native.tap(
         Selector(text: label),
+        appId: appId,
         timeout: const Duration(seconds: 3),
       );
       step('keycloak: tapped "$label"');

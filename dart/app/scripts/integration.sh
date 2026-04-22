@@ -161,9 +161,19 @@ BEGIN {
   # produced any bytes. Rename on success, delete on failure.
   tmpfile = outfile ".tmp"
   if (platform == "ios") {
-    cmd = "mkdir -p \"" shot_dir "/" subdir "\" && xcrun simctl io " \
-          (device_id == "" ? "booted" : "\"" device_id "\"") \
-          " screenshot \"" tmpfile "\" >/dev/null 2>&1"
+    # `xcrun simctl io … screenshot` intermittently errors with
+    # `Timeout waiting for screen surfaces` while the simulator is
+    # mid-transition (a new XCUIApplication launch, keyboard frame
+    # change, etc.). Wrap it in a small retry loop so a transient error
+    # does not drop a screenshot from the store set.
+    sim = (device_id == "" ? "booted" : "\"" device_id "\"")
+    cmd = "mkdir -p \"" shot_dir "/" subdir "\" && " \
+          "for i in 1 2 3 4 5; do " \
+          "  xcrun simctl io " sim " screenshot \"" tmpfile "\" " \
+          "       >/dev/null 2>&1 && break; " \
+          "  sleep 0.5; " \
+          "done; " \
+          "[ -s \"" tmpfile "\" ]"
   } else {
     cmd = "mkdir -p \"" shot_dir "/" subdir "\" && adb " adb_opts \
           " exec-out screencap -p > \"" tmpfile "\""
