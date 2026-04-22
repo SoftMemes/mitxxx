@@ -22,6 +22,27 @@ def _font(font_path: Path, size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(str(font_path), size=size)
 
 
+def mask_test_banner(raw: Image.Image, banner_y: int, banner_h: int) -> Image.Image:
+    """Remove the red "screenshots_test capture store screenshots" banner that
+    Flutter's LiveTestWidgetsFlutterBinding paints over every live-test frame.
+
+    Samples the app's background color from two rows below the banner and
+    fills the banner strip with that color, preserving whatever surface sat
+    underneath (AppBar red, onboarding pale pink, etc).
+    """
+    if banner_h <= 0:
+        return raw
+    result = raw.convert("RGBA").copy()
+    sample_y = min(banner_y + banner_h + 2, result.height - 1)
+    sample_x = result.width // 2
+    sample = result.getpixel((sample_x, sample_y))
+    ImageDraw.Draw(result).rectangle(
+        (0, banner_y, result.width, banner_y + banner_h),
+        fill=sample,
+    )
+    return result
+
+
 def paint(
     raw: Image.Image,
     platform: str,

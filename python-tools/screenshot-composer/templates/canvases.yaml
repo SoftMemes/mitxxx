@@ -17,12 +17,17 @@ canvases:
     raw_source_platform: ios
     phone_style: iphone
     raw_status_bar_px: 174
-    copy_area: [90, 120, 1110, 480]
-    screen_rect: [170, 657, 950, 2059]
+    # Raw-pixel strip occupied by the LiveTestWidgetsFlutterBinding banner
+    # ("screenshots_test capture store screenshots"), sitting directly
+    # below the real status bar on every capture.
+    raw_test_banner_y: 180
+    raw_test_banner_h: 60
+    copy_area: [90, 100, 1110, 440]
+    screen_rect: [145, 549, 1000, 2167]
     bezel_thickness: 14
     screen_corner_radius: 58
     headline_pt: 96
-    subhead_pt: 38
+    subhead_pt: 46
 
   android_phone:
     size: [1080, 1920]
@@ -30,9 +35,11 @@ canvases:
     raw_source_platform: android
     phone_style: android
     raw_status_bar_px: 66
-    copy_area: [60, 100, 960, 310]
-    screen_rect: [140, 438, 800, 1422]
+    raw_test_banner_y: 70
+    raw_test_banner_h: 55
+    copy_area: [60, 90, 960, 260]
+    screen_rect: [120, 367, 840, 1493]
     bezel_thickness: 12
     screen_corner_radius: 36
     headline_pt: 72
-    subhead_pt: 28
+    subhead_pt: 34

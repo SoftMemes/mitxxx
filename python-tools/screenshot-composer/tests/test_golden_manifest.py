@@ -48,6 +48,8 @@ def _canvas_spec(name: str) -> compose.CanvasSpec:
         subhead_pt=int(spec["subhead_pt"]),
         status_bar_platform=spec["platform"],
         raw_status_bar_px=int(spec["raw_status_bar_px"]),
+        raw_test_banner_y=int(spec["raw_test_banner_y"]),
+        raw_test_banner_h=int(spec["raw_test_banner_h"]),
     )
 
 

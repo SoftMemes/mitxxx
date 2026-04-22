@@ -34,6 +34,8 @@ class CanvasSpec:
     subhead_pt: int
     status_bar_platform: str
     raw_status_bar_px: int
+    raw_test_banner_y: int
+    raw_test_banner_h: int
 
 
 def _draw_gradient(size: Tuple[int, int]) -> Image.Image:
@@ -76,6 +78,11 @@ def compose_frame(
     bg = _draw_gradient(canvas.size)
 
     raw = Image.open(raw_png).convert("RGBA")
+    raw = status_bar.mask_test_banner(
+        raw,
+        banner_y=canvas.raw_test_banner_y,
+        banner_h=canvas.raw_test_banner_h,
+    )
     raw = status_bar.paint(
         raw,
         platform=canvas.status_bar_platform,
