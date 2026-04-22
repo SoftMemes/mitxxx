@@ -423,21 +423,22 @@ class LecturePlayer extends _$LecturePlayer {
     required Future<MediaItem> mediaItemFuture,
   }) {
     final handler = ref.read(lectureAudioHandlerProvider);
-    MediaItem? resolvedItem;
 
     void attachIfNotCasting() {
       if (_buildDisposed) return;
-      final item = resolvedItem;
-      if (item == null) return;
       final castState = ref.read(castControllerProvider);
       if (castState.status == CastConnectionStatus.connected) return;
-      handler.attach(controller: controller, item: item);
+      handler.attach(controller: controller);
     }
+
+    // Attach eagerly so [play] / [pause] routed through the handler work
+    // immediately, before lecture metadata has finished resolving. The
+    // lock-screen tile stays blank until the MediaItem lands.
+    attachIfNotCasting();
 
     unawaited(mediaItemFuture.then((item) {
       if (_buildDisposed) return;
-      resolvedItem = item;
-      attachIfNotCasting();
+      handler.setMediaItem(item);
     }));
 
     ref
@@ -488,7 +489,10 @@ class LecturePlayer extends _$LecturePlayer {
     final durationS = snap != null ? snap.totalDuration.round() : 0;
     final isResume = positionS > 0;
 
-    await _playbackController?.play();
+    // Route through the handler so the shared AudioSession gets activated
+    // alongside the controller. The handler no-ops if it has been
+    // detached (e.g. during an active cast session).
+    await ref.read(lectureAudioHandlerProvider).play();
 
     final verticalId = _currentVerticalId;
     if (verticalId != null) {
@@ -504,7 +508,8 @@ class LecturePlayer extends _$LecturePlayer {
 
   Future<void> pause() async {
     if (_scrubInProgress) {
-      // Suppress pause events caused purely by scrubbing.
+      // Scrub-induced pauses bypass the handler so the session stays active
+      // across the user's drag — we don't want to thrash audio focus.
       await _playbackController?.pause();
       return;
     }
@@ -513,7 +518,7 @@ class LecturePlayer extends _$LecturePlayer {
     final positionS = snap != null ? snap.globalPosition.round() : 0;
     final durationS = snap != null ? snap.totalDuration.round() : 0;
 
-    await _playbackController?.pause();
+    await ref.read(lectureAudioHandlerProvider).pause();
 
     await ref.read(progressTrackerProvider).flushPosition(
           courseId: courseId,
