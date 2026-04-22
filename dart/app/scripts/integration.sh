@@ -167,18 +167,12 @@ BEGIN {
     # change, etc.). Wrap it in a small retry loop so a transient error
     # does not drop a screenshot from the store set.
     sim = (device_id == "" ? "booted" : "\"" device_id "\"")
-    cmd = "mkdir -p \"" shot_dir "/" subdir "\" && " \
-          "for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do " \
-          "  err=$(xcrun simctl io " sim " screenshot \"" tmpfile "\" " \
-          "        2>&1 >/dev/null); rc=$?; " \
-          "  if [ $rc -eq 0 ] && [ -s \"" tmpfile "\" ]; then break; fi; " \
-          "  rm -f \"" tmpfile "\"; " \
-          "  sleep 1; " \
-          "done; " \
-          "if [ ! -s \"" tmpfile "\" ]; then " \
-          "  echo \"simctl io last error: $err\" >&2; " \
-          "  exit 1; " \
-          "fi"
+    # Delegate to the _ios_screencap shell helper defined below the awk
+    # block. It brings Simulator.app forward via osascript and retries
+    # `xcrun simctl io … screenshot` up to 15 times. Keeping the
+    # osascript / shell quoting in a real function avoids fighting
+    # nested single quotes inside this awk string.
+    cmd = "_ios_screencap " sim " \"" tmpfile "\""
   } else {
     cmd = "mkdir -p \"" shot_dir "/" subdir "\" && adb " adb_opts \
           " exec-out screencap -p > \"" tmpfile "\""
@@ -197,6 +191,55 @@ BEGIN {
 { print; fflush() }
 '
 export ADB_OPTS PLATFORM DEVICE_ID SHOT_DIR
+
+# iOS screencap helper called from the awk filter. Takes
+# (sim, tmpfile-basename-ending-in-.png.tmp). `xcrun simctl io …
+# screenshot` infers the output format from the file extension, and
+# refuses anything other than png/jpg/tiff/bmp — so we write to a
+# sibling `.png` tempfile first, then rename that to the caller's
+# `.png.tmp` slot (which awk then `mv`s into place on success).
+# Encapsulated out-of-line rather than inlined in the awk string so we
+# can quote AppleScript / shell freely without fighting the awk-in-
+# single-quote nesting.
+_ios_screencap() {
+  local sim="$1" out="$2" tmp err
+  tmp="${out%.tmp}.capture.png"
+  mkdir -p "$(dirname "$out")"
+  # Nudge Simulator.app to the foreground so its display is rendering.
+  # `simctl io … screenshot` fails with `Timeout waiting for screen
+  # surfaces` when the Simulator window is hidden or minimised. No-op
+  # when Simulator is already front.
+  osascript -e 'tell application "Simulator" to activate' \
+    >/dev/null 2>&1 || true
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    if err=$(xcrun simctl io "$sim" screenshot "$tmp" 2>&1 >/dev/null); then
+      if [[ -s "$tmp" ]]; then
+        mv -f "$tmp" "$out"
+        return 0
+      fi
+    fi
+    rm -f "$tmp"
+    sleep 1
+  done
+  echo "_ios_screencap: last error: $err" >&2
+  return 1
+}
+export -f _ios_screencap
+
+# Erase the iOS simulator before an iOS run so FlutterSecureStorage's
+# keychain-backed cookie jar from a previous run doesn't leave the app
+# starting in a logged-in state. patrol's `--uninstall` removes the
+# `.app` bundle but iOS keychain entries survive — `simctl erase`
+# factory-resets the sim (takes ~20 s).
+if [[ "$PLATFORM" == "ios" && -n "$DEVICE_ID" ]]; then
+  echo "[integration.sh] erasing iOS sim $DEVICE_ID for clean state"
+  xcrun simctl shutdown "$DEVICE_ID" >/dev/null 2>&1 || true
+  xcrun simctl erase "$DEVICE_ID"
+  xcrun simctl boot "$DEVICE_ID"
+  open -a Simulator
+  # Wait for boot to complete before patrol starts installing.
+  xcrun simctl bootstatus "$DEVICE_ID" -b >/dev/null 2>&1 || true
+fi
 
 # patrol test's own `--uninstall` (default on) performs the same adb
 # uninstall we would run manually, so we leave it to patrol.
