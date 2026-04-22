@@ -76,7 +76,14 @@ Future<void> bootstrapLearnApiSession(
     );
   } finally {
     // Regardless of how we got here, pull api.learn.mit.edu cookies into the
-    // Dio store before disposing the WebView.
+    // Dio store before disposing the WebView. Whether the sync produced a
+    // working session is decided by `SessionRefreshManager`, not here —
+    // the consecutive-failure counter there escalates to the reauth dialog
+    // when this bootstrap can't recover. Throwing on a heuristic here was
+    // brittle: a freshly-logged-in WebView that finishes after our 5s timer
+    // (or settles on a host we don't recognise) still produces valid
+    // cookies, and the mitxonline reauth dialog should not pop in that
+    // case.
     try {
       await syncWebViewCookiesToDio(client, const [
         'api.learn.mit.edu',

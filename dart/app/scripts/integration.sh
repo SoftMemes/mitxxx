@@ -74,8 +74,10 @@ if [[ "$MODE" == "flows" ]]; then
 fi
 
 DEVICE_ARGS=()
+DEVICE_ID=""
 if [[ $# -ge 1 ]]; then
   DEVICE_ARGS=(-d "$1")
+  DEVICE_ID="$1"
 fi
 
 mkdir -p screenshots/raw screenshots/failures
@@ -89,7 +91,16 @@ mkdir -p screenshots/raw screenshots/failures
 # `flutter test --show-flutter-logs` / `patrol` prepends a timestamp +
 # `: ` (and sometimes thread prefixes) to each stdout line, which used to
 # shift $3/$4 and leave every capture writing to `screenshots/SCREENSHOT/raw.png`.
+#
+# Pass `-s <serial>` via `adb_opts` so screencap works when multiple devices
+# / emulators are attached — bare `adb` otherwise exits 255 with
+# "more than one device/emulator".
+ADB_OPTS=""
+if [[ -n "$DEVICE_ID" ]]; then
+  ADB_OPTS="-s $DEVICE_ID"
+fi
 SCREENCAP_AWK='
+BEGIN { adb_opts = ENVIRON["ADB_OPTS"] }
 /\[patrol\] SCREENSHOT / {
   subdir = ""
   name = ""
@@ -106,11 +117,19 @@ SCREENCAP_AWK='
     next
   }
   outfile = "screenshots/" subdir "/" name ".png"
-  cmd = "mkdir -p \"screenshots/" subdir "\" && adb exec-out screencap -p > \"" outfile "\""
+  # Write to a tempfile first so a failed `adb exec-out` (e.g. exit 255
+  # when multiple devices are attached and -s is missing) does not leave a
+  # 0-byte PNG behind — the shell redirect truncates the target the
+  # moment the pipeline starts, before adb has produced any bytes. Rename
+  # on success, delete on failure.
+  tmpfile = outfile ".tmp"
+  cmd = "mkdir -p \"screenshots/" subdir "\" && adb " adb_opts " exec-out screencap -p > \"" tmpfile "\""
   rc = system(cmd)
   if (rc != 0) {
+    system("rm -f \"" tmpfile "\"")
     print "[screencap] ERROR rc=" rc " " outfile
   } else {
+    system("mv -f \"" tmpfile "\" \"" outfile "\"")
     print "[screencap] wrote " outfile
   }
   fflush()
@@ -118,6 +137,7 @@ SCREENCAP_AWK='
 }
 { print; fflush() }
 '
+export ADB_OPTS
 
 # patrol test's own `--uninstall` (default on) performs the same adb
 # uninstall we would run manually, so we leave it to patrol.
