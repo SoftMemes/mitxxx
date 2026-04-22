@@ -65,12 +65,24 @@ PlaybackSnapshot _snap({
       error: error,
     );
 
+class _FakeActivator {
+  final List<bool> calls = [];
+  bool nextResult = true;
+
+  Future<bool> call(bool active) async {
+    calls.add(active);
+    return nextResult;
+  }
+}
+
 void main() {
   late LectureAudioHandler handler;
   late _FakeController controller;
+  late _FakeActivator activator;
 
   setUp(() {
-    handler = LectureAudioHandler();
+    activator = _FakeActivator();
+    handler = LectureAudioHandler(activator: activator.call);
     controller = _FakeController();
   });
 
@@ -202,5 +214,56 @@ void main() {
     await handler.rewind();
     // Doesn't throw, doesn't emit a playbackState with bogus values.
     expect(handler.playbackState.value.playing, isFalse);
+    // No attached controller → no reason to touch the audio session.
+    expect(activator.calls, isEmpty);
+  });
+
+  test('play activates the audio session before calling the controller',
+      () async {
+    handler.attach(controller: controller, item: _item);
+    await handler.play();
+
+    expect(activator.calls, [true]);
+    expect(controller.playCalls, 1);
+  });
+
+  test('play stays paused when the platform denies audio focus', () async {
+    handler.attach(controller: controller, item: _item);
+    activator.nextResult = false;
+
+    await handler.play();
+
+    expect(activator.calls, [true]);
+    expect(controller.playCalls, 0);
+    expect(handler.playbackState.value.playing, isFalse);
+  });
+
+  test('pause deactivates the audio session after pausing the controller',
+      () async {
+    handler.attach(controller: controller, item: _item);
+    await handler.pause();
+
+    expect(controller.pauseCalls, 1);
+    expect(activator.calls, [false]);
+  });
+
+  test('stop deactivates the audio session', () async {
+    handler.attach(controller: controller, item: _item);
+    await handler.stop();
+
+    expect(controller.pauseCalls, 1);
+    expect(activator.calls, contains(false));
+    expect(handler.mediaItem.value, isNull);
+  });
+
+  test('seek / fastForward / rewind do not touch the audio session', () async {
+    handler.attach(controller: controller, item: _item);
+    controller.currentSnapshot = _snap(pos: 50);
+
+    await handler.seek(const Duration(seconds: 10));
+    await handler.fastForward();
+    await handler.rewind();
+
+    expect(activator.calls, isEmpty);
   });
 }

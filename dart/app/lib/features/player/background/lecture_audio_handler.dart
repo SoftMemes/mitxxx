@@ -1,6 +1,16 @@
 import 'package:audio_service/audio_service.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:omnilect/features/player/controllers/lecture_playback_controller.dart';
+
+/// Activates / deactivates the shared audio session. Injected so tests can
+/// observe activation without going through the real platform channel.
+typedef AudioSessionActivator = Future<bool> Function(bool active);
+
+Future<bool> _defaultActivator(bool active) async {
+  final session = await AudioSession.instance;
+  return session.setActive(active);
+}
 
 /// `audio_service` [BaseAudioHandler] that adapts the existing
 /// [LecturePlaybackController] so lecture audio keeps playing in the
@@ -10,9 +20,20 @@ import 'package:omnilect/features/player/controllers/lecture_playback_controller
 /// to whatever [LecturePlaybackController] is currently [attach]ed, and
 /// mirrors that controller's [PlaybackSnapshot] into `audio_service`'s
 /// `playbackState` stream.
+///
+/// On [play] / [pause] / [stop] the handler activates / deactivates the
+/// shared [AudioSession]. `video_player` does not route through
+/// `audio_session`, so without this bracket the interruption stream stays
+/// silent on Android and iOS's session activation is left to AVPlayer's
+/// implicit behaviour (unreliable in the simulator).
 class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
   static const Duration rewindInterval = Duration(seconds: 10);
   static const Duration fastForwardInterval = Duration(seconds: 30);
+
+  LectureAudioHandler({AudioSessionActivator? activator})
+      : _activator = activator ?? _defaultActivator;
+
+  final AudioSessionActivator _activator;
 
   LecturePlaybackController? _controller;
   VoidCallback? _snapshotListener;
@@ -51,6 +72,10 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> play() async {
     final controller = _controller;
     if (controller == null) return;
+    // Claim audio focus / activate the AVAudioSession before touching the
+    // player. If the platform denies focus (e.g. another app is mid-call on
+    // Android), stay paused.
+    if (!await _activator(true)) return;
     if (controller.snapshot.value.isComplete) {
       await controller.seekGlobal(0);
     }
@@ -59,7 +84,12 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> pause() async {
-    await _controller?.pause();
+    final controller = _controller;
+    if (controller == null) return;
+    await controller.pause();
+    // Release focus so other apps can take over while we're paused; the next
+    // play() re-requests it.
+    await _activator(false);
   }
 
   @override
@@ -91,6 +121,7 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> stop() async {
     await _controller?.pause();
     detach();
+    await _activator(false);
     await super.stop();
   }
 

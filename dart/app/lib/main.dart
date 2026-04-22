@@ -27,6 +27,9 @@ import 'package:omnilect/firebase_options_prod.dart';
 import 'package:omnilect/flavor_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// ignore: unused_element
+late final AudioSessionController _audioSessionController;
+
 Future<void> bootstrap() async {
   unawaited(runZonedGuarded<Future<void>>(
     () async {
@@ -69,8 +72,9 @@ Future<void> bootstrap() async {
       );
       final audioSession = await AudioSession.instance;
       await audioSession.configure(const AudioSessionConfiguration.speech());
-      // Retain the session/handler bridge for the process lifetime.
-      AudioSessionController.forSession(
+      // Retain the session/handler bridge for the process lifetime; the
+      // underlying stream subscriptions are kept alive by this reference.
+      _audioSessionController = AudioSessionController.forSession(
         session: audioSession,
         handler: lectureAudioHandler,
       );

@@ -1,27 +1,33 @@
 #!/usr/bin/env bash
-# Runs a patrol integration test on a booted Android emulator or connected
-# device. Credentials + test inputs come from .integration.env (gitignored).
+# Runs a patrol integration test on a booted Android emulator / iOS
+# simulator / connected device. Credentials + test inputs come from
+# .integration.env (gitignored).
 #
 # Usage:
-#   scripts/integration.sh                  # default: flows mode
-#   scripts/integration.sh flows            # blank-slate critical flow
-#   scripts/integration.sh screenshots      # store PNG capture
-#   scripts/integration.sh flows <device>   # specific device id
+#   scripts/integration.sh                   # default: flows mode, default device
+#   scripts/integration.sh flows             # blank-slate critical flow
+#   scripts/integration.sh screenshots       # store PNG capture
+#   scripts/integration.sh flows <device>    # specific device id (adb serial
+#                                            #   or iOS sim UDID / name)
 #
 # Prereqs:
 #   - fvm + Flutter SDK resolved (project pins the version).
-#   - An Android emulator booted (iOS is out of scope for v1).
+#   - A booted Android emulator (adb serial like `emulator-5556`), OR
+#     a booted iOS simulator (UDID from `xcrun simctl list`).
 #   - dart/app/.integration.env populated from .integration.env.example.
 #
-# Outputs:
-#   flows        → screenshots/failures/<label>.png on failure.
-#   screenshots  → screenshots/raw/0[1-5]_*.png (five store shots).
+# Outputs (platform-scoped so Android + iOS runs don't clobber each other):
+#   flows        → screenshots/<platform>/failures/<label>.png on failure.
+#   screenshots  → screenshots/<platform>/raw/0[1-5]_*.png (five store shots).
+# where <platform> is `android` or `ios`, auto-detected from the device id
+# (or forced via `PLATFORM=ios scripts/integration.sh …`).
 #
 # Mechanism:
 #   patrol test runs on the device. The Dart test prints
 #   `[patrol] SCREENSHOT <subdir> <name>` at each screenshot stop, then
 #   sleeps long enough for this script to see the line and shoot the
-#   screen via `adb exec-out screencap -p`.
+#   screen via `adb exec-out screencap -p` (Android) or
+#   `xcrun simctl io <udid> screenshot` (iOS).
 
 set -euo pipefail
 
@@ -80,27 +86,58 @@ if [[ $# -ge 1 ]]; then
   DEVICE_ID="$1"
 fi
 
-mkdir -p screenshots/raw screenshots/failures
+# ── Platform detection ────────────────────────────────────────────────────
+# Override: `PLATFORM=ios` / `PLATFORM=android` — useful when autodetect
+# can't decide (e.g. no device argument given and both an adb emulator and
+# a booted iOS sim are present).
+# Autodetect: if the id matches a running `adb devices` entry → android;
+# if it matches a `simctl list` entry → ios; otherwise fall back to android
+# for back-compat with the previous android-only workflow.
+PLATFORM="${PLATFORM:-}"
+if [[ -z "$PLATFORM" ]]; then
+  if [[ -n "$DEVICE_ID" ]] \
+     && adb devices 2>/dev/null | awk 'NR>1 && $2=="device"{print $1}' \
+        | grep -qx "$DEVICE_ID"; then
+    PLATFORM="android"
+  elif [[ -n "$DEVICE_ID" ]] \
+       && xcrun simctl list devices 2>/dev/null | grep -q "$DEVICE_ID"; then
+    PLATFORM="ios"
+  else
+    PLATFORM="android"
+  fi
+fi
+
+SHOT_DIR="screenshots/$PLATFORM"
+mkdir -p "$SHOT_DIR/raw" "$SHOT_DIR/failures"
+
+echo "[integration.sh] platform=$PLATFORM device='${DEVICE_ID:-<default>}' shots=$SHOT_DIR"
 
 # Awk stream filter: on every `[patrol] SCREENSHOT <subdir> <name>` line,
-# run `adb exec-out screencap` and write to screenshots/<subdir>/<name>.png.
-# All other lines pass through untouched so the developer still sees the
-# `[patrol]` step log in real time.
+# take a screenshot of the booted device and write it to
+# $SHOT_DIR/<subdir>/<name>.png. All other lines pass through so the
+# developer still sees the `[patrol]` step log in real time.
 #
 # Anchor on the SCREENSHOT keyword rather than fixed positional fields —
 # `flutter test --show-flutter-logs` / `patrol` prepends a timestamp +
 # `: ` (and sometimes thread prefixes) to each stdout line, which used to
-# shift $3/$4 and leave every capture writing to `screenshots/SCREENSHOT/raw.png`.
+# shift $3/$4 and leave every capture writing to the wrong path.
 #
-# Pass `-s <serial>` via `adb_opts` so screencap works when multiple devices
-# / emulators are attached — bare `adb` otherwise exits 255 with
-# "more than one device/emulator".
+# Screencap tool is platform-conditional:
+#   - android: `adb -s <serial> exec-out screencap -p > <path>`
+#   - ios:     `xcrun simctl io <udid> screenshot <path>`
+# Pass `-s <serial>` on adb so it works when multiple devices are attached
+# (bare `adb` otherwise exits 255 with "more than one device/emulator").
 ADB_OPTS=""
-if [[ -n "$DEVICE_ID" ]]; then
+if [[ "$PLATFORM" == "android" && -n "$DEVICE_ID" ]]; then
   ADB_OPTS="-s $DEVICE_ID"
 fi
 SCREENCAP_AWK='
-BEGIN { adb_opts = ENVIRON["ADB_OPTS"] }
+BEGIN {
+  platform  = ENVIRON["PLATFORM"]
+  adb_opts  = ENVIRON["ADB_OPTS"]
+  device_id = ENVIRON["DEVICE_ID"]
+  shot_dir  = ENVIRON["SHOT_DIR"]
+}
 /\[patrol\] SCREENSHOT / {
   subdir = ""
   name = ""
@@ -116,14 +153,21 @@ BEGIN { adb_opts = ENVIRON["ADB_OPTS"] }
     fflush()
     next
   }
-  outfile = "screenshots/" subdir "/" name ".png"
-  # Write to a tempfile first so a failed `adb exec-out` (e.g. exit 255
-  # when multiple devices are attached and -s is missing) does not leave a
-  # 0-byte PNG behind — the shell redirect truncates the target the
-  # moment the pipeline starts, before adb has produced any bytes. Rename
-  # on success, delete on failure.
+  outfile = shot_dir "/" subdir "/" name ".png"
+  # Write to a tempfile first so a failed screencap (e.g. adb exit 255 when
+  # multiple devices are attached and -s is missing, or simctl boot not
+  # complete) does not leave a 0-byte PNG behind — the shell redirect
+  # truncates the target the moment the pipeline starts, before adb has
+  # produced any bytes. Rename on success, delete on failure.
   tmpfile = outfile ".tmp"
-  cmd = "mkdir -p \"screenshots/" subdir "\" && adb " adb_opts " exec-out screencap -p > \"" tmpfile "\""
+  if (platform == "ios") {
+    cmd = "mkdir -p \"" shot_dir "/" subdir "\" && xcrun simctl io " \
+          (device_id == "" ? "booted" : "\"" device_id "\"") \
+          " screenshot \"" tmpfile "\" >/dev/null 2>&1"
+  } else {
+    cmd = "mkdir -p \"" shot_dir "/" subdir "\" && adb " adb_opts \
+          " exec-out screencap -p > \"" tmpfile "\""
+  }
   rc = system(cmd)
   if (rc != 0) {
     system("rm -f \"" tmpfile "\"")
@@ -137,7 +181,7 @@ BEGIN { adb_opts = ENVIRON["ADB_OPTS"] }
 }
 { print; fflush() }
 '
-export ADB_OPTS
+export ADB_OPTS PLATFORM DEVICE_ID SHOT_DIR
 
 # patrol test's own `--uninstall` (default on) performs the same adb
 # uninstall we would run manually, so we leave it to patrol.
@@ -188,11 +232,11 @@ fi
 
 echo ""
 if [[ "$MODE" == "screenshots" ]]; then
-  echo "Screenshot PNGs in: $(pwd)/screenshots/raw/"
-  ls -1 screenshots/raw/ 2>/dev/null || true
+  echo "Screenshot PNGs in: $(pwd)/$SHOT_DIR/raw/"
+  ls -1 "$SHOT_DIR/raw/" 2>/dev/null || true
 else
-  echo "Failure PNGs (if any) in: $(pwd)/screenshots/failures/"
-  ls -1 screenshots/failures/ 2>/dev/null || true
+  echo "Failure PNGs (if any) in: $(pwd)/$SHOT_DIR/failures/"
+  ls -1 "$SHOT_DIR/failures/" 2>/dev/null || true
 fi
 
 exit "$STATUS"
