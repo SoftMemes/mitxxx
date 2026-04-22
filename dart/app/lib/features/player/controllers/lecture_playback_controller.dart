@@ -459,10 +459,17 @@ class LecturePlaybackController {
   }
 
   VideoPlayerController _createController(Uri uri) {
+    // Without this, video_player installs a lifecycle observer that pauses
+    // the controller on AppLifecycleState.paused — cutting iOS audio ~1s
+    // after backgrounding despite UIBackgroundModes: audio being set.
+    final options = VideoPlayerOptions(allowBackgroundPlayback: true);
     if (uri.isScheme('file')) {
-      return VideoPlayerController.file(File(uri.toFilePath()));
+      return VideoPlayerController.file(
+        File(uri.toFilePath()),
+        videoPlayerOptions: options,
+      );
     }
-    return VideoPlayerController.networkUrl(uri);
+    return VideoPlayerController.networkUrl(uri, videoPlayerOptions: options);
   }
 
   int _videoIndexForGlobalTime(double globalSeconds) {
