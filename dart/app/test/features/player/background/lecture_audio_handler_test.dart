@@ -21,11 +21,27 @@ class _FakeController extends LecturePlaybackController {
   @override
   Future<void> play() async {
     playCalls++;
+    // Mirror the real controller: play() updates the snapshot so subscribers
+    // (including the audio handler) see isPlaying: true.
+    snapshot.value = PlaybackSnapshot(
+      globalPosition: snapshot.value.globalPosition,
+      totalDuration: snapshot.value.totalDuration,
+      isPlaying: true,
+      activeVideoIndex: 0,
+      isComplete: snapshot.value.isComplete,
+    );
   }
 
   @override
   Future<void> pause() async {
     pauseCalls++;
+    snapshot.value = PlaybackSnapshot(
+      globalPosition: snapshot.value.globalPosition,
+      totalDuration: snapshot.value.totalDuration,
+      isPlaying: false,
+      activeVideoIndex: 0,
+      isComplete: snapshot.value.isComplete,
+    );
   }
 
   @override
@@ -212,58 +228,99 @@ void main() {
     await handler.seek(const Duration(seconds: 1));
     await handler.fastForward();
     await handler.rewind();
+    await flush();
     // Doesn't throw, doesn't emit a playbackState with bogus values.
     expect(handler.playbackState.value.playing, isFalse);
     // No attached controller → no reason to touch the audio session.
     expect(activator.calls, isEmpty);
   });
 
-  test('play activates the audio session before calling the controller',
+  test('play activates the audio session via the snapshot listener',
       () async {
     handler.attach(controller: controller, item: _item);
-    await handler.play();
+    await flush();
+    // Attach fires _emitPlaybackState with isPlaying: false → no-op (we're
+    // not in the active state to begin with).
+    expect(activator.calls, isEmpty);
 
-    expect(activator.calls, [true]);
+    await handler.play();
+    await flush();
+
     expect(controller.playCalls, 1);
-  });
-
-  test('play stays paused when the platform denies audio focus', () async {
-    handler.attach(controller: controller, item: _item);
-    activator.nextResult = false;
-
-    await handler.play();
-
     expect(activator.calls, [true]);
-    expect(controller.playCalls, 0);
-    expect(handler.playbackState.value.playing, isFalse);
   });
 
-  test('pause deactivates the audio session after pausing the controller',
+  test('pause deactivates the audio session via the snapshot listener',
       () async {
     handler.attach(controller: controller, item: _item);
+    await handler.play();
+    await flush();
+    expect(activator.calls, [true]);
+
     await handler.pause();
+    await flush();
 
     expect(controller.pauseCalls, 1);
-    expect(activator.calls, [false]);
+    expect(activator.calls, [true, false]);
   });
 
-  test('stop deactivates the audio session', () async {
+  test('consecutive plays do not re-activate an already-active session',
+      () async {
     handler.attach(controller: controller, item: _item);
+    await handler.play();
+    await flush();
+    // Simulate another snapshot update that still has isPlaying: true
+    // (e.g. a position tick) — must not re-fire the activator.
+    controller.snapshot.notifyListeners();
+    await flush();
+
+    expect(activator.calls, [true]);
+  });
+
+  test('stop pauses the controller and deactivates the session', () async {
+    handler.attach(controller: controller, item: _item);
+    await handler.play();
+    await flush();
+
     await handler.stop();
+    await flush();
 
     expect(controller.pauseCalls, 1);
-    expect(activator.calls, contains(false));
+    expect(activator.calls, [true, false]);
     expect(handler.mediaItem.value, isNull);
   });
 
   test('seek / fastForward / rewind do not touch the audio session', () async {
     handler.attach(controller: controller, item: _item);
     controller.currentSnapshot = _snap(pos: 50);
+    await flush();
+    expect(activator.calls, isEmpty);
 
     await handler.seek(const Duration(seconds: 10));
     await handler.fastForward();
     await handler.rewind();
+    await flush();
 
     expect(activator.calls, isEmpty);
   });
+
+  test('setMediaItem updates metadata on the attached controller', () {
+    handler.attach(controller: controller);
+    expect(handler.mediaItem.value, isNull);
+
+    const replacement = MediaItem(id: 'lec-2', title: 'Replacement');
+    handler.setMediaItem(replacement);
+
+    expect(handler.mediaItem.value, replacement);
+  });
+
+  test('setMediaItem without an attached controller is a no-op', () {
+    handler.setMediaItem(_item);
+    expect(handler.mediaItem.value, isNull);
+  });
+}
+
+Future<void> flush() async {
+  // Drain queued microtasks so unawaited session-activation futures complete.
+  await Future<void>.delayed(Duration.zero);
 }

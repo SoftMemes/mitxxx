@@ -1,8 +1,5 @@
-//
-//  RunnerUITests.m
-//  RunnerUITests
-//
-//  Created by Kristian Freed on 22/04/2026.
-//
-
-#import <Foundation/Foundation.h>
+@import XCTest;
+@import patrol;
+@import ObjectiveC.runtime;
+                                                                                                                                                          
+PATROL_INTEGRATION_TEST_IOS_RUNNER(RunnerUITests)

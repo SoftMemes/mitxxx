@@ -23,14 +23,13 @@ Future<bool> _defaultActivator({required bool active}) async {
 /// mirrors that controller's [PlaybackSnapshot] into `audio_service`'s
 /// `playbackState` stream.
 ///
-/// On [play] / [pause] / [stop] the handler activates / deactivates the
-/// shared [AudioSession]. `video_player` does not route through
-/// `audio_session`, so without this bracket the interruption stream stays
-/// silent on Android and iOS's session activation is left to AVPlayer's
-/// implicit behaviour (unreliable in the simulator). The widget layer must
-/// drive playback through these handler methods rather than calling the
-/// controller directly so the same activation pathway is hit from both
-/// in-app taps and lock-screen controls.
+/// Activates / deactivates the shared [AudioSession] whenever the mirrored
+/// playing flag flips. This runs from the snapshot listener, so it covers
+/// both lock-screen controls (which go through [play] / [pause]) and the
+/// in-app widget layer (which calls the controller directly). `video_player`
+/// does not route through `audio_session`, so without this bracket the
+/// interruption stream stays silent on Android and iOS's session activation
+/// is left to AVPlayer's implicit behaviour (unreliable in the simulator).
 class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
   LectureAudioHandler({AudioSessionActivator? activator})
       : _activator = activator ?? _defaultActivator;
@@ -87,9 +86,9 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
     _detachController();
     mediaItem.add(null);
     playbackState.add(PlaybackState());
-    // Don't bother awaiting — callers are synchronous (cast-connect, provider
-    // dispose). We update `_sessionActive` optimistically below so duplicate
-    // detach()es don't re-fire.
+    // Detach is called synchronously (cast-connect, provider dispose) so
+    // we fire-and-forget the deactivation. `_sessionActive` is flipped
+    // optimistically so repeat detaches don't re-fire.
     if (_sessionActive) {
       _sessionActive = false;
       unawaited(_activator(active: false));
@@ -100,10 +99,6 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> play() async {
     final controller = _controller;
     if (controller == null) return;
-    // Claim audio focus / activate the AVAudioSession before touching the
-    // player. If the platform denies focus (e.g. another app is mid-call on
-    // Android), stay paused.
-    if (!await _setSessionActive(active: true)) return;
     if (controller.snapshot.value.isComplete) {
       await controller.seekGlobal(0);
     }
@@ -112,12 +107,7 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> pause() async {
-    final controller = _controller;
-    if (controller == null) return;
-    await controller.pause();
-    // Release focus so other apps can take over while we're paused; the next
-    // play() re-requests it.
-    await _setSessionActive(active: false);
+    await _controller?.pause();
   }
 
   @override
@@ -149,18 +139,16 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> stop() async {
     await _controller?.pause();
     detach();
-    await _setSessionActive(active: false);
     await super.stop();
   }
 
   /// Requests the target activation state from the platform if we aren't
-  /// already in that state. Returns the result of the platform call (or
-  /// `true` when no call was needed).
-  Future<bool> _setSessionActive({required bool active}) async {
-    if (_sessionActive == active) return true;
-    final granted = await _activator(active: active);
-    if (granted) _sessionActive = active;
-    return granted;
+  /// already in that state. Flips [_sessionActive] synchronously so
+  /// overlapping calls don't re-fire, then forwards to the activator.
+  Future<void> _setSessionActive({required bool active}) async {
+    if (_sessionActive == active) return;
+    _sessionActive = active;
+    await _activator(active: active);
   }
 
   void _detachController() {
@@ -174,6 +162,11 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   void _emitPlaybackState(PlaybackSnapshot snap) {
+    // Keep audio focus / AVAudioSession activation in lockstep with the
+    // controller's playing flag. Fire-and-forget: snapshot emissions are
+    // synchronous and we can't await platform calls from a ValueListenable
+    // listener.
+    unawaited(_setSessionActive(active: snap.isPlaying));
     final position = Duration(
       milliseconds: (snap.globalPosition * 1000).round(),
     );

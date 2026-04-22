@@ -70,7 +70,7 @@ void main() {
     // Tests never touch the real platform channel — provide a no-op
     // activator so the handler's play/pause don't try to resolve
     // AudioSession.instance.
-    handler = LectureAudioHandler(activator: ({required bool active}) async => true);
+    handler = LectureAudioHandler(activator: ({required active}) async => true);
     controller = _SpyController();
     handler.attach(
       controller: controller,
