@@ -171,13 +171,26 @@ Future<void> keycloakLogin(
   // keeps the existing auto-discovery behavior unchanged.
   final appId = Platform.isIOS ? 'app.omnilect.dev' : null;
 
+  // iOS WKWebView first-paint on the simulator is slow — the Keycloak SSO
+  // page can take 15–30 s before the email field becomes a real
+  // XCUIElementTypeTextField. `enterTextByIndex`'s internal poll uses the
+  // automator's default timeout (10 s); bump it on iOS so a slow load
+  // doesn't fail the test. Android's WebView is fast enough that the
+  // default is fine.
+  final textEntryTimeout = Platform.isIOS
+      ? const Duration(minutes: 1)
+      : const Duration(seconds: 10);
+
   step('keycloak: entering username');
   // Give the WebView a moment to render before the automator reaches in.
-  // iOS XCUITest seems to need a touch longer than Android before WKWebView
-  // fields become addressable.
   await $.tester.pump(Duration(seconds: Platform.isIOS ? 3 : 2));
   // ignore: deprecated_member_use
-  await $.native.enterTextByIndex(email, index: 0, appId: appId);
+  await $.native.enterTextByIndex(
+    email,
+    index: 0,
+    appId: appId,
+    timeout: textEntryTimeout,
+  );
   // MIT's Keycloak labels both submit buttons "Next" (username page +
   // password page). Extra fallbacks are kept for small upstream copy
   // changes.
@@ -190,7 +203,12 @@ Future<void> keycloakLogin(
   step('keycloak: entering password');
   await $.tester.pump(Duration(seconds: Platform.isIOS ? 3 : 2));
   // ignore: deprecated_member_use
-  await $.native.enterTextByIndex(password, index: 0, appId: appId);
+  await $.native.enterTextByIndex(
+    password,
+    index: 0,
+    appId: appId,
+    timeout: textEntryTimeout,
+  );
   await _tapKeycloakSubmit(
     $,
     const ['Next', 'Sign in', 'Sign In', 'Log in', 'Log In'],

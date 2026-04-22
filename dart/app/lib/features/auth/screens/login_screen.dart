@@ -222,6 +222,22 @@ class _LoginSheetBodyState extends ConsumerState<_LoginSheetBody> {
               );
               return NavigationActionPolicy.ALLOW;
             },
+            onReceivedError: (controller, request, error) {
+              _log.warning(
+                'WebView onReceivedError: url=${request.url} '
+                'type=${error.type} description=${error.description}',
+              );
+            },
+            onReceivedHttpError: (controller, request, response) {
+              _log.warning(
+                'WebView onReceivedHttpError: url=${request.url} '
+                'status=${response.statusCode} '
+                'reason=${response.reasonPhrase}',
+              );
+            },
+            onLoadStart: (controller, uri) {
+              _log.fine('WebView onLoadStart: $uri');
+            },
             onLoadStop: (controller, uri) async {
               _log.fine('WebView onLoadStop: $uri');
               if (uri == null) return;
