@@ -1,7 +1,7 @@
 # Automate Screenshots Specification
 
 > **Version**: 1.0 (April 2026)
-> **Status**: Ready for Implementation
+> **Status**: Implemented
 > **Last Updated**: 2026-04-22
 
 ## Summary / Goal
@@ -29,7 +29,7 @@ Pipeline contract:
 ### In scope (v1)
 
 - Python + Pillow compositor that reads raw PNGs from
-  `dart/app/screenshots/raw/android/` and `dart/app/screenshots/raw/ios/`
+  `dart/app/screenshots/android/raw/` and `dart/app/screenshots/ios/raw/`
   and produces packaged marketing screenshots under
   `dart/app/screenshots/packaged/`.
 - Tilted/isometric composition: device frame rotated ~15°, headline +
@@ -256,15 +256,14 @@ python-tools/
 
 ```
 dart/app/screenshots/
-  raw/
-    android/
-      01_onboarding.png
-      …
-      05_lecture.png
-    ios/
-      01_onboarding.png
-      …
-      05_lecture.png
+  android/raw/
+    01_onboarding.png
+    …
+    05_lecture.png
+  ios/raw/
+    01_onboarding.png
+    …
+    05_lecture.png
 ```
 
 The Android capture path is the existing
@@ -455,29 +454,40 @@ No Dart code is added by this spec. Analyzer clean is not affected.
   — repo convention: every Python tool lives in its own subdir under
   `python-tools/`.
 
-### To create
+### Created
 
 - `python-tools/screenshot-composer/CLAUDE.md`
-- `python-tools/screenshot-composer/package.py`
+- `python-tools/screenshot-composer/cli.py`
 - `python-tools/screenshot-composer/compose.py`
-- `python-tools/screenshot-composer/fonts/Inter-{Bold,Regular}.ttf`
+- `python-tools/screenshot-composer/perspective.py`
+- `python-tools/screenshot-composer/frame.py` (renders bezel in code)
+- `python-tools/screenshot-composer/status_bar.py` (renders 9:41 in code)
+- `python-tools/screenshot-composer/text_render.py`
+- `python-tools/screenshot-composer/fastlane_sync.py`
 - `python-tools/screenshot-composer/templates/canvases.yaml`
 - `python-tools/screenshot-composer/templates/copy/en-US.yaml`
-- `python-tools/screenshot-composer/templates/frames/{iphone_6_9,android_phone}.png`
-- `python-tools/screenshot-composer/templates/status_bars/{ios,android}.png`
+- `python-tools/screenshot-composer/templates/fonts/Inter-{Bold,Regular}.ttf`
+- `python-tools/screenshot-composer/templates/fonts/LICENSE-OFL.txt`
+- `python-tools/screenshot-composer/tests/test_perspective.py`
 - `python-tools/screenshot-composer/tests/test_golden_manifest.py`
 - `python-tools/screenshot-composer/tests/golden_manifest.json`
 - `dart/app/screenshots/packaged/**` — committed LFS-tracked outputs.
-- `dart/app/scripts/screenshots.sh` — one-command wrapper.
-- `.gitattributes` at repo root — LFS tracking rules for screenshot
-  PNGs.
 
-### To modify
+### Modified
 
-- `python-tools/requirements.txt` — add pinned Pillow + freetype.
-- `dart/app/fastlane/Fastfile` — flip `skip_upload_screenshots` /
-  `skip_upload_images` in `release_android_impl` + `release_ios_impl`;
-  add `upload_screenshots` convenience lane.
+- `python-tools/requirements.txt` — pinned Pillow 11.3.0 + PyYAML 6.0.2 +
+  NumPy 2.1.3 + pytest 8.3.4.
+- `dart/app/fastlane/Fastfile` — Android `release_android_impl` now
+  uploads images + screenshots (descriptions still skipped). iOS
+  `release_ios_impl` adds a `deliver` screenshots-only call. New
+  `upload_screenshots` lane pushes Play + App Store without touching the
+  binary.
+- `dart/app/scripts/screenshots.sh` — now chains `integration.sh
+  screenshots` with `cli.py --sync-fastlane` (previously a thin wrapper).
+- `.gitattributes` (root) — LFS rules for
+  `dart/app/fastlane/metadata/**/*.png` and
+  `python-tools/screenshot-composer/templates/fonts/*.ttf`.
+  `dart/app/screenshots/**/*.png` was already tracked.
 
 ---
 
@@ -517,3 +527,45 @@ Confirmed with the owner via interactive Q&A (not defaulted):
     lane.
 14. **Determinism: pinned Python + Pillow + freetype, committed Inter
     TTF, SHA-256 golden-manifest test.** No Docker.
+
+---
+
+## Implementation Notes
+
+**Implemented**: April 2026 (commit on branch `kristian/fix-screenshots`).
+
+### Deviations from the spec as written
+
+1. **Raw input path.** Spec originally said
+   `dart/app/screenshots/raw/{android,ios}/`. Actual layout is
+   `dart/app/screenshots/{android,ios}/raw/` (matches
+   `scripts/integration.sh`). Spec text corrected above.
+2. **Device frames rendered in code** (`frame.py`) rather than checked-in
+   `templates/frames/*.png`. Same for the synthetic status bar
+   (`status_bar.py`). Keeps the tool self-contained, sidesteps Apple/Google
+   mockup-asset licensing, and the golden-manifest test proves determinism.
+3. **Raw sources already present** for both platforms — the iOS capture work
+   landed on this branch before the compositor, so the compositor was
+   verified end-to-end against real iOS PNGs (not hypothetical).
+
+### Verification run (at implementation time)
+
+- `pytest python-tools/screenshot-composer/tests/` → 13 passed
+  (3 perspective algebra tests + 10 byte-identity checks).
+- `python3 python-tools/screenshot-composer/cli.py` → 10 packaged PNGs
+  written (5 frames × 2 canvases).
+- `python3 python-tools/screenshot-composer/cli.py --sync-fastlane` →
+  Fastlane metadata tree populated.
+- `cd dart/app && bundle exec fastlane lanes` → `upload_screenshots` listed.
+- `python3 python-tools/screenshot-composer/cli.py --strict` exits 1 as
+  expected (all copy is still `TODO:`).
+- `fvm flutter analyze` → `No issues found!`.
+
+### Known follow-ups (not blockers)
+
+- Owner to author real marketing copy in
+  `templates/copy/en-US.yaml`, regenerate the golden manifest, commit.
+- Tune `canvases.yaml` geometry once the copy is finalised if the
+  headline blocks overflow.
+- Wire a lint-only CI job that re-runs the composer and diffs the
+  manifest (deferred per spec).

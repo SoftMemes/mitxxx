@@ -1,0 +1,38 @@
+# Per-canvas geometry for the screenshot compositor.
+#
+# screen_rect is [x, y, w, h] in canvas coords — the axis-aligned inner
+# screen area of the rendered phone. Bezel extends `bezel_thickness` pixels
+# outward from that rectangle in all directions. `phone_style` drives the
+# platform-appropriate chrome (iPhone: Dynamic Island; Android: centered
+# punch-hole camera).
+#
+# raw_status_bar_px is the height (in raw-PNG pixels, not canvas pixels) of
+# the top strip that gets repainted with the synthetic 9:41 status bar before
+# the raw PNG is resized into screen_rect.
+
+canvases:
+  iphone_6_9:
+    size: [1290, 2796]
+    platform: ios
+    raw_source_platform: ios
+    phone_style: iphone
+    raw_status_bar_px: 174
+    copy_area: [90, 120, 1110, 480]
+    screen_rect: [170, 657, 950, 2059]
+    bezel_thickness: 14
+    screen_corner_radius: 58
+    headline_pt: 96
+    subhead_pt: 38
+
+  android_phone:
+    size: [1080, 1920]
+    platform: android
+    raw_source_platform: android
+    phone_style: android
+    raw_status_bar_px: 66
+    copy_area: [60, 100, 960, 310]
+    screen_rect: [140, 438, 800, 1422]
+    bezel_thickness: 12
+    screen_corner_radius: 36
+    headline_pt: 72
+    subhead_pt: 28

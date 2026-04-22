@@ -249,9 +249,14 @@ def release_android_impl
     aab:           "build/app/outputs/bundle/prodRelease/app-prod-release.aab",
     json_key:      ENV.fetch("PLAY_STORE_JSON_KEY"),
     package_name:  PROD_BUNDLE_ID,
-    skip_upload_metadata: true,
-    skip_upload_images:   true,
-    skip_upload_screenshots: true,
+    # Descriptions / changelogs still skipped (not produced by the
+    # screenshot compositor). Screenshots + images uploaded from
+    # fastlane/metadata/android/, produced by
+    # python-tools/screenshot-composer/cli.py --sync-fastlane.
+    skip_upload_metadata:    true,
+    skip_upload_changelogs:  true,
+    skip_upload_images:      false,
+    skip_upload_screenshots: false,
   )
 end
 
@@ -278,6 +283,21 @@ def release_ios_impl
     beta_app_feedback_email: "contact@omnilect.app",
     submit_beta_review:      true,
   )
+  # Upload App Store screenshots (no binary, no description). Fails fast
+  # if the App Store listing does not yet exist — that is expected while
+  # the iOS store page is "coming soon"; comment this out or run the
+  # standalone `upload_screenshots` lane (iOS part skipped) until the
+  # listing is provisioned.
+  deliver(
+    api_key:                          api_key,
+    app_identifier:                   PROD_BUNDLE_ID,
+    skip_binary_upload:               true,
+    skip_metadata:                    true,
+    skip_screenshots:                 false,
+    force:                            true,
+    overwrite_screenshots:            true,
+    precheck_include_in_app_purchases: false,
+  )
 end
 
 lane :release do
@@ -294,4 +314,43 @@ end
 lane :release_ios do
   ENV["BUILD_NUMBER"] = compute_build_number.to_s
   release_ios_impl
+end
+
+# ── Lane: upload_screenshots ─────────────────────────────────────────────────
+# Push packaged marketing screenshots to both stores without touching the
+# binary or app descriptions. Run after
+#   python3 python-tools/screenshot-composer/cli.py --sync-fastlane
+# has populated fastlane/metadata/.
+#
+# iOS half is a soft failure path — `deliver` errors if the App Store
+# listing does not yet exist. The Play half runs first so the Android
+# screenshots publish even if iOS is not provisioned.
+
+lane :upload_screenshots do
+  supply(
+    json_key:                ENV.fetch("PLAY_STORE_JSON_KEY"),
+    package_name:            PROD_BUNDLE_ID,
+    skip_upload_apk:         true,
+    skip_upload_aab:         true,
+    skip_upload_metadata:    true,
+    skip_upload_changelogs:  true,
+    skip_upload_images:      false,
+    skip_upload_screenshots: false,
+    validate_only:           false,
+  )
+  begin
+    deliver(
+      api_key:                          app_store_connect_api_key_config,
+      app_identifier:                   PROD_BUNDLE_ID,
+      skip_binary_upload:               true,
+      skip_metadata:                    true,
+      skip_screenshots:                 false,
+      force:                            true,
+      overwrite_screenshots:            true,
+      precheck_include_in_app_purchases: false,
+    )
+  rescue => e
+    UI.important("deliver (App Store) failed: #{e.message}")
+    UI.important("Skipping iOS screenshot upload — listing may not yet exist.")
+  end
 end

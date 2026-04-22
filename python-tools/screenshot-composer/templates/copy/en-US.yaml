@@ -1,0 +1,19 @@
+# Marketing frames in store display order. Keys are raw PNG stems under
+# dart/app/screenshots/<platform>/raw/; the order in this file is the slot
+# order on the store page (first entry = slot 1).
+
+05_lecture:
+  headline: "Watch lectures offline"
+  subhead: "Watch on your phone, or cast to your TV"
+
+04_course_outline:
+  headline: "Access course materials offline"
+  subhead: "Access courses on your device, offline, whenever you want"
+
+03_home:
+  headline: "Your Courses"
+  subhead: "Access the MIT and OpenCourseWare courses from anywhere"
+
+01_onboarding:
+  headline: "Not affilliated with MIT"
+  subhead: "MITxxx is an unofficial app, not associated with MIT"

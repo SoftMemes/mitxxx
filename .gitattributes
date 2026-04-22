@@ -1,2 +1,4 @@
 dart/app/assets/js/*.js filter=lfs diff=lfs merge=lfs -text
 dart/app/screenshots/**/*.png filter=lfs diff=lfs merge=lfs -text
+dart/app/fastlane/metadata/**/*.png filter=lfs diff=lfs merge=lfs -text
+python-tools/screenshot-composer/templates/fonts/*.ttf filter=lfs diff=lfs merge=lfs -text
