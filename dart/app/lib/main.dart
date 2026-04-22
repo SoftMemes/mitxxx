@@ -8,6 +8,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 import 'package:omnilect/core/analytics/advertising_id_provider.dart';
 import 'package:omnilect/core/analytics/analytics_preferences.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
@@ -75,6 +76,11 @@ Future<void> bootstrap() async {
         handler: lectureAudioHandler,
       );
 
+      // TEMP diagnostic: log every Flutter lifecycle transition so we can
+      // correlate pause() calls in the player logs with iOS background events.
+      final lifecycleLog = Logger('app.lifecycle');
+      WidgetsBinding.instance.addObserver(_LifecycleLogger(lifecycleLog));
+
       runApp(
         ProviderScope(
           overrides: [
@@ -93,6 +99,15 @@ Future<void> bootstrap() async {
       fatal: true,
     ),
   ));
+}
+
+class _LifecycleLogger with WidgetsBindingObserver {
+  _LifecycleLogger(this._log);
+  final Logger _log;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _log.info('state=$state');
+  }
 }
 
 class OmnilectApp extends ConsumerStatefulWidget {

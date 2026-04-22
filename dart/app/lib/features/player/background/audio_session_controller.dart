@@ -51,19 +51,21 @@ class AudioSessionController {
   Future<void> _onInterruption(AudioInterruptionEvent event) async {
     if (event.begin) {
       final wasPlaying = _handler.playbackState.valueOrNull?.playing ?? false;
+      _log.info(
+        'interruption begin (type=${event.type}, wasPlaying=$wasPlaying)',
+      );
       if (wasPlaying) {
-        _log.fine('interruption begin → pause (type=${event.type})');
         _pausedForInterruption = true;
         await _handler.pause();
       }
     } else {
+      _log.info('interruption end (type=${event.type})');
       // End of interruption. `AudioInterruptionType.pause` means the platform
       // explicitly signalled "you may resume" (iOS `shouldResume`, Android
       // `AUDIOFOCUS_GAIN` after `AUDIOFOCUS_LOSS_TRANSIENT`). Any other type
       // means the loss was permanent / unknown and we stay paused.
       if (_pausedForInterruption &&
           event.type == AudioInterruptionType.pause) {
-        _log.fine('interruption end → resume');
         _pausedForInterruption = false;
         await _handler.play();
       } else {
@@ -73,7 +75,7 @@ class AudioSessionController {
   }
 
   Future<void> _onBecomingNoisy(void _) async {
-    _log.fine('becomingNoisy → pause');
+    _log.info('becomingNoisy → pause');
     // Noisy (headphones yanked) always loses any pending auto-resume intent.
     _pausedForInterruption = false;
     await _handler.pause();

@@ -163,6 +163,7 @@ class LecturePlaybackController {
 
   Future<void> pause() async {
     if (_disposed || _activeVpc == null) return;
+    _log.info('pause() called\n${StackTrace.current}');
     _wantPlaying = false;
     await _activeVpc!.pause();
     _updateSnapshot();
