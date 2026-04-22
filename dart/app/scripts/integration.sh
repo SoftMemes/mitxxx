@@ -168,12 +168,17 @@ BEGIN {
     # does not drop a screenshot from the store set.
     sim = (device_id == "" ? "booted" : "\"" device_id "\"")
     cmd = "mkdir -p \"" shot_dir "/" subdir "\" && " \
-          "for i in 1 2 3 4 5; do " \
-          "  xcrun simctl io " sim " screenshot \"" tmpfile "\" " \
-          "       >/dev/null 2>&1 && break; " \
-          "  sleep 0.5; " \
+          "for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do " \
+          "  err=$(xcrun simctl io " sim " screenshot \"" tmpfile "\" " \
+          "        2>&1 >/dev/null); rc=$?; " \
+          "  if [ $rc -eq 0 ] && [ -s \"" tmpfile "\" ]; then break; fi; " \
+          "  rm -f \"" tmpfile "\"; " \
+          "  sleep 1; " \
           "done; " \
-          "[ -s \"" tmpfile "\" ]"
+          "if [ ! -s \"" tmpfile "\" ]; then " \
+          "  echo \"simctl io last error: $err\" >&2; " \
+          "  exit 1; " \
+          "fi"
   } else {
     cmd = "mkdir -p \"" shot_dir "/" subdir "\" && adb " adb_opts \
           " exec-out screencap -p > \"" tmpfile "\""
