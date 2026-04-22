@@ -80,7 +80,12 @@ void main() {
         await waitFor(
           $,
           find.byType(Checkbox),
-          timeout: const Duration(minutes: 1),
+          // Cold-start availableListsRefresh occasionally takes 1–2 minutes
+          // because its in-app WebView bootstrap loops a few times before a
+          // fresh session_mitlearn cookie lands. 3 min gives plenty of
+          // slack so the test doesn't falsely fail during recovery; the
+          // outer test timeout is still 25 min.
+          timeout: const Duration(minutes: 3),
           label: 'at least one list checkbox '
               '(account needs at least one MIT Learn list)',
         );
