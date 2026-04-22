@@ -471,10 +471,21 @@ class LecturePlaybackController {
   }
 
   VideoPlayerController _createController(Uri uri) {
+    // `allowBackgroundPlayback: true` disables video_player's built-in
+    // `WidgetsBindingObserver` that calls `controller.pause()` on
+    // `AppLifecycleState.paused`. Without this the audio cuts as soon as
+    // the user backgrounds the app — defeating the whole background-audio
+    // feature. The actual Android/iOS background-playback policy is
+    // governed by the audio_service foreground service + iOS
+    // `UIBackgroundModes: audio`, not by this flag.
+    final options = VideoPlayerOptions(allowBackgroundPlayback: true);
     if (uri.isScheme('file')) {
-      return VideoPlayerController.file(File(uri.toFilePath()));
+      return VideoPlayerController.file(
+        File(uri.toFilePath()),
+        videoPlayerOptions: options,
+      );
     }
-    return VideoPlayerController.networkUrl(uri);
+    return VideoPlayerController.networkUrl(uri, videoPlayerOptions: options);
   }
 
   int _videoIndexForGlobalTime(double globalSeconds) {

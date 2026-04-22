@@ -69,9 +69,18 @@ Future<void> bootstrap() async {
         config: const AudioServiceConfig(
           androidNotificationChannelId: 'app.omnilect.lecture_audio',
           androidNotificationChannelName: 'Lecture playback',
-          androidNotificationOngoing: true,
           preloadArtwork: true,
           fastForwardInterval: LectureAudioHandler.fastForwardInterval,
+          // Keep the foreground service alive across transient pauses
+          // (buffering underruns, segment boundaries). With the default
+          // (true), each false→true flip tries to restartForegroundService
+          // from the background, which Android 12+ rejects with
+          // ForegroundServiceStartNotAllowedException — killing playback
+          // a few seconds after backgrounding. A foreground-service
+          // notification is inherently ongoing, so we drop
+          // androidNotificationOngoing (audio_service's assertion
+          // requires those to match up anyway).
+          androidStopForegroundOnPause: false,
         ),
       );
       final audioSession = await AudioSession.instance;
