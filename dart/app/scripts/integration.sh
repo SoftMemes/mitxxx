@@ -84,14 +84,35 @@ mkdir -p screenshots/raw screenshots/failures
 # run `adb exec-out screencap` and write to screenshots/<subdir>/<name>.png.
 # All other lines pass through untouched so the developer still sees the
 # `[patrol]` step log in real time.
+#
+# Anchor on the SCREENSHOT keyword rather than fixed positional fields —
+# `flutter test --show-flutter-logs` / `patrol` prepends a timestamp +
+# `: ` (and sometimes thread prefixes) to each stdout line, which used to
+# shift $3/$4 and leave every capture writing to `screenshots/SCREENSHOT/raw.png`.
 SCREENCAP_AWK='
 /\[patrol\] SCREENSHOT / {
-  subdir = $3
-  name = $4
+  subdir = ""
+  name = ""
+  for (i = 1; i <= NF; i++) {
+    if ($i == "SCREENSHOT") {
+      subdir = $(i + 1)
+      name = $(i + 2)
+      break
+    }
+  }
+  if (subdir == "" || name == "") {
+    print "[screencap] WARN: could not parse marker: " $0
+    fflush()
+    next
+  }
   outfile = "screenshots/" subdir "/" name ".png"
-  cmd = "adb exec-out screencap -p > " outfile
-  system(cmd)
-  print "[screencap] wrote " outfile
+  cmd = "mkdir -p \"screenshots/" subdir "\" && adb exec-out screencap -p > \"" outfile "\""
+  rc = system(cmd)
+  if (rc != 0) {
+    print "[screencap] ERROR rc=" rc " " outfile
+  } else {
+    print "[screencap] wrote " outfile
+  }
   fflush()
   next
 }
