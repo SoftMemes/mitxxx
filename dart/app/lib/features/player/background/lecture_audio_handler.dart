@@ -5,9 +5,9 @@ import 'package:omnilect/features/player/controllers/lecture_playback_controller
 
 /// Activates / deactivates the shared audio session. Injected so tests can
 /// observe activation without going through the real platform channel.
-typedef AudioSessionActivator = Future<bool> Function(bool active);
+typedef AudioSessionActivator = Future<bool> Function({required bool active});
 
-Future<bool> _defaultActivator(bool active) async {
+Future<bool> _defaultActivator({required bool active}) async {
   final session = await AudioSession.instance;
   return session.setActive(active);
 }
@@ -27,11 +27,11 @@ Future<bool> _defaultActivator(bool active) async {
 /// silent on Android and iOS's session activation is left to AVPlayer's
 /// implicit behaviour (unreliable in the simulator).
 class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
-  static const Duration rewindInterval = Duration(seconds: 10);
-  static const Duration fastForwardInterval = Duration(seconds: 30);
-
   LectureAudioHandler({AudioSessionActivator? activator})
       : _activator = activator ?? _defaultActivator;
+
+  static const Duration rewindInterval = Duration(seconds: 10);
+  static const Duration fastForwardInterval = Duration(seconds: 30);
 
   final AudioSessionActivator _activator;
 
@@ -75,7 +75,7 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
     // Claim audio focus / activate the AVAudioSession before touching the
     // player. If the platform denies focus (e.g. another app is mid-call on
     // Android), stay paused.
-    if (!await _activator(true)) return;
+    if (!await _activator(active: true)) return;
     if (controller.snapshot.value.isComplete) {
       await controller.seekGlobal(0);
     }
@@ -89,7 +89,7 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
     await controller.pause();
     // Release focus so other apps can take over while we're paused; the next
     // play() re-requests it.
-    await _activator(false);
+    await _activator(active: false);
   }
 
   @override
@@ -121,7 +121,7 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> stop() async {
     await _controller?.pause();
     detach();
-    await _activator(false);
+    await _activator(active: false);
     await super.stop();
   }
 

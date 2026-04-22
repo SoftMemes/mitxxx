@@ -69,7 +69,7 @@ class _FakeActivator {
   final List<bool> calls = [];
   bool nextResult = true;
 
-  Future<bool> call(bool active) async {
+  Future<bool> call({required bool active}) async {
     calls.add(active);
     return nextResult;
   }

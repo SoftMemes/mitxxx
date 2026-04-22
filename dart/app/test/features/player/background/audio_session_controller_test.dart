@@ -67,7 +67,10 @@ void main() {
   late AudioSessionController sessionController;
 
   setUp(() {
-    handler = LectureAudioHandler();
+    // Tests never touch the real platform channel — provide a no-op
+    // activator so the handler's play/pause don't try to resolve
+    // AudioSession.instance.
+    handler = LectureAudioHandler(activator: ({required bool active}) async => true);
     controller = _SpyController();
     handler.attach(
       controller: controller,

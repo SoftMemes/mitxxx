@@ -27,6 +27,9 @@ import 'package:omnilect/firebase_options_prod.dart';
 import 'package:omnilect/flavor_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// Holds the session/handler bridge for the process lifetime. Assigned once
+// from `bootstrap()` and deliberately never read again — its purpose is to
+// keep the stream subscriptions in `AudioSessionController` reachable.
 // ignore: unused_element
 late final AudioSessionController _audioSessionController;
 
