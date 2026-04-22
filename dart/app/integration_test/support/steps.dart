@@ -147,27 +147,28 @@ Future<T> runWithFailureScreenshot<T>(
 
 /// Drives MIT's Keycloak SSO form via patrol native automation. MIT Keycloak
 /// is a two-step login: username on the first page, then password on the
-/// second. Both pages render a single `android.widget.EditText` inside the
-/// WebView, so `enterTextByIndex(0)` hits the right field on each step.
-/// We then tap the submit button by its visible text ("Next" on the
-/// username page, "Sign In" on the password page).
-///
-/// Only Android is supported — iOS parity is tracked in the spec's
-/// open-follow-ups list.
+/// second. Each page renders a single text field inside a WebView —
+/// `android.widget.EditText` on Android, an `XCUIElementTypeTextField` /
+/// `XCUIElementTypeSecureTextField` on iOS. Patrol's `enterTextByIndex(0)`
+/// targets exactly that element on both platforms. We then tap the submit
+/// button by its visible text ("Next" on the username page, "Sign In" on
+/// the password page).
 Future<void> keycloakLogin(
   PatrolIntegrationTester $, {
   required String email,
   required String password,
 }) async {
-  if (!Platform.isAndroid) {
+  if (!Platform.isAndroid && !Platform.isIOS) {
     throw UnsupportedError(
-      'keycloakLogin currently supports Android only. '
-      'iOS parity is tracked as a follow-up.',
+      'keycloakLogin supports Android and iOS only '
+      '(got ${Platform.operatingSystem}).',
     );
   }
   step('keycloak: entering username');
   // Give the WebView a moment to render before the automator reaches in.
-  await $.tester.pump(const Duration(seconds: 2));
+  // iOS XCUITest seems to need a touch longer than Android before WKWebView
+  // fields become addressable.
+  await $.tester.pump(Duration(seconds: Platform.isIOS ? 3 : 2));
   // ignore: deprecated_member_use
   await $.native.enterTextByIndex(email, index: 0);
   // MIT's Keycloak labels both submit buttons "Next" (username page +
@@ -176,7 +177,7 @@ Future<void> keycloakLogin(
   await _tapKeycloakSubmit($, ['Next', 'Continue', 'Sign in', 'Sign In']);
 
   step('keycloak: entering password');
-  await $.tester.pump(const Duration(seconds: 2));
+  await $.tester.pump(Duration(seconds: Platform.isIOS ? 3 : 2));
   // ignore: deprecated_member_use
   await $.native.enterTextByIndex(password, index: 0);
   await _tapKeycloakSubmit(
