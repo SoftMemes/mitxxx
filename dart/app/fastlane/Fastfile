@@ -249,12 +249,11 @@ def release_android_impl
     aab:           "build/app/outputs/bundle/prodRelease/app-prod-release.aab",
     json_key:      ENV.fetch("PLAY_STORE_JSON_KEY"),
     package_name:  PROD_BUNDLE_ID,
-    # Descriptions / changelogs still skipped (not produced by the
-    # screenshot compositor). Screenshots + images uploaded from
-    # fastlane/metadata/android/, produced by
+    # All listing content now managed under fastlane/metadata/android/.
+    # Screenshots are produced by
     # python-tools/screenshot-composer/cli.py --sync-fastlane.
-    skip_upload_metadata:    true,
-    skip_upload_changelogs:  true,
+    skip_upload_metadata:    false,
+    skip_upload_changelogs:  false,
     skip_upload_images:      false,
     skip_upload_screenshots: false,
   )
@@ -283,16 +282,14 @@ def release_ios_impl
     beta_app_feedback_email: "contact@omnilect.app",
     submit_beta_review:      true,
   )
-  # Upload App Store screenshots (no binary, no description). Fails fast
-  # if the App Store listing does not yet exist — that is expected while
-  # the iOS store page is "coming soon"; comment this out or run the
-  # standalone `upload_screenshots` lane (iOS part skipped) until the
-  # listing is provisioned.
+  # Upload App Store listing (screenshots + metadata, no binary — the
+  # IPA goes up via upload_to_testflight above). Fails fast if the App
+  # Store listing does not yet exist.
   deliver(
     api_key:                          api_key,
     app_identifier:                   PROD_BUNDLE_ID,
     skip_binary_upload:               true,
-    skip_metadata:                    true,
+    skip_metadata:                    false,
     skip_screenshots:                 false,
     force:                            true,
     overwrite_screenshots:            true,

@@ -1,0 +1,1 @@
+Offline reader for MITx and MIT OpenCourseWare. Videos, transcripts, no ads.

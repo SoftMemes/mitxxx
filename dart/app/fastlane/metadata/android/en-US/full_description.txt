@@ -1,0 +1,24 @@
+MITxxx is a free app for downloading and watching MITx and MIT OpenCourseWare (OCW) courses offline on your phone.
+
+Sign in with your free MITx account at mitxonline.mit.edu, pick the courses you want to sync, and keep learning wherever you are — on the plane, on the train, on a campsite with no signal.
+
+Features
+• Download video lectures and watch them without a connection.
+• Browse the full course outline, sections, and sequences offline.
+• Read lecture transcripts while you watch.
+• Cast lectures to your TV with Chromecast.
+• Free. No ads. No in-app purchases. No tracking.
+• Your course content and progress stay on your device — nothing is sent to third-party servers.
+
+How it works
+1. Enroll in courses at mitxonline.mit.edu.
+2. Open MITxxx and sign in with the same account.
+3. Pick which of your enrolled MITx courses and saved OpenCourseWare lists to sync.
+4. Download lectures once, watch them anywhere.
+
+Unofficial app
+MITxxx is an independent app. It is not affiliated with, endorsed by, or officially connected to MIT, MITx, MIT OpenLearning, or edX. "MIT", "MITx", and "OpenCourseWare" are trademarks of the Massachusetts Institute of Technology. We use these names only to describe the courses this app can read on your behalf.
+
+Contact
+Website: https://omnilect.app
+Support: contact@omnilect.app

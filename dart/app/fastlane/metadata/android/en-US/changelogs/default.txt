@@ -1,0 +1,1 @@
+First release. Offline video playback, transcripts, outline browsing, Chromecast support.
