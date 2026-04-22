@@ -109,7 +109,7 @@ run_patrol() {
     --target="$TARGET" \
     --flavor=dev \
     --show-flutter-logs \
-    "${DEVICE_ARGS[@]}" \
+    "${DEVICE_ARGS[@]+"${DEVICE_ARGS[@]}"}" \
     --dart-define="INTEGRATION_EMAIL=$INTEGRATION_EMAIL" \
     --dart-define="INTEGRATION_PASSWORD=$INTEGRATION_PASSWORD" \
     --dart-define="INTEGRATION_LIST_NAMES=${INTEGRATION_LIST_NAMES:-}" \
