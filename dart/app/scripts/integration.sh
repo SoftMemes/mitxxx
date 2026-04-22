@@ -202,9 +202,14 @@ export ADB_OPTS PLATFORM DEVICE_ID SHOT_DIR
 # can quote AppleScript / shell freely without fighting the awk-in-
 # single-quote nesting.
 _ios_screencap() {
-  local sim="$1" out="$2" tmp err
+  local sim="$1" out="$2" tmp err dir
+  # simctl io refuses relative paths when the target filename contains
+  # multiple dots (it misreads `screenshots/ios/raw/foo.capture.png` as a
+  # missing folder named `foo.capture.png`). Resolve to absolute first.
+  dir=$(cd "$(dirname "$out")" && pwd)
+  mkdir -p "$dir"
+  out="$dir/$(basename "$out")"
   tmp="${out%.tmp}.capture.png"
-  mkdir -p "$(dirname "$out")"
   # Nudge Simulator.app to the foreground so its display is rendering.
   # `simctl io … screenshot` fails with `Timeout waiting for screen
   # surfaces` when the Simulator window is hidden or minimised. No-op
@@ -226,19 +231,26 @@ _ios_screencap() {
 }
 export -f _ios_screencap
 
-# Erase the iOS simulator before an iOS run so FlutterSecureStorage's
-# keychain-backed cookie jar from a previous run doesn't leave the app
-# starting in a logged-in state. patrol's `--uninstall` removes the
-# `.app` bundle but iOS keychain entries survive — `simctl erase`
-# factory-resets the sim (takes ~20 s).
+# Wipe MITxxx's state on the iOS sim before a run. Without this,
+# FlutterSecureStorage's keychain-backed cookie jar survives even
+# patrol's `--uninstall` (which only removes the `.app` bundle + its
+# data container), so the app starts in a logged-in state and the
+# onboarding/login screens the screenshot test expects never appear.
+#
+# We uninstall the app + keychain-reset the sim. Both commands work on
+# a booted simulator in ~0.5 s each — much cheaper than a full
+# `simctl erase` which factory-resets the whole sim (~20 s boot).
+#
+# Bundle ids must match `PRODUCT_BUNDLE_IDENTIFIER` in the dev flavor
+# config: `app.omnilect.dev` (main app) and `app.omnilect.RunnerUITests`
+# (patrol's UI-test host).
 if [[ "$PLATFORM" == "ios" && -n "$DEVICE_ID" ]]; then
-  echo "[integration.sh] erasing iOS sim $DEVICE_ID for clean state"
-  xcrun simctl shutdown "$DEVICE_ID" >/dev/null 2>&1 || true
-  xcrun simctl erase "$DEVICE_ID"
-  xcrun simctl boot "$DEVICE_ID"
-  open -a Simulator
-  # Wait for boot to complete before patrol starts installing.
-  xcrun simctl bootstatus "$DEVICE_ID" -b >/dev/null 2>&1 || true
+  echo "[integration.sh] wiping iOS app state on $DEVICE_ID"
+  xcrun simctl uninstall "$DEVICE_ID" app.omnilect.dev \
+    >/dev/null 2>&1 || true
+  xcrun simctl uninstall "$DEVICE_ID" app.omnilect.RunnerUITests \
+    >/dev/null 2>&1 || true
+  xcrun simctl keychain "$DEVICE_ID" reset >/dev/null 2>&1 || true
 fi
 
 # patrol test's own `--uninstall` (default on) performs the same adb
