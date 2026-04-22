@@ -8,6 +8,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 import 'package:omnilect/core/analytics/advertising_id_provider.dart';
 import 'package:omnilect/core/analytics/analytics_preferences.dart';
 import 'package:omnilect/core/analytics/analytics_service.dart';
@@ -110,6 +111,8 @@ class OmnilectApp extends ConsumerStatefulWidget {
 }
 
 class _OmnilectAppState extends ConsumerState<OmnilectApp> {
+  AppLifecycleListener? _lifecycleListener;
+
   @override
   void initState() {
     super.initState();
@@ -121,6 +124,26 @@ class _OmnilectAppState extends ConsumerState<OmnilectApp> {
     ref
       ..read(legacySelectionMigrationProvider)
       ..read(syncLifecycleObserverProvider);
+
+    // Log lifecycle transitions so background-playback issues can be
+    // correlated against state changes (e.g. paused → audio cuts).
+    final log = Logger('app.lifecycle');
+    _lifecycleListener = AppLifecycleListener(
+      onStateChange: (state) => log.info('state → $state'),
+      onPause: () => log.info('onPause'),
+      onResume: () => log.info('onResume'),
+      onHide: () => log.info('onHide'),
+      onShow: () => log.info('onShow'),
+      onInactive: () => log.info('onInactive'),
+      onRestart: () => log.info('onRestart'),
+      onDetach: () => log.info('onDetach'),
+    );
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener?.dispose();
+    super.dispose();
   }
 
   Future<void> _initAnalytics() async {

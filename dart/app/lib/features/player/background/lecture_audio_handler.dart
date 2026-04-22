@@ -1,17 +1,36 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
+import 'package:logging/logging.dart';
 import 'package:omnilect/features/player/controllers/lecture_playback_controller.dart';
+
+final _log = Logger('player.audio-handler');
 
 /// Activates / deactivates the shared audio session. Injected so tests can
 /// observe activation without going through the real platform channel.
 typedef AudioSessionActivator = Future<bool> Function({required bool active});
 
 Future<bool> _defaultActivator({required bool active}) async {
+  // Android: ExoPlayer (via video_player's `handleAudioFocus: true` default)
+  // owns audio focus. Calling `AudioSession.setActive(true)` from Dart
+  // registers a second AudioManager focus request, which Android resolves by
+  // kicking ExoPlayer's focus out — yielding `AUDIOFOCUS_LOSS` and
+  // auto-pausing playback. Skip activation entirely on Android; the category
+  // configured in main.dart still applies, the audio_service foreground
+  // service still owns the notification, and ExoPlayer's own focus handling
+  // covers interruptions.
+  if (!kIsWeb && Platform.isAndroid) {
+    _log.fine('setActive($active) skipped on Android (ExoPlayer owns focus)');
+    return true;
+  }
+  _log.fine('setActive($active) → platform call');
   final session = await AudioSession.instance;
-  return session.setActive(active);
+  final granted = await session.setActive(active);
+  _log.fine('setActive($active) → granted=$granted');
+  return granted;
 }
 
 /// `audio_service` [BaseAudioHandler] that adapts the existing
@@ -23,13 +42,14 @@ Future<bool> _defaultActivator({required bool active}) async {
 /// mirrors that controller's [PlaybackSnapshot] into `audio_service`'s
 /// `playbackState` stream.
 ///
-/// Activates / deactivates the shared [AudioSession] whenever the mirrored
-/// playing flag flips. This runs from the snapshot listener, so it covers
-/// both lock-screen controls (which go through [play] / [pause]) and the
-/// in-app widget layer (which calls the controller directly). `video_player`
-/// does not route through `audio_session`, so without this bracket the
-/// interruption stream stays silent on Android and iOS's session activation
-/// is left to AVPlayer's implicit behaviour (unreliable in the simulator).
+/// Activates / deactivates the shared [AudioSession] on iOS whenever the
+/// mirrored playing flag flips — this is what makes AVPlayer's audio keep
+/// running when the app is backgrounded (iOS's implicit auto-activation is
+/// unreliable in the simulator and under plugin contention). Runs from the
+/// snapshot listener so it covers both lock-screen controls and the in-app
+/// widget layer. On Android the default activator no-ops: ExoPlayer (via
+/// `video_player`) owns audio focus directly, and claiming it a second time
+/// through `audio_session` would kick ExoPlayer out and auto-pause playback.
 class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
   LectureAudioHandler({AudioSessionActivator? activator})
       : _activator = activator ?? _defaultActivator;
@@ -45,6 +65,9 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Tracks whether we believe the audio session is currently active so we
   /// don't repeatedly request the same state from the platform.
   bool _sessionActive = false;
+
+  /// Last `isPlaying` value we emitted, so we can log only on transitions.
+  bool _lastEmittedPlaying = false;
 
   /// The currently-attached controller, if any. Exposed for tests.
   @visibleForTesting
@@ -63,6 +86,7 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
     required LecturePlaybackController controller,
     MediaItem? item,
   }) {
+    _log.info('attach(item=${item?.id})');
     _detachController();
     _controller = controller;
     if (item != null) mediaItem.add(item);
@@ -75,7 +99,11 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Update the lock-screen / media-notification metadata for the currently
   /// attached controller. No-op if no controller is attached.
   void setMediaItem(MediaItem item) {
-    if (_controller == null) return;
+    if (_controller == null) {
+      _log.warning('setMediaItem(${item.id}) ignored — no controller attached');
+      return;
+    }
+    _log.info('setMediaItem(id=${item.id}, title="${item.title}")');
     mediaItem.add(item);
   }
 
@@ -83,6 +111,8 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
   /// audio service itself. The lock-screen session goes idle; a subsequent
   /// [attach] brings it back.
   void detach() {
+    _log.info('detach (had controller=${_controller != null}, '
+        'sessionActive=$_sessionActive)');
     _detachController();
     mediaItem.add(null);
     playbackState.add(PlaybackState());
@@ -98,7 +128,11 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> play() async {
     final controller = _controller;
-    if (controller == null) return;
+    if (controller == null) {
+      _log.warning('play() ignored — no controller attached');
+      return;
+    }
+    _log.info('play() from lock-screen / handler');
     if (controller.snapshot.value.isComplete) {
       await controller.seekGlobal(0);
     }
@@ -107,6 +141,11 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> pause() async {
+    if (_controller == null) {
+      _log.warning('pause() ignored — no controller attached');
+      return;
+    }
+    _log.info('pause() from lock-screen / handler');
     await _controller?.pause();
   }
 
@@ -137,6 +176,7 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> stop() async {
+    _log.info('stop()');
     await _controller?.pause();
     detach();
     await super.stop();
@@ -147,6 +187,7 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
   /// overlapping calls don't re-fire, then forwards to the activator.
   Future<void> _setSessionActive({required bool active}) async {
     if (_sessionActive == active) return;
+    _log.fine('session $_sessionActive → $active');
     _sessionActive = active;
     await _activator(active: active);
   }
@@ -162,6 +203,12 @@ class LectureAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   void _emitPlaybackState(PlaybackSnapshot snap) {
+    if (snap.isPlaying != _lastEmittedPlaying) {
+      _log.info('snapshot playing=${snap.isPlaying} '
+          '(pos=${snap.globalPosition.toStringAsFixed(1)}s, '
+          'complete=${snap.isComplete}, error=${snap.error})');
+      _lastEmittedPlaying = snap.isPlaying;
+    }
     // Keep audio focus / AVAudioSession activation in lockstep with the
     // controller's playing flag. Fire-and-forget: snapshot emissions are
     // synchronous and we can't await platform calls from a ValueListenable

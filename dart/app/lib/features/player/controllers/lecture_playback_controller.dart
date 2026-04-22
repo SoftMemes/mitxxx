@@ -155,14 +155,26 @@ class LecturePlaybackController {
   }
 
   Future<void> play() async {
-    if (_disposed || _activeVpc == null) return;
+    if (_disposed || _activeVpc == null) {
+      _log.fine('play() ignored (disposed=$_disposed, '
+          'hasVpc=${_activeVpc != null})');
+      return;
+    }
+    _log.info('play() → video_player');
     _wantPlaying = true;
     await _activeVpc!.play();
+    _log.fine('play() returned, vpc.isPlaying=${_activeVpc?.value.isPlaying}');
     _updateSnapshot();
   }
 
   Future<void> pause() async {
-    if (_disposed || _activeVpc == null) return;
+    if (_disposed || _activeVpc == null) {
+      _log.fine('pause() ignored (disposed=$_disposed, '
+          'hasVpc=${_activeVpc != null})');
+      return;
+    }
+    _log.info('pause() → video_player '
+        '(stack hint: seekInProgress=$_seekInProgress)');
     _wantPlaying = false;
     await _activeVpc!.pause();
     _updateSnapshot();
